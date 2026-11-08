@@ -105,6 +105,34 @@ button:focus-visible{outline:3px solid #1d7bd8;outline-offset:2px}
 </style>
 </head>
 <body>
+<div id="pinGate" style="position:fixed;inset:0;z-index:2147483647;background:#0f1720;color:#fff;display:flex;align-items:center;justify-content:center;font-family:-apple-system,'PingFang HK','Noto Sans TC',sans-serif">
+<div style="width:min(320px,86vw);text-align:center">
+<div style="font-size:20px;font-weight:700;margin-bottom:6px">請輸入 PIN</div>
+<div style="font-size:13px;opacity:.7;margin-bottom:18px">只需輸入一次，之後呢部機會記住</div>
+<input id="pinIn" type="password" inputmode="numeric" autocomplete="off" maxlength="12" style="width:100%;box-sizing:border-box;font-size:24px;letter-spacing:6px;text-align:center;padding:12px;border-radius:12px;border:1px solid #3a4756;background:#1b2632;color:#fff;outline:none">
+<button id="pinBtn" style="width:100%;margin-top:12px;padding:12px;font-size:17px;font-weight:600;border:0;border-radius:12px;background:#e23b3b;color:#fff">確定</button>
+<div id="pinMsg" style="height:20px;margin-top:10px;font-size:14px;color:#ff8a8a"></div>
+</div></div>
+<script>
+(function(){
+  var H='4f00a732a628b0efdb29a102528f7aa5e8accfd2fb06a9f6fe3bea0589eb870e',K='pinGate.ok';
+  var g=document.getElementById('pinGate'),i=document.getElementById('pinIn'),b=document.getElementById('pinBtn'),m=document.getElementById('pinMsg');
+  function open(){g.remove();}
+  try{ if(localStorage.getItem(K)===H){open();return;} }catch(e){}
+  function hex(buf){return Array.prototype.map.call(new Uint8Array(buf),function(x){return('0'+x.toString(16)).slice(-2)}).join('');}
+  function check(){
+    var v=(i.value||'').trim(); if(!v) return;
+    if(!(window.crypto&&crypto.subtle)){m.textContent='呢個瀏覽器唔支援，請用 Safari 或 Chrome';return;}
+    crypto.subtle.digest('SHA-256',new TextEncoder().encode('a188-pin:'+v)).then(function(d){
+      if(hex(d)===H){ try{localStorage.setItem(K,H);}catch(e){} open(); }
+      else { m.textContent='PIN 錯誤，請再試'; i.value=''; i.focus(); }
+    });
+  }
+  b.onclick=check; i.onkeydown=function(e){if(e.key==='Enter')check();};
+  setTimeout(function(){try{i.focus();}catch(e){}},100);
+})();
+</script>
+
 <div id="stage"></div>
 
 <div id="hudWrap">
