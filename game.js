@@ -766,8 +766,23 @@ function busFront(style){ return vtex('busF'+style,256,384,(g,W,H)=>{ g.fillStyl
   g.fillStyle='#000'; g.fillRect(36,170,W-72,50); led(g,style==='red'?'屯門 60X':'天瑞 69X',48,196,30,style==='red'?'#ffa31a':'#3ddc6a');
   g.fillStyle=style==='red'?'#c8c8c8':'#a8977a'; g.fillRect(10,330,W-20,22); g.fillStyle='#fffbe8'; g.fillRect(20,334,34,14); g.fillRect(W-54,334,34,14); }); }
 function busModel(){ const g=new THREE.Group(), body=new THREE.Group(); g.add(body); const st=Math.random()<0.6?'red':'gold';
-  const base=solid(st==='red'?0xe8343a:0xbba98a), back=vtex('busB'+st,256,384,(c,W,H)=>{ c.fillStyle=st==='red'?'#e8343a':'#bba98a'; c.fillRect(0,0,W,H); c.fillStyle='#16181c'; c.fillRect(40,40,W-80,90); c.fillStyle='#ff4040'; c.fillRect(20,320,36,20); c.fillRect(W-56,320,36,20); });
-  vbox(2.55,4.3,11.2,[busSide(st,true),busSide(st,false),base,base,busFront(st),back],body,0,2.6,0);
+  const bc=st==='red'?'#e8343a':'#bba98a', bd=st==='red'?'#b3262b':'#94866b';
+  const base=solid(st==='red'?0xe8343a:0xbba98a), back=vtex('busB2'+st,256,384,(c,W,H)=>{ c.fillStyle=bc; c.fillRect(0,0,W,H);
+    c.fillStyle='#16181c'; c.fillRect(28,30,W-56,84);                                   // 上層車尾窗
+    c.fillStyle='rgba(255,255,255,.14)'; c.beginPath(); c.moveTo(40,104); c.lineTo(90,38); c.lineTo(120,38); c.lineTo(70,104); c.fill();
+    c.fillStyle='#16181c'; c.fillRect(150,126,82,30); led(c,'60X',162,142,22,'#ffb020');     // 路線牌
+    c.fillStyle='#16181c'; c.fillRect(28,170,W-56,56);                                  // 下層車尾窗
+    c.fillStyle=bd; c.fillRect(34,240,W-68,84); c.fillStyle='rgba(0,0,0,.28)'; for(let y=250;y<318;y+=11) c.fillRect(48,y,W-96,5);   // 引擎蓋散熱格
+    [8,W-30].forEach(x=>{ c.fillStyle='#ff3030'; c.fillRect(x,236,22,34); c.fillStyle='#ffa31a'; c.fillRect(x,274,22,22); c.fillStyle='#f4f4f4'; c.fillRect(x,300,22,16); });
+    c.fillStyle='#ffd400'; c.fillRect(92,334,72,22); c.fillStyle='#111'; c.font='bold 16px sans-serif'; c.textAlign='center'; c.textBaseline='middle'; c.fillText('TM 60X',128,346); c.textAlign='left';
+    c.fillStyle='#1c1e22'; c.fillRect(0,362,W,22); });
+  const roof=vtex('busT'+st,256,1024,(c,W,H)=>{ c.fillStyle=bc; c.fillRect(0,0,W,H); c.fillStyle='rgba(255,255,255,.75)'; c.fillRect(0,0,W,H); c.fillStyle=bc; c.fillRect(0,0,14,H); c.fillRect(W-14,0,14,H); c.fillRect(0,0,W,14); c.fillRect(0,H-14,W,14);
+    c.strokeStyle='rgba(0,0,0,.12)'; c.lineWidth=3; for(let y=60;y<H;y+=90){ c.beginPath(); c.moveTo(18,y); c.lineTo(W-18,y); c.stroke(); }
+    [[150,220],[620,220]].forEach(([y,h])=>{ c.fillStyle='#c9ced4'; c.fillRect(56,y,W-112,h); c.strokeStyle='#8a9098'; c.lineWidth=5; c.strokeRect(56,y,W-112,h); c.fillStyle='rgba(0,0,0,.2)'; for(let yy=y+16;yy<y+h-10;yy+=18) c.fillRect(72,yy,W-144,6);
+      c.fillStyle='#5b6270'; c.beginPath(); c.arc(W/2,y+h/2,34,0,7); c.fill(); c.fillStyle='#9aa1ab'; c.beginPath(); c.arc(W/2,y+h/2,10,0,7); c.fill(); });   // 冷氣機
+    [430,900].forEach(y=>{ c.fillStyle='#e9ecef'; c.fillRect(86,y,84,70); c.strokeStyle='#6f7884'; c.lineWidth=4; c.strokeRect(86,y,84,70); });                   // 太平門
+  });
+  vbox(2.55,4.3,11.2,[busSide(st,true),busSide(st,false),roof,base,busFront(st),back],body,0,2.6,0);
   wheelsAt(body,[[-1.2,3.6],[1.2,3.6],[-1.2,-2.6],[1.2,-2.6],[-1.2,-3.9],[1.2,-3.9]],0.56,0.4);
   body.children[0].castShadow=true; scene.add(g); g.userData.len=11.2; return g; }
 
@@ -1421,9 +1436,9 @@ const SKB={
   const rear=ptex('fireR',256,236,(c,W,H)=>{ c.fillStyle=red; c.fillRect(0,0,W,H); c.fillStyle=yel; c.fillRect(0,0,W,30); c.fillStyle='#c9ced4'; c.fillRect(30,40,W-60,150);
     c.fillStyle='rgba(0,0,0,.16)'; for(let y=46;y<190;y+=10) c.fillRect(30,y,W-60,3); c.strokeStyle='#e8ecef'; c.lineWidth=4; c.strokeRect(150,36,50,170); for(let y=52;y<200;y+=22){ c.beginPath(); c.moveTo(150,y); c.lineTo(200,y); c.stroke(); }
     c.fillStyle='#ff4040'; c.fillRect(10,196,30,18); c.fillRect(W-40,196,30,18); c.fillStyle=yel; c.fillRect(96,200,64,20); });
-  const base=solid(0xd8202a), top=solid(0xffc400);
-  vbox(2.55,2.5,6.5,[side(true),side(false),top,base,front,rear],g,0,1.85,0);
-  vbox(2.6,0.14,6.55,top,g,0,3.15,0,false);
+  const base=solid(0xd8202a);
+  vbox(2.55,2.5,6.5,[side(true),side(false),base,base,front,rear],g,0,1.85,0);
+  vbox(2.6,0.14,6.55,base,g,0,3.15,0,false);
   [-0.75,0.75].forEach(x=>{ const r=add(cyl(0.05,0.05,5.0,6),M(0xc9ced4),g,x,3.42,-0.6,false); r.rotation.x=Math.PI/2; });
   [-2.6,-1.4,-0.2,1.0].forEach(z=>add(new THREE.BoxGeometry(1.5,0.05,0.06),M(0xc9ced4),g,0,3.42,z,false));
   [[-1.1,-2.9],[1.1,-2.9],[-1.1,1.4],[1.1,1.4]].forEach(([x,z])=>add(cyl(0.04,0.04,0.3,6),M(0xc9ced4),g,x,3.3,z,false));
@@ -1475,8 +1490,9 @@ const SKB={
   add(cyl(0.02,0.02,0.6,6),M(0x9aa1ab),g,0.26,1.95,-1.3,false);
   const blues=[lamp(0.14,0.18,0.14,0x2f6bff,0x1550ff,g,0.26,2.3,-1.3), lamp(0.16,0.12,0.1,0x2f6bff,0x1550ff,g,-0.34,1.42,1.08), lamp(0.16,0.12,0.1,0x2f6bff,0x1550ff,g,0.34,1.42,1.08)];
   // 救護員（頭盔）
-  const r=person('crew'); r.scale.setScalar(0.62); r.position.set(0,0.78,-0.38); r.rotation.x=0.12; g.add(r);
-  const hm=add(sph(0.46),M(0xf4f6f8,{r:0.3}),g,0,2.16,-0.28); hm.scale.set(1,0.95,1.08); add(new THREE.BoxGeometry(0.6,0.2,0.1),M(C.glass,{r:0.1}),g,0,2.12,0.18,false);
+  const r=person('crew'); r.scale.set(0.62,0.62,0.62); r.position.set(0,0.78,-0.38); r.rotation.x=0.12; g.add(r);
+  r.children.forEach(o=>{ if(o.position.y>1.9) o.scale.multiplyScalar(0.01); });   // 收起大頭，換細頭盔
+  const hm=add(sph(0.27),M(0xf4f6f8,{r:0.3}),g,0,1.98,-0.2); hm.scale.set(1,0.95,1.1); add(new THREE.BoxGeometry(0.36,0.13,0.08),M(C.glass,{r:0.1}),g,0,1.96,0.07,false);
   g.userData.blues=blues; return g; },
  /* 的士：綠色新界的士（同路面嗰款一樣），冇警號 */
  taxi(){ const g=new THREE.Group(); taxiModel(g,true); g.scale.setScalar(1.05); g.userData.blues=[]; return g; },
