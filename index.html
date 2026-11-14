@@ -40,10 +40,13 @@ canvas{display:block}
 #cap{position:fixed;left:50%;bottom:calc(122px + env(safe-area-inset-bottom));transform:translateX(-50%);display:none;max-width:min(92vw,420px);background:rgba(28,39,51,.88);color:#fff;font-size:16px;font-weight:700;padding:10px 16px;border-radius:14px;text-align:center;line-height:1.4}
 
 .lives{font-size:20px;letter-spacing:1px;line-height:1;margin-bottom:4px}
-.lives .on{color:#f5a623;text-shadow:0 1px 0 #c77d00}.lives .off{color:#d5dbe2}
+.lives span{display:inline-block}.lives .on{color:#ff3b5c;text-shadow:0 1px 0 #b3002d;animation:beat 1.6s ease-in-out infinite}.lives .off{color:#d5dbe2}
+.lives .lost{animation:lostHeart .9s ease-out}
+@keyframes beat{0%,100%{transform:scale(1)}15%{transform:scale(1.18)}30%{transform:scale(1)}45%{transform:scale(1.1)}}
+@keyframes lostHeart{0%{transform:scale(1.9);color:#ff3b5c;text-shadow:0 0 10px #ff3b5c}40%{transform:scale(1.4) rotate(-14deg);color:#ff3b5c}70%{transform:scale(.8) rotate(10deg) translateY(4px)}100%{transform:scale(1);color:#d5dbe2}}
 .lives.hit{animation:shake .5s}
 @keyframes shake{20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
-@media (prefers-reduced-motion:reduce){.lives.hit{animation:none}}
+@media (prefers-reduced-motion:reduce){.lives.hit,.lives .on,.lives .lost{animation:none}}
 #toast{position:fixed;left:50%;top:calc(160px + env(safe-area-inset-top));transform:translateX(-50%);display:none;background:var(--red);color:#fff;font-weight:700;font-size:14px;padding:8px 14px;border-radius:99px;box-shadow:0 4px 14px rgba(0,0,0,.2);white-space:nowrap}
 #callBox{position:fixed;left:12px;right:12px;top:calc(122px + env(safe-area-inset-top));display:none;justify-content:center;pointer-events:none}
 #callBox .card{border-left:6px solid var(--red);max-width:420px;font-size:14px}
@@ -57,11 +60,11 @@ canvas{display:block}
 .case{display:grid;grid-template-columns:1fr auto;grid-template-rows:auto auto;text-align:left;border:2px solid #e3e8ee;background:#fafbfc;border-radius:16px;padding:12px 14px;font:inherit;color:var(--ink);cursor:pointer}
 .case .pl{font-size:12px;color:var(--muted);grid-column:1}
 .case b{font-size:17px;grid-column:1}
-.case .st{grid-column:2;grid-row:1/3;align-self:center;color:#f5a623;font-size:18px;letter-spacing:1px}
+.case .st{grid-column:2;grid-row:1/3;align-self:center;color:#ff3b5c;font-size:18px;letter-spacing:1px}
 .case:active{border-color:var(--orange)}
 .rules{font-size:12.5px;color:var(--muted);margin-top:12px;line-height:1.6}
 .rules b{color:var(--ink)}
-.stars{font-size:44px;color:#f5a623;text-align:center;letter-spacing:4px;margin:6px 0}
+.stars{font-size:44px;color:#ff3b5c;text-align:center;letter-spacing:4px;margin:6px 0}
 .row{display:flex;gap:10px;margin-top:14px}
 .row button{flex:1;border:0;border-radius:14px;padding:12px;font:inherit;font-weight:800;font-size:15px}
 .pri{background:var(--red);color:#fff}.sec{background:#eef1f5;color:var(--ink)}
@@ -137,7 +140,7 @@ button:focus-visible{outline:3px solid #1d7bd8;outline-offset:2px}
 
 <div id="hudWrap">
   <div class="top">
-    <div class="card"><div id="lives" class="lives" role="img" aria-label="生命之星"></div><b id="hTitle">任務</b><span id="hSub"></span><br>距離 <span class="num dist" id="hDist">--</span> · 限時 <span class="num" id="hTime">0:00</span></div>
+    <div class="card"><div id="lives" class="lives" role="img" aria-label="心心"></div><b id="hTitle">任務</b><span id="hSub"></span><br>距離 <span class="num dist" id="hDist">--</span> · 限時 <span class="num" id="hTime">0:00</span></div>
     <canvas id="mini" width="192" height="192" aria-label="小地圖"></canvas>
   </div>
   <div id="stabBox" class="stab" role="img" aria-label="病人穩定度"><span>🛏️ 病人穩定度</span><div class="bar"><i id="stabBar"></i></div></div>
@@ -162,7 +165,8 @@ button:focus-visible{outline:3px solid #1d7bd8;outline-offset:2px}
   </div>
 </div>
 
-<div class="layer" id="result">
+<canvas id="fw" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:40"></canvas>
+<div class="layer" id="result" style="z-index:41">
   <div class="panel">
     <h1 style="text-align:center">任務完成</h1>
     <div class="stars" id="rStars"></div>
@@ -189,8 +193,8 @@ button:focus-visible{outline:3px solid #1d7bd8;outline-offset:2px}
 <div class="layer over" id="over">
   <div class="panel">
     <h1>遊戲結束</h1>
-    <div class="stars" style="color:#d5dbe2">☆☆☆☆☆</div>
-    <p style="text-align:center">5 粒生命之星已經扣晒。<br><span id="oWhy"></span><br>記住：唔好撞人撞車、衝紅燈要開警號。</p>
+    <div class="stars" style="color:#d5dbe2">♡♡♡♡♡</div>
+    <p style="text-align:center">5 粒心心已經扣晒。<br><span id="oWhy"></span><br>記住：唔好撞人撞車、衝紅燈要開警號。</p>
     <div class="row"><button class="sec" id="oMenu">返回選單</button><button class="pri" id="oAgain">再玩一次</button></div>
   </div>
 </div>

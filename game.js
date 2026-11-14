@@ -286,6 +286,7 @@ function boxQ(c,y0,y1,sideMat,topMat,us=8,vs=3,uOff=0){
 }
 const rectQ=(x0,z0,x1,z1)=>[[x0,z0],[x1,z0],[x1,z1],[x0,z1]];
 function flushBuckets(){ buckets.forEach((b,mat)=>{ const g=new THREE.BufferGeometry();
+  if(typeof ELEV==='function') for(let i=0;i<b.p.length;i+=3) b.p[i+1]+=ELEV(b.p[i],b.p[i+2]);   // 元朗公路高架：抬高路面同橋身
   g.setAttribute('position',new THREE.Float32BufferAttribute(b.p,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(b.n,3)); g.setAttribute('uv',new THREE.Float32BufferAttribute(b.u,2));
   const m=new THREE.Mesh(g,mat); m.castShadow=true; m.receiveShadow=true; scene.add(m); }); buckets.clear(); }
 // 平面（帶世界坐標 UV）
@@ -314,6 +315,20 @@ LAY.edges.forEach(e=>{ const A=NODES[e.a], B=NODES[e.b]; const w=WD[e.t];
   const r={n:[e.a,e.b],w,t:e.t,name:e.name,bridge}; MAP.roads.push(r); const L=Math.hypot(B[0]-A[0],B[1]-A[1]);
   ADJ[e.a].push([e.b,L,r]); ADJ[e.b].push([e.a,L,r]); EDGE[e.a+'-'+e.b]=EDGE[e.b+'-'+e.a]=r; });
 const DEG=ADJ.map(a=>a.length);
+/* ---------- 元朗公路高架：由 E0 到元朗，兩頭上落斜，中間約 8 米高 ---------- */
+const HW=(()=>{ const st=LAY.J.E0, en=LAY.J.YW, E=NODES[en]; let cur=st, prev=-1; const seq=[st];
+  for(let g=0;g<300&&cur!==en;g++){ const c=ADJ[cur].filter(([o,,r])=>r.name==='元朗公路'&&o!==prev); if(!c.length) break;
+    const dd=k=>Math.hypot(NODES[k][0]-E[0],NODES[k][1]-E[1]); c.sort((p,q)=>dd(p[0])-dd(q[0])); prev=cur; cur=c[0][0]; seq.push(cur); }
+  const pts=seq.map(k=>NODES[k]); const cum=[0]; for(let i=1;i<pts.length;i++) cum.push(cum[i-1]+Math.hypot(pts[i][0]-pts[i-1][0],pts[i][1]-pts[i-1][1]));
+  const L=cum[cum.length-1], H=8, s0=30, R=75; const hAt=s=>{ const u=Math.min((s-s0)/R,(L-s0-s)/R); if(u<=0) return 0; if(u>=1) return H; return H*u*u*(3-2*u); };
+  let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; pts.forEach(([x,z])=>{x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z);});
+  return {seq,pts,cum,L,H,hAt,bb:[x0-30,z0-30,x1+30,z1+30],rad:12.4}; })();
+function ELEV(x,z,rad){ const T=HW, b=T.bb; if(x<b[0]||x>b[2]||z<b[1]||z>b[3]) return 0; rad=rad||T.rad; let best=1e9,bs=0;
+  for(let i=1;i<T.pts.length;i++){ const A=T.pts[i-1],B=T.pts[i], dx=B[0]-A[0], dz=B[1]-A[1], L2=dx*dx+dz*dz||1; let t=((x-A[0])*dx+(z-A[1])*dz)/L2; t=t<0?0:t>1?1:t;
+    const ex=x-A[0]-dx*t, ez=z-A[1]-dz*t, d=ex*ex+ez*ez; if(d<best){ best=d; bs=T.cum[i-1]+t*(T.cum[i]-T.cum[i-1]); } }
+  return best<=rad*rad?T.hAt(bs):0; }
+window.ELEV=ELEV;
+const rural=(x,z)=>!(x<240&&z>-440)&&!(x>430&&z<-540);   // 屯門同元朗市區以外：郊區
 const SIGNAL=DEG.map(d=>d>=3);
 const CLR=ADJ.map((a,k)=>DEG[k]>=3?Math.max(...a.map(e=>e[2].w/2))+1.5:0);   // 路口半徑（停車線之前）
 const NW=ADJ.map(a=>Math.max(...a.map(e=>e[2].w/2)));                        // 路口填色半徑
@@ -387,6 +402,13 @@ MAP.roads.forEach(r=>{ if(!r.bridge) return; const A=NODES[r.n[0]],B=NODES[r.n[1
       if(ok){ if(!run) run=[s,s]; run[1]=s+1; } else flush(); } flush(); }); });
 
 /* ---------- 地標 ---------- */
+// 高架橋身：橋面、兩邊石壆、橋躉（建好之後一齊抬高）
+{ const T=HW, deck=M(0xb9bec6,{r:0.9}), side=M(0x9aa1ab,{r:0.9}), par=M(0xe3e6ea,{r:0.8}), hw=8+3.6;
+  for(let i=1;i<T.pts.length;i++){ const A=T.pts[i-1],B=T.pts[i]; const h=Math.max(T.hAt(T.cum[i-1]),T.hAt(T.cum[i])); if(h<0.3) continue;
+    const [ux,uz,L]=dirn(A,B); const nx=uz, nz=-ux; const P=(s,o)=>[A[0]+ux*s+nx*o,A[1]+uz*s+nz*o];
+    boxQ([P(0,-hw),P(L,-hw),P(L,hw),P(0,hw)],-1.5,0.2,side,deck,8,3);
+    [-1,1].forEach(sd=>{ const o=sd*(hw+0.2); boxQ([P(0,o-0.35),P(L,o-0.35),P(L,o+0.35),P(0,o+0.35)],0.2,1.4,par,par,8,3); });
+    const hm=T.hAt(T.cum[i-1]+L/2); if(hm>3) for(const o of [-5,5]) boxQ([P(L/2-1.3,o-1.3),P(L/2+1.3,o-1.3),P(L/2+1.3,o+1.3),P(L/2-1.3,o+1.3)],-hm,-1.5,side,side,4,4); } }
 const props={tree:[],lamp:[],rail:[],bin:[]}; const signs=[]; const parked=[];
 function labelPlane(text,x,y,z,ry,bg,w=14,parent=scene){ const t=canvasTex(512,128,(g)=>{ g.fillStyle=bg; rr(g,4,4,504,120,24); g.fill(); g.fillStyle='#fff'; g.font='bold 72px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(text,256,68); },false);
   const m=new THREE.Mesh(new THREE.PlaneGeometry(w,w/4),new THREE.MeshBasicMaterial({map:t})); m.position.set(x,y,z); m.rotation.y=ry; parent.add(m); return m; }
@@ -582,7 +604,7 @@ function buildEstate(L,w,d){ const pod=4.8; let c=[L(0,0),L(w,0),L(w,d),L(0,d)];
     boxQ([L(cx-tw/2,d/2-td/2),L(cx+tw/2,d/2-td/2),L(cx+tw/2,d/2+td/2),L(cx-tw/2,d/2+td/2)],pod,h,hm,roofMat,8,3); }
   MAP.blds[MAP.blds.length-1].h=top; }
 // 沿街
-MAP.roads.forEach(r=>{ if(r.bridge) return; const [a,b]=r.n, A=NODES[a], B=NODES[b]; const [ux,uz,Lr]=dirn(A,B);
+MAP.roads.forEach(r=>{ if(r.bridge||r.name==='元朗公路') return; const [a,b]=r.n, A=NODES[a], B=NODES[b]; const [ux,uz,Lr]=dirn(A,B);
   [1,-1].forEach(side=>{ const nx=uz*side, nz=-ux*side; const off=r.w/2+5.2;
     let s=(DEG[a]>=2?NW[a]+5:2); const s1=Lr-(DEG[b]>=2?NW[b]+5:2);
     // 沿住路邊每隔一段放樹／街燈
@@ -594,19 +616,30 @@ MAP.roads.forEach(r=>{ if(r.bridge) return; const [a,b]=r.n, A=NODES[a], B=NODES
       const c=[L(0,0),L(bw,0),L(bw,bd),L(0,bd)];
       if(quadFree(c,0.5)){ boxQ([L(0,-1.8),L(bw,-1.8),L(bw,0.2),L(0,0.2)],0,0.11,walkMat,walkMat); if(type==='tong') buildTong(c,L(bw/2,0),nx,nz); else if(type==='shops') buildShops(c); else buildEstate(L,bw,bd); s+=bw+0.3; }
       else s+=3; } }); });
-// 內街空地：補屋邨高樓或小公園
+const VCOL=['#fff1d6','#e8f4ff','#ffe3e3','#e9f7df','#f3e8ff'];
+const villageMats=VCOL.map((w,k)=>texMat('v'+k,canvasTex(128,96,(g,W,H)=>{ g.fillStyle=w; g.fillRect(0,0,W,H); g.fillStyle='#8fb8d8'; g.fillRect(20,24,34,30); g.fillRect(74,24,34,30); g.fillStyle='#c9b8a6'; g.fillRect(0,H-6,W,6); g.fillStyle='rgba(0,0,0,.15)'; g.fillRect(20,52,34,4); g.fillRect(74,52,34,4); })));
+// 郊區山丘（元朗公路兩邊）
+{ const hm=[M(0x7fb069,{r:0.95}),M(0x6a9f58,{r:0.95}),M(0x8cbf73,{r:0.95})];
+  for(let s=20;s<HW.L;s+=34) for(const sd of [-1,1]){ const k=Math.min(HW.pts.length-1,HW.cum.findIndex(c=>c>=s)); const A=HW.pts[k-1]||HW.pts[0],B=HW.pts[k];
+    const [ux,uz]=dirn(A,B); const nx=uz*sd, nz=-ux*sd; const off=48+rnd()*70, r=14+rnd()*14, h=8+rnd()*16; const x=A[0]+nx*off+(rnd()-0.5)*20, z=A[1]+nz*off+(rnd()-0.5)*20;
+    if(!rural(x,z)) continue; let ok=true; for(let a=0;a<6.28&&ok;a+=0.5) for(const q of [0.3,0.7,1]) if(cellAt(x+Math.cos(a)*r*q,z+Math.sin(a)*r*q)&(1|4|8|16)) ok=false; if(!ok) continue;
+    const m=new THREE.Mesh(new THREE.SphereGeometry(1,10,7,0,Math.PI*2,0,Math.PI/2),pick(hm)); m.scale.set(r,h,r*(0.8+rnd()*0.4)); m.position.set(x,0,z); m.rotation.y=rnd()*6; m.castShadow=true; m.receiveShadow=true; scene.add(m);
+    for(let zz=z-r;zz<=z+r;zz+=CELL) for(let xx=x-r;xx<=x+r;xx+=CELL) if(Math.hypot(xx-x,zz-z)<r*0.95){ const q=gi(xx,zz); if(q>=0) grid[q]|=2|8; }
+    for(let t=0;t<5;t++){ const a=rnd()*6.28, d=r*(0.2+rnd()*0.5); props.tree.push([x+Math.cos(a)*d,z+Math.sin(a)*d,0,h*0.6]); } } }
+// 內街空地：補屋邨高樓或小公園（郊區就用低層建築、停車場、草地）
 for(let z=BZ0+20;z<BZ1-20;z+=20) for(let x=BX0+20;x<BX1-20;x+=20){
   const E=nearestEdge(x,z); const ang=Math.atan2(E.nx,E.nz); const ux=Math.cos(ang), uz=-Math.sin(ang), nx=E.nx, nz=E.nz;
   const L=(lx,lz)=>[x+ux*lx+nx*lz,z+uz*lx+nz*lz];
-  const c=[L(-11,-9),L(11,-9),L(11,9),L(-11,9)]; if(!quadFree(c,3)) continue;
-  if(rnd()<0.75){ const h=26+rnd()*20; boxQ([L(-8,-7),L(8,-7),L(8,7),L(-8,7)],0,h,pick(housingMats),roofMat,8,3); addBldQ([L(-8,-7),L(8,-7),L(8,7),L(-8,7)],h);
+  const c=[L(-11,-9),L(11,-9),L(11,9),L(-11,9)]; if(!quadFree(c,3)) continue; const rur=rural(x,z), q=rnd();
+  if(rur&&q<0.25){ const h=8+rnd()*8; const cc=[L(-9,-7),L(9,-7),L(9,7),L(-9,7)]; boxQ(cc,0,h,pick(villageMats),roofMat,8,3); addBldQ(cc,h); boxQ(c,0,0.25,podMat,podMat); markQuad(c,8); }
+  else if(rur&&q>0.6){ boxQ(c,0,0.25,grassMat,grassMat); markQuad(c,8); for(let k=0;k<3;k++) props.tree.push([x+(rnd()-0.5)*18,z+(rnd()-0.5)*14,0,0.25]); }
+  else if(!rur&&rnd()<0.75){ const h=26+rnd()*20; boxQ([L(-8,-7),L(8,-7),L(8,7),L(-8,7)],0,h,pick(housingMats),roofMat,8,3); addBldQ([L(-8,-7),L(8,-7),L(8,7),L(-8,7)],h);
     boxQ(c,0,0.25,podMat,podMat); markQuad(c,8); }
-  else if(rnd()<0.5){ boxQ(c,0,0.25,M(0x8a919c,{r:0.9}),M(0x8a919c,{r:0.9})); markQuad(c,8); // 停車場
+  else if(rur||rnd()<0.5){ boxQ(c,0,0.25,M(0x8a919c,{r:0.9}),M(0x8a919c,{r:0.9})); markQuad(c,8); // 停車場
     for(let k=0;k<4;k++) for(const r of [-1,1]){ const p=L(-7.5+k*5,r*4.5); parked.push([p[0],p[1],Math.atan2(nx*r,nz*r)]); markSeg(p,p,4,2); } }
   else { boxQ(c,0,0.25,grassMat,grassMat); markQuad(c,8); for(let k=0;k<4;k++) props.tree.push([x+(rnd()-0.5)*18,z+(rnd()-0.5)*14,0,0.25]); } }
 // 再細啲嘅空位：村屋／低層樓
-const VCOL=['#fff1d6','#e8f4ff','#ffe3e3','#e9f7df','#f3e8ff'];
-const villageMats=VCOL.map((w,k)=>texMat('v'+k,canvasTex(128,96,(g,W,H)=>{ g.fillStyle=w; g.fillRect(0,0,W,H); g.fillStyle='#8fb8d8'; g.fillRect(20,24,34,30); g.fillRect(74,24,34,30); g.fillStyle='#c9b8a6'; g.fillRect(0,H-6,W,6); g.fillStyle='rgba(0,0,0,.15)'; g.fillRect(20,52,34,4); g.fillRect(74,52,34,4); })));
+
 for(let z=BZ0+10;z<BZ1-10;z+=11) for(let x=BX0+10;x<BX1-10;x+=11){
   const xx=x+(rnd()-0.5)*4, zz=z+(rnd()-0.5)*4; const E=nearestEdge(xx,zz); const ux=E.nz, uz=-E.nx;
   const w=7+rnd()*3, d=7+rnd()*3; const L=(lx,lz)=>[xx+ux*lx+E.nx*lz,zz+uz*lx+E.nz*lz]; const c=[L(-w/2,-d/2),L(w/2,-d/2),L(w/2,d/2),L(-w/2,d/2)];
@@ -640,7 +673,7 @@ farScene(); flushBuckets();
 
 /* ---------- 清走壓住馬路嘅街道物件（樹、街燈） ---------- */
 const offRoad=(x,z,r)=>{ for(const [dx,dz] of [[0,0],[r,0],[-r,0],[0,r],[0,-r]]) if(cellAt(x+dx,z+dz)&1) return false; return true; };
-props.tree=props.tree.filter(([x,z])=>offRoad(x,z,1.6)); props.lamp=props.lamp.filter(([x,z])=>offRoad(x,z,0.8));
+props.tree=props.tree.filter(([x,z])=>offRoad(x,z,1.6)&&ELEV(x,z,15)<0.2); props.lamp=props.lamp.filter(([x,z])=>offRoad(x,z,0.8)&&ELEV(x,z,15)<0.2);
 /* ---------- 街道物件 ---------- */
 function instanced(geo,mat,list,place,cast=true){ if(!list.length) return; const m=new THREE.InstancedMesh(geo,mat,list.length); const o=new THREE.Object3D();
   list.forEach((it,k)=>{ o.position.set(0,0,0); o.rotation.set(0,0,0); o.scale.set(1,1,1); place(o,it); o.updateMatrix(); m.setMatrixAt(k,o.matrix); }); m.castShadow=cast; m.receiveShadow=true; scene.add(m); return m; }
@@ -767,6 +800,12 @@ const CASES=[
   equip:{q:'進行中風評估之前，救護員一定要先排除咩？揀啱裝備：',o:['🩸 血糖機','🦴 夾板','🩹 燒傷敷料','💨 霧化器'],why:'血糖過低可以引起類似中風嘅症狀，要先驗血糖（H\'stix > 4.0 mmol/L）先做中風評估。'},
   triage:{q:'FAST-ED 4 分，病發 40 分鐘，屬區係博愛醫院。應該點樣送院？',o:['🏥 通報後分流去屯門醫院','🏥 送屬區博愛醫院'],dest:['tmh','poh'],why:'院前中風通報及分流：博愛醫院屬區嘅病人 FAST-ED ≥ 4 分，分流至屯門醫院，並要預先通報醫院，方便盡快做溶栓治療。'},
   tips:['記住 FAST：面、手、講嘢、時間','發現懷疑中風，記低病發或者最後正常嘅時間，即刻打 999','唔好俾病人飲嘢食嘢，以免哽親']},
+ {id:'ylarrest',place:'元朗站',poi:'ylstation',title:'墮下後心臟驟停',call:'元朗站外，一名男子由約 8 米高嘅行人天橋墮下。救護員到場時佢冇反應、冇正常呼吸，心臟驟停。最就近係博愛醫院。',
+  steps:['救護員確認心臟驟停，即刻做心肺復甦','貼上自動心臟除顫器電極片，分析心律','繼續心肺復甦，盡快送院'],
+  quiz:[{q:'為成人做心肺復甦，胸外按壓應該點做？',o:['每分鐘 100 至 120 下，按深 5 至 6 厘米','每分鐘 60 下，按深 2 厘米就夠','每分鐘 150 下，按完唔使等胸口回彈'],why:'用力、快速按壓胸口中央：每分鐘 100 至 120 下、深 5 至 6 厘米，每次按完讓胸口完全回彈，盡量減少中斷。'}],
+  equip:{q:'傷者心臟驟停，救護員最需要即刻用咩裝備？',o:['⚡ 自動心臟除顫器（AED）','🦴 夾板','🩹 燒傷敷料','💨 霧化器'],why:'心臟驟停要盡快做心肺復甦同使用除顫器，越早除顫，存活機會越高。'},
+  triage:{q:'傷者由 8 米墮下，本身符合創傷分流準則，但已經心臟驟停。應該送邊間？',o:['🏥 博愛醫院（最就近）','🏥 屯門醫院（創傷中心）'],dest:['poh','tmh'],why:'創傷分流第一步：病人心臟驟停，就要送最就近醫院，唔再按其他準則分流去創傷中心。另一個例外係用 BVM 後仍然未能有效處理氣道或呼吸。'},
+  tips:['見到有人冇反應、冇正常呼吸，即刻打 999 並開始心肺復甦','附近有自動心臟除顫器就盡快攞嚟用，跟住機器語音指示','用力、快速按壓胸口中央，每分鐘 100 至 120 下']},
  {id:'mass',place:'屯門市廣場',poi:'plaza',title:'大量傷者事故',call:'屯門市廣場有扶手電梯意外，多人受傷！控制中心已派出多架救護車一齊前往。',
   steps:['救護員為傷者分流，貼上紅、黃、綠分流卡','先處理同運送傷勢最重（紅卡）嘅傷者','其他救護車接載餘下傷者'],
   quiz:[{q:'大量傷者事故，救護員到場後最先做咩？',o:['傷者分流：按傷勢輕重排先後','邊個叫得最大聲就先救邊個','將所有傷者送去同一間醫院'],why:'分流可以喺資源有限時，令傷勢最危急嘅傷者最快得到治療，傷者亦會分送唔同醫院。'}],
@@ -783,7 +822,8 @@ const LEVELS=[
  {id:'L6',caseId:'crash',  tod:'day',  todName:'日間',      cars:24,works:0,jam:1,dash:1,limit:1.7},
  {id:'L7',caseId:'mass',   tod:'dusk', todName:'黃昏',      cars:22,works:1,jam:0,dash:1,limit:1.7,escort:4},
  {id:'L8',caseId:'yltrauma',tod:'day', todName:'日間・元朗',  cars:22,works:0,jam:0,dash:1,limit:2.0,depot:'yl'},
- {id:'L9',caseId:'ylstroke',tod:'night',todName:'夜晚・元朗',  cars:20,works:0,jam:1,dash:1,limit:2.0,depot:'yl'}];
+ {id:'L9',caseId:'ylstroke',tod:'night',todName:'夜晚・元朗',  cars:20,works:0,jam:1,dash:1,limit:2.0,depot:'yl'},
+ {id:'L10',caseId:'ylarrest',tod:'dusk',todName:'黃昏・元朗',  cars:20,works:0,jam:0,dash:1,limit:2.0,depot:'yl'}];
 const caseOf=lv=>CASES.find(c=>c.id===lv.caseId);
 
 /* ---------- 地點 ---------- */
@@ -953,7 +993,7 @@ function placePed(p,nearX,nearZ){
     const A=NODES[r.n[0]],B=NODES[r.n[1]]; const d=Math.hypot((A[0]+B[0])/2-nearX,(A[1]+B[1])/2-nearZ); if(d<50||d>280) continue;
     const L=Math.hypot(B[0]-A[0],B[1]-A[1]); const side=Math.random()<0.5?1:-1; if(!spawnOK(A[0],A[1],4)||!spawnOK(B[0],B[1],4)) continue;
     const lo=SIGNAL[r.n[0]]?CLR[r.n[0]]+5:1, hi=L-(SIGNAL[r.n[1]]?CLR[r.n[1]]+5:1); if(hi-lo<6) continue;
-    Object.assign(p,{mode:'walk',A,B,L,s:lo+Math.random()*(hi-lo),lo,hi,dir:Math.random()<0.5?1:-1,off:(r.w/2+1.9)*side}); return true; }
+    if(r.name==='元朗公路') continue; Object.assign(p,{mode:'walk',A,B,L,s:lo+Math.random()*(hi-lo),lo,hi,dir:Math.random()<0.5?1:-1,off:(r.w/2+1.9)*side}); return true; }
   return false;
 }
 const PCOL=[0x7ec8e3,0xa78bfa,0xf9a8d4,0x86efac,0xfcd34d,0xfda4af,0x93c5fd];
@@ -965,6 +1005,9 @@ function pedModel(){ // 簡化行人：5 件，唔投影，慳手機效能
   const legL=mk(PG.leg,PM.leg,-0.2,0.3,0), legR=mk(PG.leg,PM.leg,0.2,0.3,0);
   g.userData={legL,legR}; g.scale.setScalar(0.9); scene.add(g); return g; }
 
+/* ---------- 高架路：車輛高度同斜度 ---------- */
+function groundPose(m,x,y0,z,a,len){ const h=ELEV(x,z); m.rotation.order='YXZ'; m.position.set(x,y0+h,z); m.rotation.y=a;
+  if(h>0||ELEV(x+Math.sin(a)*2,z+Math.cos(a)*2)>0){ const k=(len||4)/2, hf=ELEV(x+Math.sin(a)*k,z+Math.cos(a)*k), hb=ELEV(x-Math.sin(a)*k,z-Math.cos(a)*k); m.rotation.x=-Math.atan2(hf-hb,2*k); } else m.rotation.x=0; }
 /* ---------- 輕鐵 ---------- */
 const trams=[0,1,2,3].map(k=>({L:TRAM,m:tramModel(),dir:k%2?-1:1,s:k*TRAM.len/4,wait:0,cur:9})).concat([0,1].map(k=>({L:TRAM2,m:tramModel(),dir:k%2?-1:1,s:k*TRAM2.len/2+20,wait:0,cur:9})));
 function tramTick(dt){ const c=S.car, tt=clock.elapsedTime, SV=window.__SV||[];
@@ -996,7 +1039,7 @@ function drawRoute(pts){
   if(routeMesh){scene.remove(routeMesh);routeMesh.geometry.dispose();}
   const pos=[];
   for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i]; const dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz)||1; const nx=-dz/L*1.3,nz=dx/L*1.3;
-    pos.push(a[0]+nx,0.24,a[1]+nz, b[0]+nx,0.24,b[1]+nz, b[0]-nx,0.24,b[1]-nz, a[0]+nx,0.24,a[1]+nz, b[0]-nx,0.24,b[1]-nz, a[0]-nx,0.24,a[1]-nz); }
+    const ya=0.24+ELEV(a[0],a[1]), yb=0.24+ELEV(b[0],b[1]); pos.push(a[0]+nx,ya,a[1]+nz, b[0]+nx,yb,b[1]+nz, b[0]-nx,yb,b[1]-nz, a[0]+nx,ya,a[1]+nz, b[0]-nx,yb,b[1]-nz, a[0]-nx,ya,a[1]-nz); }
   const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); routeMesh=new THREE.Mesh(g,routeMat); routeMesh.renderOrder=2; scene.add(routeMesh);
 }
 const ring=add(new THREE.TorusGeometry(5,0.45,12,48),M(0xff7a1a,{e:0x662200}),scene,0,0.5,0,false); ring.rotation.x=Math.PI/2; ring.visible=false;
@@ -1106,7 +1149,7 @@ function finish(){
   // 成就
   ach('first'); if(S.lives===5) ach('perfect'); if(S.onTime>=2) ach('ontime'); if(S.stabLow>=85) ach('steady'); if(S.qScore>=2) ach('quiz');
   if(lv.tod==='night'||lv.tod==='rain') ach('night'); if(LEVELS.every(l=>isDone(l.id))) ach('all'); if(!S.redRun&&S.sirenUsed) ach('siren');
-  $('rStars').textContent='★'.repeat(S.stars)+'☆'.repeat(5-S.stars);
+  $('rStars').textContent='♥'.repeat(S.stars)+'♡'.repeat(5-S.stars);
   $('rTime').textContent='到場 '+fmt(S.tScene)+' · 送院完成 '+fmt(S.tHosp);
   const ex=[];
   ex.push((S.onTime>=2?'⏱️ 兩段都準時':'⏱️ 準時 '+S.onTime+' / 2 段'));
@@ -1117,11 +1160,28 @@ function finish(){
   const nx=LEVELS[S.lvl+1]; $('rNext').style.display=nx?'block':'none'; if(nx) $('rNext').textContent='下一關：'+caseOf(nx).place+'（'+nx.todName+'）';
   $('rTips').innerHTML='<b>📗 已收集知識卡：'+S.kase.title+'</b><ul>'+S.kase.tips.map(t=>'<li>'+t+'</li>').join('')+'</ul>';
   $('rName').value=getName(); $('rSave').disabled=false; $('rSave').textContent='儲存到排行榜';
-  show('result',true); show('hudWrap',false); checkLiveryUnlock();
+  show('result',true); show('hudWrap',false); checkLiveryUnlock(); fireworks(S.stars);
 }
-/* ---------- 生命之星：做錯一樣扣一粒，扣晒就遊戲結束 ---------- */
-function drawLives(){ $('lives').innerHTML=[0,1,2,3,4].map(i=>'<span class="'+(i<S.lives?'on':'off')+'">★</span>').join(''); $('lives').setAttribute('aria-label','生命之星 '+S.lives+' / 5'); }
-function loseLife(why,msg){ if(S.lives<=0) return; S.lives--; S.log.push(why); drawLives(); toast(msg+'  −1 ★');
+/* ---------- 任務完成：按剩低幾多粒心心放煙花（5 粒最多，0 粒冇） ---------- */
+let FW=null;
+function fireworks(n){ const cv=$('fw'); if(FW){ cancelAnimationFrame(FW.raf); FW=null; } const g=cv.getContext('2d'); const W=cv.width=innerWidth*Math.min(2,devicePixelRatio||1), H=cv.height=innerHeight*Math.min(2,devicePixelRatio||1);
+  g.clearRect(0,0,W,H); if(!n||n<1||matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const total=[0,2,4,7,11,18][Math.min(5,n)], dur=1.2+total*0.32, cols=['#ff4d6d','#ffd166','#06d6a0','#4cc9f0','#f72585','#ffffff','#ff9f1c'];
+  const shots=[...Array(total)].map((_,i)=>({t:i*(dur/total)*0.9+Math.random()*0.2,x:W*(0.15+Math.random()*0.7),y:H*(0.12+Math.random()*0.35),c:cols[Math.random()*cols.length|0],big:n===5&&i%4===0,done:false}));
+  const parts=[]; const t0=performance.now(); FW={raf:0};
+  const pop=()=>{ try{ ensureAudio(); if(!actx) return; const o=actx.createOscillator(), gg=actx.createGain(); o.type='triangle'; o.frequency.setValueAtTime(380+Math.random()*200,actx.currentTime); o.frequency.exponentialRampToValueAtTime(90,actx.currentTime+0.25); gg.gain.value=0.025; gg.gain.exponentialRampToValueAtTime(0.0001,actx.currentTime+0.3); o.connect(gg); gg.connect(master); o.start(); o.stop(actx.currentTime+0.3); }catch(e){} };
+  const step=()=>{ const t=(performance.now()-t0)/1000; g.globalCompositeOperation='source-over'; g.fillStyle='rgba(0,0,0,0)'; g.clearRect(0,0,W,H);
+    shots.forEach(s=>{ if(!s.done&&t>=s.t){ s.done=true; pop(); const k=s.big?90:48, sp=(s.big?7:5)*(W/800+0.6);
+      for(let i=0;i<k;i++){ const a=i/k*Math.PI*2+Math.random()*0.1, v=sp*(0.6+Math.random()*0.5); parts.push({x:s.x,y:s.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:1,c:Math.random()<0.2?'#ffffff':s.c,heart:s.big&&i%6===0}); } } });
+    g.globalCompositeOperation='lighter';
+    for(let i=parts.length-1;i>=0;i--){ const p=parts[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.06*(W/800+0.6); p.vx*=0.985; p.vy*=0.985; p.life-=0.012; if(p.life<=0){ parts.splice(i,1); continue; }
+      g.globalAlpha=Math.max(0,p.life); g.fillStyle=p.c; if(p.heart){ g.font=(14*(W/800+0.6))+'px sans-serif'; g.fillText('♥',p.x,p.y); } else { g.beginPath(); g.arc(p.x,p.y,2.2*(W/800+0.6),0,7); g.fill(); } }
+    g.globalAlpha=1; if(t<dur+3||parts.length) FW.raf=requestAnimationFrame(step); else g.clearRect(0,0,W,H); };
+  FW.raf=requestAnimationFrame(step); }
+function stopFireworks(){ if(FW){ cancelAnimationFrame(FW.raf); FW=null; } const cv=$('fw'); cv.getContext('2d').clearRect(0,0,cv.width,cv.height); }
+/* ---------- 心心：做錯一樣扣一粒，扣晒就遊戲結束 ---------- */
+function drawLives(lost){ $('lives').innerHTML=[0,1,2,3,4].map(i=>'<span class="'+(i<S.lives?'on':'off')+(i===lost?' lost':'')+'" style="animation-delay:'+(i*0.12)+'s">♥</span>').join(''); $('lives').setAttribute('aria-label','心心 '+S.lives+' / 5'); }
+function loseLife(why,msg){ if(S.lives<=0) return; S.lives--; S.log.push(why); drawLives(S.lives); toast(msg+'  −1 ❤');
   const el=$('lives'); el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit');
   if(S.lives<=0) setTimeout(()=>gameOver(why),700); }
 function gameOver(why){ if(S.mode==='result') return; S.mode='over'; S.car.v=0; sirenSet(false); show('quiz',false); S.quizOpen=false;
@@ -1136,7 +1196,7 @@ const KEYS={ArrowLeft:'L',ArrowRight:'R',ArrowUp:'G',ArrowDown:'B',a:'L',d:'R',w
 addEventListener('keydown',e=>{ if(KEYS[e.key]) S.hold[KEYS[e.key]]=true; if(e.key==='h') $('bH').click(); });
 addEventListener('keyup',e=>{ if(KEYS[e.key]) S.hold[KEYS[e.key]]=false; });
 $('bH').addEventListener('click',()=>{ if(!VSPEC.siren){ horn(); return; } sirenSet(!S.siren); if(S.siren) S.sirenUsed=true; });
-$('rAgain').onclick=()=>startCase(S.lvl); $('rNext').onclick=()=>startCase(S.lvl+1); $('rMenu').onclick=()=>{show('result',false);toMenu();};
+$('rAgain').onclick=()=>{ stopFireworks(); startCase(S.lvl); }; $('rNext').onclick=()=>{ stopFireworks(); startCase(S.lvl+1); }; $('rMenu').onclick=()=>{ stopFireworks(); show('result',false);toMenu();};
 $('oAgain').onclick=()=>startCase(S.lvl); $('oMenu').onclick=()=>{show('over',false);toMenu();};
 $('bMenu').onclick=()=>{ sirenSet(false); toMenu(); };
 function toMenu(){ clearEvents(); setTOD('day'); show('stabBox',false); show('quiz',false); S.quizOpen=false; S.mode='menu'; resetActors(); ring.visible=beacon.visible=arrow.visible=false; if(routeMesh) routeMesh.visible=false; caption(null); show('hudWrap',false); renderMenu(); show('menu',true); }
@@ -1245,19 +1305,19 @@ function tick(){
     legTimer(); dashTick(dt);
     if(S.route){ const n=d<22?S.target:lookAhead(18); const want=Math.atan2(n[0]-c.x,n[1]-c.z);
       if(S.arrowA==null) S.arrowA=want; S.arrowA+=(((want-S.arrowA)%(Math.PI*2)+Math.PI*3)%(Math.PI*2)-Math.PI)*Math.min(1,dt*7);
-      arrow.position.set(c.x,7.8+Math.sin(t*4)*0.25,c.z); arrow.rotation.y=S.arrowA; }
+      arrow.position.set(c.x,7.8+ELEV(c.x,c.z)+Math.sin(t*4)*0.25,c.z); arrow.rotation.y=S.arrowA; }
     if(d<7.5){ S.step===1?arriveScene():arriveHospital(); }
   }
-  amb.position.set(c.x,0.12,c.z); amb.rotation.y=c.a;
+  groundPose(amb,c.x,0.12,c.z,c.a,VSPEC.kl*6);
   ring.scale.setScalar(1+Math.sin(t*4)*0.06);
   /* --- 交通 --- */
   const SV=[]; if(S.siren&&S.mode==='drive') SV.push({x:c.x,z:c.z}); ESC.forEach(e=>{ if(e.pose&&e.m.visible&&!e.done) SV.push({x:e.pose.x,z:e.pose.z}); }); window.__SV=SV;
   for(const k of cars){
     if(!k.road) continue;
     let pose=carPose(k);
-    if(k.stuck){ k.pose=pose; k.m.position.set(pose.x,0.1,pose.z); k.m.rotation.y=pose.a; if(k.haz) k.haz.forEach(h=>h.visible=Math.floor(t*3)%2===0); continue; }
+    if(k.stuck){ k.pose=pose; groundPose(k.m,pose.x,0.1,pose.z,pose.a,k.m.userData.len); if(k.haz) k.haz.forEach(h=>h.visible=Math.floor(t*3)%2===0); continue; }
     const dx=pose.x-c.x, dz=pose.z-c.z, dd=Math.hypot(dx,dz);
-    if(k.waitEnd){ k.pose=pose; if(!inView(pose.x,pose.z)&&placeCar(k,c.x,c.z)) k.waitEnd=false; else { k.m.position.set(pose.x,0.1,pose.z); continue; } pose=carPose(k); }
+    if(k.waitEnd){ k.pose=pose; if(!inView(pose.x,pose.z)&&placeCar(k,c.x,c.z)) k.waitEnd=false; else { groundPose(k.m,pose.x,0.1,pose.z,pose.a,k.m.userData.len); continue; } pose=carPose(k); }
     if((dd>230||k.evict)&&!inView(pose.x,pose.z)&&S.mode==='drive'){ if(placeCar(k,c.x,c.z)){ k.evict=false; pose=carPose(k); k.cur=k.v; } }
     // 前面有救護車就停；開警號時靠邊減速讓路
     const fx=Math.sin(pose.a), fz=Math.cos(pose.a); const ahead=(-dx)*fx+(-dz)*fz, lat=Math.abs((-dx)*fz-(-dz)*fx);
@@ -1286,7 +1346,7 @@ function tick(){
     if(k.hit>0){ k.hit-=dt; target=0; }
     k.cur=(k.cur??target)+(target-(k.cur??target))*Math.min(1,dt*2);
     k.t+=k.cur*dt/(pose.L||1); if(k.t>=1){ nextEdge(k); }
-    pose=carPose(k); k.pose=pose; k.m.position.set(pose.x,0.1,pose.z);
+    pose=carPose(k); k.pose=pose; groundPose(k.m,pose.x,0.1,pose.z,pose.a,k.m.userData.len);
     const da=((pose.a-k.m.rotation.y+Math.PI*3)%(Math.PI*2))-Math.PI; k.m.rotation.y+=da*Math.min(1,dt*6);
   }
   tramTick(dt); rainTick(dt); escortTick(dt,t); audioTick(t); updFrustum(); S.lightT=(S.lightT||0)+dt; if(S.lightT>0.25){ S.lightT=0; updateLights(t); }
@@ -1322,8 +1382,8 @@ function tick(){
     if(S.step===1&&S.leftDepot!==true){ S.leftDepot=true; caption(null); if(S.level&&S.level.escort) launchEscorts(S.level.escort); }
     S.camYaw+=((c.a-S.camYaw+Math.PI*3)%(Math.PI*2)-Math.PI)*Math.min(1,dt*4.5);
     const back=portrait?19:16, up=portrait?14:10.5;
-    cam.position.lerp(clampCam(new THREE.Vector3(c.x-Math.sin(S.camYaw)*back,up,c.z-Math.cos(S.camYaw)*back),new THREE.Vector3(c.x,0,c.z)),Math.min(1,dt*6));
-    camLook.lerp(new THREE.Vector3(c.x+Math.sin(S.camYaw)*6,1.5,c.z+Math.cos(S.camYaw)*6),Math.min(1,dt*9));
+    const eh=ELEV(c.x,c.z); cam.position.lerp(clampCam(new THREE.Vector3(c.x-Math.sin(S.camYaw)*back,up+eh,c.z-Math.cos(S.camYaw)*back),new THREE.Vector3(c.x,0,c.z)),Math.min(1,dt*6));
+    camLook.lerp(new THREE.Vector3(c.x+Math.sin(S.camYaw)*6,1.5+eh,c.z+Math.cos(S.camYaw)*6),Math.min(1,dt*9));
   } else if(S.mode==='seq'||S.mode==='hseq'||S.mode==='result'){
     const P=S.mode==='hseq'?AE.door:S.kase.loc.patient; const rear=[c.x-Math.sin(c.a)*4,c.z-Math.cos(c.a)*4];
     const mx=(rear[0]+P[0])/2, mz=(rear[1]+P[1])/2; let dx=mx-P[0], dz=mz-P[1]; const L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
@@ -1346,7 +1406,7 @@ function openChoice(kind){ S.quizOpen=true; S.qKind=kind; caption(null); const Q
   $('qOpts').querySelectorAll('.qo').forEach(b=>{ b.textContent=Q.o[+b.dataset.i]; b.onclick=()=>{ if($('qNext').style.display!=='none') return; const ok=+b.dataset.i===0;
     if(ok) S.qScore++; else S.qPending=1; if(kind==='equip') S.equipOk=ok; else if(kind==='triage'){ S.triageOk=ok; S.dest=Q.dest[0]; } else S.quizOk=ok;
     $('qOpts').querySelectorAll('.qo').forEach(x=>{ x.disabled=true; if(+x.dataset.i===0) x.classList.add('ok'); else if(x===b) x.classList.add('bad'); });
-    $('qWhy').innerHTML='<b>'+(ok?'答啱！':(kind==='equip'?'揀錯裝備，扣 1 粒生命之星。':kind==='triage'?'分流揀錯醫院，扣 1 粒生命之星，改送正確醫院。':'答錯咗，扣 1 粒生命之星。'))+'</b> '; $('qWhy').append(Q.why); $('qNext').style.display='block'; $('qNext').focus(); }; });
+    $('qWhy').innerHTML='<b>'+(ok?'答啱！':(kind==='equip'?'揀錯裝備，扣 1 粒心心。':kind==='triage'?'分流揀錯醫院，扣 1 粒心心，改送正確醫院。':'答錯咗，扣 1 粒心心。'))+'</b> '; $('qWhy').append(Q.why); $('qNext').style.display='block'; $('qNext').focus(); }; });
   show('quiz',true); }
 $('qNext').onclick=()=>{ show('quiz',false); const k=S.qKind==='equip'?0:S.qKind==='triage'?2:1; S.qDone[k]=true; S.quizOpen=false;
   if(S.qPending){ S.qPending=0; const why=['揀錯裝備','急救小測答錯','分流揀錯醫院'][k]; loseLife(why,why); } };
@@ -1405,13 +1465,13 @@ function setTOD(k){ const T=TOD[k]; scene.background.setHex(T.sky); scene.fog.co
   Object.values(MAT).forEach(m=>{ if(m.map&&m.emissive){ m.emissiveMap=T.night?m.map:null; m.emissive.setHex(T.night?0x2a261c:0); m.needsUpdate=true; } }); // 夜晚：窗口有燈
   headL.intensity=T.night?2.4:0; rain.visible=!!T.wet; S.wet=!!T.wet; }
 
-/* ---------- 限時：每段路程有時限，準時到 +1 ★，超時 −1 ★ ---------- */
+/* ---------- 限時：每段路程有時限，準時到 +1 ❤，超時 −1 ❤ ---------- */
 function startLeg(){ setupEvents(); const len=S.route?S.route.len:400; S.legLimit=Math.round(len/16*S.level.limit/1.4+15); S.legStart=performance.now()/1000; S.overT=false; }
 function legLeft(){ return S.legLimit-(performance.now()/1000-S.legStart); }
 function legTimer(){ const r=legLeft(), el=$('hTime');
   if(r>=0){ el.textContent=fmt(r); el.classList.toggle('warn',r<15); }
   else { el.textContent='超時 +'+fmt(-r); el.classList.add('warn'); if(!S.overT){ S.overT=true; loseLife('超時','超時！病人等得太耐'); } } }
-function endLeg(){ if(legLeft()>=0){ S.onTime++; if(S.lives<5){ S.lives++; drawLives(); toast('準時到達！獎勵 +1 ★'); } else toast('準時到達！'); } }
+function endLeg(){ if(legLeft()>=0){ S.onTime++; if(S.lives<5){ S.lives++; drawLives(); toast('準時到達！獎勵 +1 ❤'); } else toast('準時到達！'); } }
 
 /* ---------- 病人穩定度（送院途中） ---------- */
 function drawStab(){ const v=Math.max(0,S.stab); $('stabBar').style.width=v+'%'; $('stabBar').style.background=v>60?'#21b46b':v>30?'#f5a623':'#e8323c'; $('stabBox').setAttribute('aria-label','病人穩定度 '+Math.round(v)+'%'); }
@@ -1456,10 +1516,10 @@ function dashTick(dt){ if(!(S.dashLeft>0)||!S.leftDepot) return; S.dashT-=dt; co
   S.dashLeft--; S.dashT=18+Math.random()*14; toast('⚠️ 小心！有人衝出馬路！'); }
 
 /* ---------- 成就同車款 ---------- */
-const ACH={first:{ic:'🚑',name:'首次出車',d:'完成任何一關'},perfect:{ic:'⭐',name:'完美任務',d:'保住全部 5 粒生命之星完成一關'},
+const ACH={first:{ic:'🚑',name:'首次出車',d:'完成任何一關'},perfect:{ic:'💖',name:'完美任務',d:'保住全部 5 粒心心完成一關'},
   ontime:{ic:'⏱️',name:'分秒必爭',d:'到場同送院兩段都準時'},steady:{ic:'🛏️',name:'穩如泰山',d:'送院途中病人穩定度保持 85% 以上'},
   quiz:{ic:'🧠',name:'急救達人',d:'一關入面裝備同小測都答啱'},siren:{ic:'🚨',name:'鳴笛開路',d:'有開警號，而且冇衝紅燈'},
-  night:{ic:'🌙',name:'夜更英雄',d:'完成夜晚或者落雨嘅關卡'},all:{ic:'🏅',name:'屯門守護者',d:'完成全部 7 關'}};
+  night:{ic:'🌙',name:'夜更英雄',d:'完成夜晚或者落雨嘅關卡'},all:{ic:'🏅',name:'屯門元朗守護者',d:'完成全部關卡'}};
 function ach(id){ const a=store.get('ach',{}); if(a[id]) return; a[id]=Date.now(); store.set('ach',a); S.newAch.push(id); }
 /* ---------- 車款：救護車（黃／經典白）、救護電單車、警車、消防車、的士、巴士 ---------- */
 // vmax 最高速、acc 加速倍數、steer 轉向、siren 有冇警號、lc 閃燈顏色、tone 警號音 [高,低,間隔ms]
@@ -1589,7 +1649,7 @@ async function onlineBoard(lv,box){ if(!DB){ box.textContent='（網上排行榜
     const rows=q.docs.map(d=>{ const v=d.data()||{}; const r=v.lv&&v.lv[lv]; return r?{n:String(v.n||'無名').slice(0,12),st:+r.st||0,tm:+r.tm||0,me:d.id===UID}:null; }).filter(Boolean).sort(rankSort).slice(0,10);
     box.textContent=''; if(!rows.length){ box.textContent='暫時未有人上榜，做第一個！'; return; } box.append(boardTable(rows)); }catch(e){ done=true; clearTimeout(tmo); box.textContent='暫時連唔到網上排行榜'; } }
 function boardTable(rows){ const t=document.createElement('table'); t.className='board'; rows.forEach((r,i)=>{ const tr=t.insertRow(); const c0=tr.insertCell(); c0.textContent=(i+1)+'.';
-  const c1=tr.insertCell(); c1.className='n'; c1.textContent=r.n+(r.me?'（你）':''); const c2=tr.insertCell(); c2.textContent='★'.repeat(r.st); c2.style.color='#f5a623';
+  const c1=tr.insertCell(); c1.className='n'; c1.textContent=r.n+(r.me?'（你）':''); const c2=tr.insertCell(); c2.textContent='♥'.repeat(r.st); c2.style.color='#ff3b5c';
   const c3=tr.insertCell(); c3.className='r'; c3.textContent=fmt(r.tm); }); return t; }
 
 /* ---------- 選單 ---------- */
@@ -1600,9 +1660,9 @@ function renderMenu(tab){ tab=tab||S.tab||'levels'; S.tab=tab; const B=$('tabBod
   if(tab==='levels'){ B.append(el('p',null,'由屯門救護站出車，到場處理，再送去屯門醫院急症室。完成一關解鎖下一關：'));
     const box=el('div'); box.id='cases'; LEVELS.forEach((lv,i)=>{ const k=caseOf(lv), lock=!unlockedAll()&&i>0&&!isDone(LEVELS[i-1].id), st=best[lv.id]||0;
       const b=el('button','case'+(lock?' locked':'')); b.disabled=lock;
-      b.append(el('span','pl','第 '+(i+1)+' 關 · '+lv.todName+(lv.works?' · 修路':'')+(lv.jam?' · 塞車':'')), el('b',null,(lock?'🔒 ':'')+k.place+'：'+k.title), el('span','st','★'.repeat(st)+'☆'.repeat(5-st)));
+      b.append(el('span','pl','第 '+(i+1)+' 關 · '+lv.todName+(lv.works?' · 修路':'')+(lv.jam?' · 塞車':'')), el('b',null,(lock?'🔒 ':'')+k.place+'：'+k.title), el('span','st','♥'.repeat(st)+'♡'.repeat(5-st)));
       b.onclick=()=>startCase(i); box.append(b); }); B.append(box);
-    const r=el('div','rules'); r.innerHTML='<b>點玩：</b>◀ ▶ 轉彎，按住「油」前進，「倒」倒車；撳「警號」開閃燈同警號，其他車會讓路，可以安全過紅燈。<br><b>限時：</b>準時到 +1 ★，超時 −1 ★。<br><b>生命之星：</b>5 粒；撞車、撞樓、撞人、冇警號衝紅燈、揀錯裝備、答錯小測、病人穩定度跌晒，每次 −1 ★，扣晒遊戲結束。<br><b>送院：</b>轉彎同煞車要慢慢嚟，保持病人穩定。'; B.append(r); }
+    const r=el('div','rules'); r.innerHTML='<b>點玩：</b>◀ ▶ 轉彎，按住「油」前進，「倒」倒車；撳「警號」開閃燈同警號，其他車會讓路，可以安全過紅燈。<br><b>限時：</b>準時到 +1 ❤，超時 −1 ❤。<br><b>心心：</b>5 粒；撞車、撞樓、撞人、冇警號衝紅燈、揀錯裝備、答錯小測、病人穩定度跌晒，每次 −1 ❤，扣晒遊戲結束。<br><b>送院：</b>轉彎同煞車要慢慢嚟，保持病人穩定。'; B.append(r); }
   if(tab==='cards'){ B.append(el('p',null,'完成關卡就收集到嗰個個案嘅急救知識卡：'));
     LEVELS.forEach((lv,i)=>{ const k=caseOf(lv), d=el('div','kcard'+(isDone(lv.id)||unlockedAll()?'':' lock'));
       if(isDone(lv.id)||unlockedAll()){ d.append(el('b',null,'📗 '+k.title+'（'+k.place+'）')); const ul=el('ul'); k.tips.forEach(t=>ul.append(el('li',null,t))); d.append(ul); }
@@ -1612,10 +1672,10 @@ function renderMenu(tab){ tab=tab||S.tab||'levels'; S.tab=tab; const B=$('tabBod
   if(tab==='board'){ const sel=el('div','lvsel'); S.boardLv=S.boardLv||'L1'; LEVELS.forEach((lv,i)=>{ const b=el('button',lv.id===S.boardLv?'on':null,'第'+(i+1)+'關'); b.onclick=()=>{ S.boardLv=lv.id; renderMenu('board'); }; sel.append(b); }); B.append(sel);
     B.append(el('div','bhead','📱 呢部機嘅紀錄')); const lb=store.get('lb',{})[S.boardLv]||[]; if(lb.length) B.append(boardTable(lb)); else B.append(el('p',null,'未有紀錄。完成關卡後喺結算畫面儲存。'));
     B.append(el('div','bhead','🌐 網上排行榜')); const ob=el('div'); B.append(ob); onlineBoard(S.boardLv,ob); }
-  if(tab==='livery'){ const tot=totalStars(), cur=(LIVERY.find(l=>l.id===store.get('livery','yellow'))||LIVERY[0]).id; B.append(el('p',null,'累積最佳星數：'+tot+' 粒。儲夠星數就解鎖新車款，每款性能唔同：'));
+  if(tab==='livery'){ const tot=totalStars(), cur=(LIVERY.find(l=>l.id===store.get('livery','yellow'))||LIVERY[0]).id; B.append(el('p',null,'累積最佳心心數：'+tot+' 粒。儲夠星數就解鎖新車款，每款性能唔同：'));
     LIVERY.forEach(L=>{ const lock=tot<L.need&&!unlockedAll(); const b=el('button','liv'+(L.id===cur?' on':'')); b.disabled=lock; const sw=el('span','sw'); sw.style.background=L.sw;
       const bar=n=>'●'.repeat(n)+'○'.repeat(5-n), sp=Math.max(1,Math.min(5,Math.round((L.vmax-20)/3.6))), ag=Math.max(1,Math.min(5,Math.round((L.steer-1.3)/0.29)));
-      const t=el('div'); t.append(el('b',null,L.name+(L.id===cur?'（使用中）':'')),el('small',null,lock?' 🔒 需要 '+L.need+' 粒星':' 已解鎖'),el('br'),el('small',null,'速度 '+bar(sp)+'　靈活 '+bar(ag)+'　'+(L.siren?'有警號':'冇警號')),el('br'),el('small',null,L.d)); b.append(sw,t); b.onclick=()=>{ applyLivery(L.id); renderMenu('livery'); }; B.append(b); }); }
+      const t=el('div'); t.append(el('b',null,L.name+(L.id===cur?'（使用中）':'')),el('small',null,lock?' 🔒 需要 '+L.need+' 粒心心':' 已解鎖'),el('br'),el('small',null,'速度 '+bar(sp)+'　靈活 '+bar(ag)+'　'+(L.siren?'有警號':'冇警號')),el('br'),el('small',null,L.d)); b.append(sw,t); b.onclick=()=>{ applyLivery(L.id); renderMenu('livery'); }; B.append(b); }); }
 }
 
 /* ---------- 交通意外現場：青山公路（巴士同小巴相撞） ---------- */
@@ -1664,7 +1724,7 @@ function escortTick(dt,t){ const on=Math.floor(t*5)%2===0;
     let j=1; while(j<e.cum.length-1&&e.cum[j]<e.s) j++; const A=e.pts[j-1],B=e.pts[j],k=(e.s-e.cum[j-1])/((e.cum[j]-e.cum[j-1])||1);
     const x=A[0]+(B[0]-A[0])*k, z=A[1]+(B[1]-A[1])*k, a=Math.atan2(B[0]-A[0],B[1]-A[1]);
     const prevA=e.pose?e.pose.a:a; const na=prevA+(((a-prevA)%(Math.PI*2)+Math.PI*3)%(Math.PI*2)-Math.PI)*Math.min(1,dt*5);
-    e.pose={x,z,a:na}; e.m.position.set(x,0.12,z); e.m.rotation.y=na; e.m.userData.wheels.forEach(w=>w.rotation.x+=e.v*dt/0.6); } }
+    e.pose={x,z,a:na}; groundPose(e.m,x,0.12,z,na,6); e.m.userData.wheels.forEach(w=>w.rotation.x+=e.v*dt/0.6); } }
 
 /* ---------- 隱藏解鎖：撳左上角 A188 五下 ---------- */
 let badgeN=0, badgeT=0;
@@ -1686,7 +1746,7 @@ function aebSense(c,dir,look){ const fx=Math.sin(c.a)*dir, fz=Math.cos(c.a)*dir,
 function aebTick(dt){ const c=S.car; aebFan.visible=false; if(!S.aeb||S.mode!=='drive'||!S.leftDepot) return;
   const dir=c.v<-0.3||(S.hold.B&&c.v<=0.5)?-1:1, v=Math.abs(c.v), look=Math.max(6,v*v/(2*30)+6);
   const d=aebSense(c,dir,look); const hit=d<look;
-  aebFan.visible=true; aebFan.position.set(c.x+Math.sin(c.a)*VSPEC.nose*dir,0.32,c.z+Math.cos(c.a)*VSPEC.nose*dir); aebFan.rotation.y=c.a+(dir<0?Math.PI:0); aebFan.scale.set(1,1,Math.min(look,hit?Math.max(0.5,d):look));
+  aebFan.visible=true; { const ax=c.x+Math.sin(c.a)*VSPEC.nose*dir, az=c.z+Math.cos(c.a)*VSPEC.nose*dir; aebFan.position.set(ax,0.32+ELEV(ax,az),az); } aebFan.rotation.y=c.a+(dir<0?Math.PI:0); aebFan.scale.set(1,1,Math.min(look,hit?Math.max(0.5,d):look));
   aebFan.material.color.setHex(hit?0xff3b30:0x22e06a);
   if(hit&&((dir>0&&c.v>0)||(dir<0&&c.v<0)||v<0.3)){ // 自動煞車；太近就唔准再向前
     if(dir>0){ c.v=Math.max(0,c.v-(d<3?80:48)*dt); if(d<2.5&&S.hold.G) c.v=0; } else { c.v=Math.min(0,c.v+(d<3?80:48)*dt); if(d<2.5&&S.hold.B) c.v=0; }
@@ -1695,6 +1755,6 @@ $('bAEB').onclick=()=>{ S.aeb=!S.aeb; store.set('aeb',S.aeb); $('bAEB').textCont
 $('bAEB').textContent='防撞 '+(S.aeb?'開':'關'); $('bAEB').setAttribute('aria-pressed',S.aeb);
 
 renderMenu(); show('menu',true); tick();
-window.__S=S; window.__veh=applyLivery; window.__LMK=LMK; window.__startCase=startCase; window.__peds=peds;
+window.__S=S; window.__veh=applyLivery; window.__LMK=LMK; window.__fwTest=fireworks; window.__startCase=startCase; window.__peds=peds;
 
 })();
