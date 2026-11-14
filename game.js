@@ -193,6 +193,10 @@ function person(kind){
   if(kind==='crew'){ add(cyl(0.465,0.49,0.1),refl,g,0,0.9,0,false); add(cyl(0.455,0.475,0.1),refl,g,0,1.25,0,false); add(cyl(0.2,0.2,0.18),jacket,g,0,1.62,0); }
   add(sph(0.64),M(C.skin),g,0,2.1,0);
   const hair=add(sph(0.66),M(C.hair),g,0,2.26,-0.07); hair.scale.set(1,0.72,1);
+  if(kind==='crew'){ // 藍色 cap 帽：帽頂＋帽舌
+    const capM=M(0x1f4fbf,{r:0.6}); const top=add(new THREE.SphereGeometry(0.69,20,10,0,Math.PI*2,0,Math.PI/2),capM,g,0,2.3,-0.04); top.scale.set(1,0.62,1);
+    add(new THREE.CylinderGeometry(0.7,0.7,0.1,20),capM,g,0,2.31,-0.04);
+    const brim=add(new THREE.CylinderGeometry(0.42,0.42,0.06,16,1,false,-Math.PI/2,Math.PI),M(0x183f99,{r:0.6}),g,0,2.33,0.42,false); brim.scale.set(1.15,1,1.25); }
   [-0.21,0.21].forEach(x=>add(sph(0.08),M(0x22252b),g,x,2.15,0.58,false));
   [-0.34,0.34].forEach(x=>add(sph(0.085),M(0xff9aa2),g,x,1.99,0.52,false));
   const arms=[-0.6,0.6].map(x=>{const a=add(cyl(0.13,0.13,0.8),jacket,g,x,1.18,0.12); if(kind==='crew') add(cyl(0.14,0.14,0.08),refl,a,0,-0.15,0,false); a.rotation.x=-0.8; return a;});
