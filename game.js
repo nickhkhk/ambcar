@@ -303,12 +303,15 @@ function hillQ(x,z,r,h,r2,rot,mat){ const bk=bucket(mat), P=HILLG.attributes.pos
   for(let i=0;i<P.length;i+=3){ const lx=P[i]*r, lz=P[i+2]*r2; bk.p.push(x+lx*c-lz*s,P[i+1]*h,z+lx*s+lz*c); const nx=N[i]/r, ny=N[i+1]/h, nz=N[i+2]/r2, L=Math.hypot(nx,ny,nz)||1; bk.n.push(nx/L,ny/L,nz/L); }
   for(let i=0;i<U.length;i++) bk.u.push(U[i]*4); }
 // 平面（帶世界坐標 UV）
-function flat(arr,mat,y,uvs=3){ // 統一三角形方向（由上面望係逆時針），法線向上
+function flat(arr,mat,y,uvs=3){ // 統一三角形方向（由上面望係逆時針），法線向上；按 200 米分區，元朗公路高架段跟住抬高
   for(let i=0;i<arr.length;i+=9){ const ax=arr[i],az=arr[i+2],bx=arr[i+3],bz=arr[i+5],cx=arr[i+6],cz=arr[i+8]; if((bz-az)*(cx-ax)-(bx-ax)*(cz-az)<0){ arr[i+3]=cx; arr[i+5]=cz; arr[i+6]=bx; arr[i+8]=bz; } }
-  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(arr,3));
-  const uv=[]; for(let i=0;i<arr.length;i+=3) uv.push(arr[i]/uvs,arr[i+2]/uvs); g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
-  const n=[]; for(let i=0;i<arr.length;i+=3) n.push(0,1,0); g.setAttribute('normal',new THREE.Float32BufferAttribute(n,3));
-  const m=new THREE.Mesh(g,mat); m.position.y=y||0; m.receiveShadow=true; scene.add(m); return m; }
+  if(typeof ELEV==='function') for(let i=0;i<arr.length;i+=3) arr[i+1]+=ELEV(arr[i],arr[i+2]);
+  const groups=new Map(); for(let t=0;t<arr.length;t+=9){ const k=Math.floor((arr[t]+arr[t+3]+arr[t+6])/3/CHUNK)+','+Math.floor((arr[t+2]+arr[t+5]+arr[t+8])/3/CHUNK);
+    let g=groups.get(k); if(!g){ g=[]; groups.set(k,g); } for(let j=0;j<9;j++) g.push(arr[t+j]); }
+  let last=null; groups.forEach(a=>{ const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(a,3));
+    const uv=[]; for(let i=0;i<a.length;i+=3) uv.push(a[i]/uvs,a[i+2]/uvs); g.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+    const n=[]; for(let i=0;i<a.length;i+=3) n.push(0,1,0); g.setAttribute('normal',new THREE.Float32BufferAttribute(n,3)); g.computeBoundingSphere();
+    const m=new THREE.Mesh(g,mat); m.position.y=y||0; m.receiveShadow=true; m.matrixAutoUpdate=false; m.updateMatrix(); scene.add(m); last=m; }); return last; }
 const ribbon=(arr,A,B,half)=>{ const dx=B[0]-A[0], dz=B[1]-A[1], L=Math.hypot(dx,dz)||1; const nx=dz/L*half, nz=-dx/L*half;
   arr.push(A[0]+nx,0,A[1]+nz, B[0]+nx,0,B[1]+nz, B[0]-nx,0,B[1]-nz,  A[0]+nx,0,A[1]+nz, B[0]-nx,0,B[1]-nz, A[0]-nx,0,A[1]-nz); };
 const disc=(arr,C0,r,seg=16)=>{ for(let i=0;i<seg;i++){ const a=i/seg*Math.PI*2, b=(i+1)/seg*Math.PI*2; arr.push(C0[0],0,C0[1], C0[0]+Math.cos(a)*r,0,C0[1]+Math.sin(a)*r, C0[0]+Math.cos(b)*r,0,C0[1]+Math.sin(b)*r); } };
@@ -419,7 +422,7 @@ MAP.roads.forEach(r=>{ if(!r.bridge) return; const A=NODES[r.n[0]],B=NODES[r.n[1
 { const T=HW, deck=M(0xb9bec6,{r:0.9}), side=M(0x9aa1ab,{r:0.9}), par=M(0xe3e6ea,{r:0.8}), hw=8+3.6;
   for(let i=1;i<T.pts.length;i++){ const A=T.pts[i-1],B=T.pts[i]; const h=Math.max(T.hAt(T.cum[i-1]),T.hAt(T.cum[i])); if(h<0.3) continue;
     const [ux,uz,L]=dirn(A,B); const nx=uz, nz=-ux; const P=(s,o)=>[A[0]+ux*s+nx*o,A[1]+uz*s+nz*o];
-    boxQ([P(0,-hw),P(L,-hw),P(L,hw),P(0,hw)],-1.5,0.2,side,deck,8,3);
+    boxQ([P(0,-hw),P(L,-hw),P(L,hw),P(0,hw)],-1.5,0.04,side,deck,8,3);
     [-1,1].forEach(sd=>{ const o=sd*(hw+0.2); boxQ([P(0,o-0.35),P(L,o-0.35),P(L,o+0.35),P(0,o+0.35)],0.2,1.4,par,par,8,3); });
     const hm=T.hAt(T.cum[i-1]+L/2); if(hm>3) for(const o of [-5,5]) boxQ([P(L/2-1.3,o-1.3),P(L/2+1.3,o-1.3),P(L/2+1.3,o+1.3),P(L/2-1.3,o+1.3)],-hm,-1.5,side,side,4,4); } }
 const props={tree:[],lamp:[],rail:[],bin:[]}; const signs=[]; const parked=[];
@@ -459,7 +462,7 @@ function buildHosp(key,name,c1,c2){ const k=LAY.J[key], N=NODES[k], P0=NODES[ADJ
   c=f.rq(4,46,54,76); boxQ(c,0.3,26,hm,roofMat,8,3); addBldQ(c,26,'hospital');
   add(new THREE.CylinderGeometry(8,8,0.4,32),M(0x58606b),f.g,-30,34.5,60,false);
   labelPlane('H',-30,34.75,60,0,'#58606b',9,f.g).rotation.x=-Math.PI/2;
-  labelPlane(name,-30,28,43.9,Math.PI,'#d62839',22,f.g);
+  labelPlane(name,-30,22,43.9,Math.PI,'#d62839',22,f.g);
   add(new THREE.BoxGeometry(26,0.6,11),M(0x8fd3c7),f.g,0,5.2,20.5,true);
   [-12,12].forEach(o=>add(new THREE.CylinderGeometry(0.35,0.35,5,10),M(0xd0d4da),f.g,o,2.6,15.5,true));
   labelPlane('急症室 A&E',0,8.4,25.9,Math.PI,'#d62839',18,f.g);
@@ -900,12 +903,14 @@ function busModel(){ const g=new THREE.Group(), body=new THREE.Group(); g.add(bo
     [8,W-30].forEach(x=>{ c.fillStyle='#ff3030'; c.fillRect(x,236,22,34); c.fillStyle='#ffa31a'; c.fillRect(x,274,22,22); c.fillStyle='#f4f4f4'; c.fillRect(x,300,22,16); });
     c.fillStyle='#ffd400'; c.fillRect(92,334,72,22); c.fillStyle='#111'; c.font='bold 16px sans-serif'; c.textAlign='center'; c.textBaseline='middle'; c.fillText('TM 60X',128,346); c.textAlign='left';
     c.fillStyle='#1c1e22'; c.fillRect(0,362,W,22); });
-  const roof=vtex('busT'+st,256,1024,(c,W,H)=>{ c.fillStyle=bc; c.fillRect(0,0,W,H); c.fillStyle='rgba(255,255,255,.75)'; c.fillRect(0,0,W,H); c.fillStyle=bc; c.fillRect(0,0,14,H); c.fillRect(W-14,0,14,H); c.fillRect(0,0,W,14); c.fillRect(0,H-14,W,14);
-    c.strokeStyle='rgba(0,0,0,.12)'; c.lineWidth=3; for(let y=60;y<H;y+=90){ c.beginPath(); c.moveTo(18,y); c.lineTo(W-18,y); c.stroke(); }
-    [[150,220],[620,220]].forEach(([y,h])=>{ c.fillStyle='#c9ced4'; c.fillRect(56,y,W-112,h); c.strokeStyle='#8a9098'; c.lineWidth=5; c.strokeRect(56,y,W-112,h); c.fillStyle='rgba(0,0,0,.2)'; for(let yy=y+16;yy<y+h-10;yy+=18) c.fillRect(72,yy,W-144,6);
-      c.fillStyle='#5b6270'; c.beginPath(); c.arc(W/2,y+h/2,34,0,7); c.fill(); c.fillStyle='#9aa1ab'; c.beginPath(); c.arc(W/2,y+h/2,10,0,7); c.fill(); });   // 冷氣機
-    [430,900].forEach(y=>{ c.fillStyle='#e9ecef'; c.fillRect(86,y,84,70); c.strokeStyle='#6f7884'; c.lineWidth=4; c.strokeRect(86,y,84,70); });                   // 太平門
+  const roof=vtex('busT2'+st,256,1024,(c,W,H)=>{ c.fillStyle=bc; c.fillRect(0,0,W,H);   // 車頂：同車身一樣顏色，只加深色線條
+    c.strokeStyle=bd; c.lineWidth=6; c.strokeRect(10,10,W-20,H-20);
+    c.lineWidth=3; for(let y=60;y<H-20;y+=90){ c.beginPath(); c.moveTo(22,y); c.lineTo(W-22,y); c.stroke(); }
+    [[150,220],[620,220]].forEach(([y,h])=>{ c.lineWidth=6; c.strokeRect(56,y,W-112,h); c.lineWidth=3; for(let yy=y+18;yy<y+h-10;yy+=18){ c.beginPath(); c.moveTo(72,yy); c.lineTo(W-72,yy); c.stroke(); }
+      c.lineWidth=5; c.beginPath(); c.arc(W/2,y+h/2,34,0,7); c.stroke(); });   // 冷氣機
+    [430,900].forEach(y=>{ c.lineWidth=5; c.strokeRect(86,y,84,70); });        // 太平門
   });
+
   vbox(2.55,4.3,11.2,[busSide(st,true),busSide(st,false),roof,base,busFront(st),back],body,0,2.6,0);
   wheelsAt(body,[[-1.2,3.6],[1.2,3.6],[-1.2,-2.6],[1.2,-2.6],[-1.2,-3.9],[1.2,-3.9]],0.56,0.4);
   body.children[0].castShadow=true; scene.add(g); g.userData.len=11.2; return g; }
