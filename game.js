@@ -192,11 +192,11 @@ function person(kind){
   add(cyl(0.45,0.52,1.05),jacket,g,0,1.07,0);
   if(kind==='crew'){ add(cyl(0.465,0.49,0.1),refl,g,0,0.9,0,false); add(cyl(0.455,0.475,0.1),refl,g,0,1.25,0,false); add(cyl(0.2,0.2,0.18),jacket,g,0,1.62,0); }
   add(sph(0.64),M(C.skin),g,0,2.1,0);
-  const hair=add(sph(0.66),M(C.hair),g,0,2.26,-0.07); hair.scale.set(1,0.72,1);
+  const hair=add(sph(0.67),M(C.hair),g,0,2.24,-0.07); hair.scale.set(1,0.86,1);   // 頭髮要高過個頭頂（2.74），唔係會露出膚色似禿頭
   if(kind==='crew'){ // 藍色 cap 帽：帽頂＋帽舌
-    const capM=M(0x1f4fbf,{r:0.6}); const top=add(new THREE.SphereGeometry(0.69,20,10,0,Math.PI*2,0,Math.PI/2),capM,g,0,2.3,-0.04); top.scale.set(1,0.62,1);
+    const capM=M(0x1f4fbf,{r:0.6}); const top=add(new THREE.SphereGeometry(0.71,20,10,0,Math.PI*2,0,Math.PI/2),capM,g,0,2.3,-0.04); top.scale.set(1,0.82,1);   // 帽頂約 2.88，蓋過頭頂
     add(new THREE.CylinderGeometry(0.7,0.7,0.1,20),capM,g,0,2.31,-0.04);
-    const brim=add(new THREE.CylinderGeometry(0.42,0.42,0.06,16,1,false,-Math.PI/2,Math.PI),M(0x183f99,{r:0.6}),g,0,2.33,0.42,false); brim.scale.set(1.15,1,1.25); }
+    const brim=add(new THREE.CylinderGeometry(0.42,0.42,0.06,16,1,false,-Math.PI/2,Math.PI),M(0x183f99,{r:0.6}),g,0,2.36,0.4,false); brim.scale.set(1.1,1,0.8); }
   [-0.21,0.21].forEach(x=>add(sph(0.08),M(0x22252b),g,x,2.15,0.58,false));
   [-0.34,0.34].forEach(x=>add(sph(0.085),M(0xff9aa2),g,x,1.99,0.52,false));
   const arms=[-0.6,0.6].map(x=>{const a=add(cyl(0.13,0.13,0.8),jacket,g,x,1.18,0.12); if(kind==='crew') add(cyl(0.14,0.14,0.08),refl,a,0,-0.15,0,false); a.rotation.x=-0.8; return a;});
@@ -1226,9 +1226,20 @@ const fmt=s=>{s=Math.max(0,Math.round(s)); return Math.floor(s/60)+':'+String(s%
 function bindHold(id,key){ const b=$(id); const on=e=>{e.preventDefault();S.hold[key]=true;b.classList.add('on')}, off=()=>{S.hold[key]=false;b.classList.remove('on')};
   b.addEventListener('pointerdown',on); ['pointerup','pointercancel','pointerleave'].forEach(ev=>b.addEventListener(ev,off)); }
 bindHold('bL','L'); bindHold('bR','R'); bindHold('bG','G'); bindHold('bB','B');
-const KEYS={ArrowLeft:'L',ArrowRight:'R',ArrowUp:'G',ArrowDown:'B',a:'L',d:'R',w:'G',s:'B'};
-addEventListener('keydown',e=>{ if(KEYS[e.key]) S.hold[KEYS[e.key]]=true; if(e.key==='h') $('bH').click(); });
-addEventListener('keyup',e=>{ if(KEYS[e.key]) S.hold[KEYS[e.key]]=false; });
+// 鍵盤：方向鍵或者 WASD（W 上＝油、A 左、S 下＝倒、D 右）；用 e.code，大楷、中文輸入法都照用
+const KEYS={ArrowLeft:'L',ArrowRight:'R',ArrowUp:'G',ArrowDown:'B',KeyA:'L',KeyD:'R',KeyW:'G',KeyS:'B'};
+const typing=e=>{ const t=e.target; return t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA'||t.isContentEditable); };
+addEventListener('keydown',e=>{ if(typing(e)) return; const k=KEYS[e.code]||KEYS[e.key]; if(k){ S.hold[k]=true; e.preventDefault(); } if(e.code==='KeyH'&&!e.repeat) $('bH').click(); });
+addEventListener('keyup',e=>{ const k=KEYS[e.code]||KEYS[e.key]; if(k) S.hold[k]=false; });
+addEventListener('blur',()=>{ S.hold.L=S.hold.R=S.hold.G=S.hold.B=false; });
+// 滑鼠（或手指）拉動畫面旋轉鏡頭：左右拉轉方向、上下拉改高低；放手兩秒後慢慢轉返車後面
+S.camDrag={yaw:0,pitch:0,on:false,x:0,y:0,t:0};
+R.domElement.style.touchAction='none';
+R.domElement.addEventListener('pointerdown',e=>{ const D=S.camDrag; D.on=true; D.x=e.clientX; D.y=e.clientY; D.id=e.pointerId; try{ R.domElement.setPointerCapture(e.pointerId); }catch(_){} R.domElement.style.cursor='grabbing'; });
+R.domElement.addEventListener('pointermove',e=>{ const D=S.camDrag; if(!D.on||e.pointerId!==D.id) return; D.yaw-=(e.clientX-D.x)*0.008; D.pitch=Math.max(-0.5,Math.min(1,D.pitch+(e.clientY-D.y)*0.006)); D.x=e.clientX; D.y=e.clientY; D.t=performance.now(); });
+['pointerup','pointercancel'].forEach(ev=>R.domElement.addEventListener(ev,e=>{ const D=S.camDrag; D.on=false; D.t=performance.now(); R.domElement.style.cursor='grab'; }));
+R.domElement.style.cursor='grab';
+function camDragTick(dt){ const D=S.camDrag; if(!D.on&&performance.now()-D.t>2000){ const k=Math.min(1,dt*2); D.yaw-=D.yaw*k; D.pitch-=D.pitch*k; } }
 $('bH').addEventListener('click',()=>{ if(!VSPEC.siren){ horn(); return; } sirenSet(!S.siren); if(S.siren) S.sirenUsed=true; });
 $('rAgain').onclick=()=>{ stopFireworks(); startCase(S.lvl); }; $('rNext').onclick=()=>{ stopFireworks(); startCase(S.lvl+1); }; $('rMenu').onclick=()=>{ stopFireworks(); show('result',false);toMenu();};
 $('oAgain').onclick=()=>startCase(S.lvl); $('oMenu').onclick=()=>{show('over',false);toMenu();};
@@ -1415,9 +1426,10 @@ function tick(){
   } else if(S.mode==='drive'||S.mode==='over'){
     if(S.step===1&&S.leftDepot!==true){ S.leftDepot=true; caption(null); if(S.level&&S.level.escort) launchEscorts(S.level.escort); }
     S.camYaw+=((c.a-S.camYaw+Math.PI*3)%(Math.PI*2)-Math.PI)*Math.min(1,dt*4.5);
-    const back=portrait?19:16, up=portrait?14:10.5;
-    const eh=ELEV(c.x,c.z); cam.position.lerp(clampCam(new THREE.Vector3(c.x-Math.sin(S.camYaw)*back,up+eh,c.z-Math.cos(S.camYaw)*back),new THREE.Vector3(c.x,0,c.z)),Math.min(1,dt*6));
-    camLook.lerp(new THREE.Vector3(c.x+Math.sin(S.camYaw)*6,1.5+eh,c.z+Math.cos(S.camYaw)*6),Math.min(1,dt*9));
+    camDragTick(dt); const D=S.camDrag, yaw=S.camYaw+D.yaw;
+    const back=(portrait?19:16)*(1-D.pitch*0.25), up=(portrait?14:10.5)*(1+D.pitch);
+    const eh=ELEV(c.x,c.z); cam.position.lerp(clampCam(new THREE.Vector3(c.x-Math.sin(yaw)*back,up+eh,c.z-Math.cos(yaw)*back),new THREE.Vector3(c.x,0,c.z)),Math.min(1,dt*(D.on?12:6)));
+    camLook.lerp(new THREE.Vector3(c.x+Math.sin(yaw)*6,1.5+eh,c.z+Math.cos(yaw)*6),Math.min(1,dt*9));
   } else if(S.mode==='seq'||S.mode==='hseq'||S.mode==='result'){
     const P=S.mode==='hseq'?AE.door:S.kase.loc.patient; const rear=[c.x-Math.sin(c.a)*4,c.z-Math.cos(c.a)*4];
     const mx=(rear[0]+P[0])/2, mz=(rear[1]+P[1])/2; let dx=mx-P[0], dz=mz-P[1]; const L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
@@ -1790,6 +1802,6 @@ $('bAEB').onclick=()=>{ S.aeb=!S.aeb; store.set('aeb',S.aeb); $('bAEB').textCont
 $('bAEB').textContent='防撞 '+(S.aeb?'開':'關'); $('bAEB').setAttribute('aria-pressed',S.aeb);
 
 renderMenu(); show('menu',true); tick();
-window.__S=S; window.__veh=applyLivery; window.__LMK=LMK; window.__fwTest=fireworks; window.__R=R; window.__scene=scene; window.__cam=cam; window.__startCase=startCase; window.__peds=peds;
+window.__S=S; window.__veh=applyLivery; window.__LMK=LMK; window.__fwTest=fireworks; window.__R=R; window.__person=person; window.__scene=scene; window.__cam=cam; window.__startCase=startCase; window.__peds=peds;
 
 })();
