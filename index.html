@@ -105,6 +105,103 @@ canvas{display:block}
 .stab .bar{width:110px;height:9px;border-radius:99px;background:#e6eaef;overflow:hidden}.stab .bar i{display:block;height:100%;width:100%;background:var(--go);transition:width .2s}
 .num.warn{color:var(--red)}
 button:focus-visible{outline:3px solid #1d7bd8;outline-offset:2px}
+.modes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:4px 0 12px}
+.modes .mode{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;border-radius:14px;border:2px solid #e3e8ee;background:#f7f9fb;font:inherit;cursor:pointer}
+.modes .mode .mi{font-size:26px}.modes .mode b{font-size:14px}.modes .mode small{font-size:11px;color:#8a94a3}
+.modes .mode.on{border-color:#e8323c;background:#fff1f1}.modes .mode:disabled{opacity:.5;cursor:default}
+.txleg{display:grid;gap:6px;margin:8px 0}.txleg div{display:flex;align-items:center;gap:8px}.txleg .dot{width:16px;height:16px;border-radius:50%}.txleg b{min-width:80px}
+.txbest{font-weight:700;color:#1f8f3a}
+#tabBody .go{width:100%;padding:14px;font:inherit;font-size:18px;font-weight:800;border:0;border-radius:14px;background:#22a83a;color:#fff;margin-top:6px;cursor:pointer}
+.txpop{position:fixed;left:50%;top:34%;transform:translateX(-50%);font-size:26px;font-weight:900;text-shadow:0 2px 0 #fff,0 0 8px #fff;pointer-events:none;z-index:30;animation:txpop 1.6s ease-out forwards;white-space:nowrap}
+@keyframes txpop{0%{opacity:0;transform:translate(-50%,10px) scale(.8)}15%{opacity:1;transform:translate(-50%,0) scale(1.1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-40px) scale(1)}}
+#hTime.warn{color:#e8323c}
+#joy,#footBtns{display:none}
+
+/* 人事不省（CPR+AED） */
+body.cpr .top,body.cpr .btns,body.cpr #stabBox,body.cpr #bAEB,body.cpr #mini{display:none!important}
+#cp{display:none;position:fixed;left:10px;right:10px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:25;background:rgba(255,255,255,.96);border-radius:20px;padding:12px 14px 14px;box-shadow:0 6px 24px rgba(0,0,0,.22);max-width:560px;margin:0 auto;font-size:15px;line-height:1.45}
+.cpnote{display:block;color:#1a7f45;margin-bottom:2px}
+.cpchip{display:inline-block;background:#e0465e;color:#fff;font-weight:700;border-radius:999px;padding:3px 12px;font-size:13px;margin-bottom:6px}
+.cptxt{color:#223;margin-bottom:8px}
+.cpact{display:flex;flex-wrap:wrap;gap:8px}
+.cpb{flex:1 1 100%;border:0;border-radius:14px;background:#eef2f7;color:#123;font-size:15px;font-weight:600;padding:12px 10px;text-align:left;cursor:pointer}
+.cpb:disabled{opacity:.45}
+.cpb.hint{background:#fff3c4;box-shadow:0 0 0 3px #ffb300 inset;animation:cpPulse 1.1s infinite}
+.cpb.big{text-align:center;font-size:22px;padding:22px 10px;background:#e0465e;color:#fff;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.cpb.big.hint{background:#e0465e;color:#fff;box-shadow:0 0 0 3px #ffb300 inset}
+.cpb.big:active{transform:scale(.97)}
+.cpb.aedon{flex:1 1 40%;text-align:center;background:#1f9e5a;color:#fff}
+.cpb.aedsh{flex:1 1 40%;text-align:center;background:#ff7a00;color:#fff}
+.cpb.aedsh.flash{animation:cpFlash .5s infinite}
+@keyframes cpPulse{50%{box-shadow:0 0 0 6px #ffb300 inset}}
+@keyframes cpFlash{50%{background:#ffd23f;color:#5a2b00}}
+.cpgauge{display:none;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:#556}
+.cpgauge b{font-size:24px;color:#123;min-width:44px;text-align:right}
+.cpgauge i{flex:1;height:10px;border-radius:6px;background:linear-gradient(90deg,#eee 0 40%,#d8f5e4 40% 60%,#eee 60%);position:relative;overflow:hidden}
+.cpgauge em{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:6px}
+#cpHot button{position:fixed;z-index:24;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;border:3px solid #fff;background:rgba(224,70,94,.55);color:#fff;font-weight:700;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;padding:0}
+#cpHot button.hint{background:rgba(255,179,0,.85);animation:cpPulse 1.1s infinite}
+#cpHot button.done{background:rgba(47,179,109,.9)}
+.cpphone{flex:1 1 100%;display:flex;gap:10px;align-items:center}
+.cpscr{min-width:96px;font-size:20px;font-weight:700;text-align:center;background:#123;color:#7dffb0;border-radius:10px;padding:10px 6px}
+.cppad{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.cpk{border:0;border-radius:10px;background:#eef2f7;font-size:18px;font-weight:700;padding:7px 0}
+.cpk.call{background:#2fb36d;color:#fff}.cpk.hint{box-shadow:0 0 0 3px #ffb300 inset}
+#cpBub{display:none;position:fixed;z-index:26;transform:translate(-50%,-100%);background:#fff;color:#123;font-weight:800;font-size:18px;padding:8px 14px;border-radius:16px;box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none}
+#cpBub:after{content:"";position:absolute;left:50%;bottom:-9px;margin-left:-8px;border:8px solid transparent;border-top-color:#fff;border-bottom:0}
+#cpWarn{position:fixed;left:12px;right:12px;top:calc(70px + env(safe-area-inset-top));z-index:30;max-width:540px;margin:0 auto;background:#fff1f0;color:#a8071a;border:2px solid #ff7875;border-radius:14px;padding:10px 12px;font-size:15px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.18);opacity:0;transform:translateY(-12px);transition:.25s;pointer-events:none}
+#cpWarn.show{opacity:1;transform:none}
+body.cpflash #stage{filter:brightness(2.2)}
+.cpsel{display:flex;gap:8px;margin:4px 0 10px}.cpsel button{flex:1;border:0;border-radius:12px;padding:9px;background:#eef2f7;font-weight:600}.cpsel button.on{background:#c2185b;color:#fff}
+
+.aedui{flex:1 1 100%;background:#f39a1e;border-radius:20px;padding:7px;box-shadow:inset 0 -6px 0 #c9790e}
+.aedlid{position:relative;text-align:center;color:#fff;padding:6px 0 4px}.aedlid .h{width:46%;height:16px;margin:0 auto 6px;border-radius:10px;background:#3a3a3a;box-shadow:0 0 0 8px #e48a10}
+.aedlid .lg{font-size:40px;line-height:1.1}.aedlid b{display:block;font-size:30px;letter-spacing:2px;margin-bottom:8px}
+.aedopen{border:0;border-radius:14px;background:#fff;color:#c2650a;font-weight:800;font-size:16px;padding:12px 16px;cursor:pointer}.aedopen.hint{box-shadow:0 0 0 4px #ffb300;animation:cpPulse 1.1s infinite}
+.aedface{display:grid;grid-template-columns:34px auto 1fr 64px;grid-template-areas:"vo vo vo vo" "spk scr side sh";gap:6px 8px;align-items:center;background:#6b7079;border-radius:18px;padding:10px}
+.aedvo{grid-area:vo;color:#fff;font:600 12px/1.2 sans-serif;text-align:center;background:rgba(0,0,0,.18);border-radius:8px;padding:5px}
+.aedspk{grid-area:spk;width:34px;height:34px;border-radius:50%;background:radial-gradient(circle,#3d4148 2px,transparent 2.5px) 0 0/8px 8px,#5d626b}
+.aedscr{grid-area:scr;width:118px;border-radius:6px;border:3px solid #4a4f57}
+.aedi{grid-area:side;align-self:start;justify-self:start;width:38px;height:28px;border:0;border-radius:6px;background:#4a4f57;color:#fff;font:italic 800 16px serif;cursor:pointer}
+.aedrdy{grid-area:side;align-self:end;justify-self:start;margin:0 0 4px 12px;width:12px;height:12px;border-radius:50%;background:#1d3a24}.aedrdy.on{background:#33ff66;box-shadow:0 0 8px #33ff66}
+.aedshk{grid-area:sh;justify-self:end;width:64px;height:54px;border:0;clip-path:polygon(50% 0,100% 100%,0 100%);background:#b4560a;color:#fff;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;cursor:pointer}
+.aedshk b{font-size:24px}.aedshk.flash{animation:aedFl .45s infinite}.aedshk.hint{filter:drop-shadow(0 0 6px #ffb300)}
+@keyframes aedFl{50%{background:#ffb347}}
+.aedpads{display:flex;gap:8px;justify-content:center;margin-top:6px}
+.aedpad{width:52px;border-radius:12px;opacity:.45;background:#fff}.aedpad.on{opacity:1;box-shadow:0 0 0 4px #ff7a00}.aedpad.used{opacity:.25}
+
+/* 霓虹提示：下一步要撳嘅位 */
+.cpb.hint,.aedopen.hint{background:#fff;box-shadow:0 0 0 2px #00e5ff inset,0 0 8px #00e5ff,0 0 18px #00e5ff,0 0 30px #ff2bd6;animation:neon 1s ease-in-out infinite}
+.cpb.big.hint{background:#e0465e;color:#fff}
+#cpHot button.hint{background:rgba(0,229,255,.35);border-color:#fff;box-shadow:0 0 8px #00e5ff,0 0 18px #00e5ff,0 0 30px #ff2bd6;animation:neonDot 1s ease-in-out infinite}
+.aedshk.hint{filter:drop-shadow(0 0 6px #00e5ff) drop-shadow(0 0 14px #ff2bd6)}
+@keyframes neon{0%,100%{box-shadow:0 0 0 2px #00e5ff inset,0 0 6px #00e5ff,0 0 14px #00e5ff,0 0 22px #ff2bd6}50%{box-shadow:0 0 0 2px #ff2bd6 inset,0 0 12px #00e5ff,0 0 26px #00e5ff,0 0 40px #ff2bd6}}
+@keyframes neonDot{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.18)}}
+body.free-foot .btns{display:none!important}
+body.free-foot #joy{display:block;position:fixed;left:22px;bottom:calc(28px + env(safe-area-inset-bottom));width:132px;height:132px;border-radius:50%;background:rgba(255,255,255,.55);box-shadow:0 3px 12px rgba(0,0,0,.18);touch-action:none;z-index:20}
+#joyK{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+body.free-foot #footBtns{display:flex;position:fixed;right:18px;bottom:calc(28px + env(safe-area-inset-bottom));gap:12px;align-items:flex-end;z-index:20}
+#bEnter{background:#7b4fd6}#bEnter:disabled{opacity:.45}#bEnter.ready{animation:beat 1.2s ease-in-out infinite}
+#bExit{display:none;position:fixed;right:18px;bottom:calc(196px + env(safe-area-inset-bottom));z-index:20;background:#7b4fd6;color:#fff}
+.chlist{margin:6px 0 8px;padding-left:20px;font-size:13px;line-height:1.6}
+#speedfx{position:fixed;inset:-15%;pointer-events:none;z-index:5;opacity:0;
+  background:repeating-conic-gradient(from 0deg at 50% 55%,rgba(255,255,255,0) 0deg 4deg,rgba(255,255,255,.75) 4deg 4.6deg);
+  -webkit-mask:radial-gradient(ellipse at 50% 55%,transparent 38%,#000 72%);mask:radial-gradient(ellipse at 50% 55%,transparent 38%,#000 72%)}
+#txCombo{display:none;position:fixed;left:50%;top:calc(70px + env(safe-area-inset-top));transform:translateX(-50%);background:#ff8c1a;color:#fff;font-weight:900;font-size:15px;padding:3px 12px;border-radius:99px;z-index:26;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+body.taxi .top{top:calc(100px + env(safe-area-inset-top))!important}
+#txPat{height:6px;border-radius:3px;background:#e3e8ee;margin-top:4px;overflow:hidden;display:none}#txPat i{display:block;height:100%;background:#2ecc40;transition:width .2s}
+.txsay{position:fixed;left:50%;top:58%;transform:translateX(-50%);background:#fff;border-radius:16px;padding:7px 14px;font-weight:800;font-size:16px;box-shadow:0 3px 12px rgba(0,0,0,.18);pointer-events:none;z-index:27;animation:txsay 2.2s ease-out forwards;white-space:nowrap}
+.txsay:after{content:'';position:absolute;left:50%;bottom:-8px;margin-left:-8px;border:8px solid transparent;border-top-color:#fff;border-bottom:0}
+@keyframes txsay{0%{opacity:0;transform:translate(-50%,8px)}10%{opacity:1;transform:translate(-50%,0)}85%{opacity:1}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.txsay{animation:none}}
+body.taxi #bMenu{top:calc(208px + env(safe-area-inset-top))}body.taxi #bAEB{top:calc(242px + env(safe-area-inset-top))}
+#txBig{display:none;position:fixed;left:50%;top:calc(4px + env(safe-area-inset-top));transform:translate(-50%,0);font-size:68px;font-weight:900;line-height:1;color:#fff;opacity:.88;pointer-events:none;z-index:25;transform-origin:50% 0;
+  text-shadow:0 0 3px #1c2733,0 3px 0 #1c2733,0 0 18px rgba(0,0,0,.35);font-variant-numeric:tabular-nums}
+#txBig.warn{color:#ff3b4f}
+#txBig.tick{animation:txtick .5s ease-out}#txBig.plus{animation:txplus .7s ease-out}
+@keyframes txtick{0%{transform:translate(-50%,0) scale(1.35)}100%{transform:translate(-50%,0) scale(1)}}
+@keyframes txplus{0%{transform:translate(-50%,0) scale(1.5);color:#3ddc6a}100%{transform:translate(-50%,0) scale(1)}}
+@media (prefers-reduced-motion:reduce){#txBig.tick,#txBig.plus{animation:none}}
 </style>
 </head>
 <body>
@@ -140,7 +237,7 @@ button:focus-visible{outline:3px solid #1d7bd8;outline-offset:2px}
 
 <div id="hudWrap">
   <div class="top">
-    <div class="card"><div id="lives" class="lives" role="img" aria-label="心心"></div><b id="hTitle">任務</b><span id="hSub"></span><br>距離 <span class="num dist" id="hDist">--</span> · 限時 <span class="num" id="hTime">0:00</span></div>
+    <div class="card"><div id="lives" class="lives" role="img" aria-label="心心"></div><b id="hTitle">任務</b><span id="hSub"></span><br>距離 <span class="num dist" id="hDist">--</span> · 限時 <span class="num" id="hTime">0:00</span><div id="txPat"><i></i></div></div>
     <canvas id="mini" width="192" height="192" aria-label="小地圖"></canvas>
   </div>
   <div id="stabBox" class="stab" role="img" aria-label="病人穩定度"><span>🛏️ 病人穩定度</span><div class="bar"><i id="stabBar"></i></div></div>
@@ -152,7 +249,12 @@ button:focus-visible{outline:3px solid #1d7bd8;outline-offset:2px}
   </div>
 </div>
 <div id="callBox"><div class="card" id="call"></div></div>
+<div id="speedfx" aria-hidden="true"></div>
 <div id="cap"></div>
+<div id="joy" aria-label="行路搖桿"><div id="joyK"></div></div>
+<div id="footBtns"><button class="btn small" id="bJump" aria-label="跳">跳</button><button class="btn go" id="bEnter" aria-label="上車" disabled>上車</button></div>
+<button class="btn small" id="bExit" aria-label="落車">落車</button>
+<div id="txBig" aria-live="off"></div><div id="txCombo"></div>
 <div id="toast"></div>
 
 <div class="layer" id="menu">
@@ -168,7 +270,7 @@ button:focus-visible{outline:3px solid #1d7bd8;outline-offset:2px}
 <canvas id="fw" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:40"></canvas>
 <div class="layer" id="result" style="z-index:41">
   <div class="panel">
-    <h1 style="text-align:center">任務完成</h1>
+    <h1 style="text-align:center" id="rTitle">任務完成</h1>
     <div class="stars" id="rStars"></div>
     <p id="rTime" style="text-align:center;margin:0"></p>
     <p id="rNote" style="text-align:center"></p>
