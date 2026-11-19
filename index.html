@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
-<title>屯門救護車 A188</title>
+<title>香港生命線</title>
 <style>
 :root{
   --ink:#1c2733; --paper:#ffffff; --muted:#5f6f80; --red:#e8323c; --go:#21b46b; --orange:#ff7a1a; --yellow:#ffe500; --blue:#1f4fbf;
@@ -107,6 +107,8 @@ canvas{display:block}
 .set-col{flex-direction:column;align-items:stretch}.set-seg{display:flex;gap:6px}.set-segb{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border:2px solid #e3e8ee;border-radius:12px;background:#fff;font:inherit;cursor:pointer}
 .set-segb b{font-size:14px}.set-segb small{font-size:10px;color:#8a94a3;text-align:center}.set-segb.on{border-color:#e23b3b;background:#fff1f1}
 .gfxAsk{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:60}.gfxAsk .card{max-width:300px;margin:16px}.gfxAsk p{font-size:13px;margin:8px 0 12px}.gfxBtns{display:flex;gap:8px}.gfxBtns button{flex:1}
+.case .sup{display:block;margin-top:4px;font-size:11px;font-weight:700;color:#1d4ed8;background:#eef4ff;border-radius:8px;padding:3px 7px;width:fit-content}
+.brand h1 .sub{display:block;font-size:10px;letter-spacing:2px;color:#e23b3b;font-weight:800;margin-top:1px}
 .set-warn{color:#b26b00;font-size:12px;margin:4px 2px}
 .ach-new{text-align:center;color:#b26b00;font-size:14px;margin:4px 0}
 .namerow{display:flex;gap:8px;margin:6px 0}.namerow input{flex:1;min-width:0;border:2px solid #e3e8ee;border-radius:12px;padding:9px 10px;font:inherit;font-size:15px}
@@ -270,7 +272,7 @@ body.taxi #bMenu{top:calc(208px + env(safe-area-inset-top))}body.taxi #bAEB{top:
 
 <div class="layer" id="menu">
   <div class="panel">
-    <div class="brand"><span class="badge">A188</span><h1>屯門救護車</h1></div>
+    <div class="brand"><span class="badge">A188</span><h1>香港生命線<small class="sub">HONG KONG LIFELINE</small></h1></div>
     <div class="tabs" role="tablist" id="tabs">
       <button role="tab" data-t="levels">關卡</button><button role="tab" data-t="cards">知識卡</button><button role="tab" data-t="ach">成就</button><button role="tab" data-t="board">排行榜</button><button role="tab" data-t="livery">車款</button><button role="tab" data-t="set">設定</button>
     </div>
@@ -311,7 +313,6 @@ body.taxi #bMenu{top:calc(208px + env(safe-area-inset-top))}body.taxi #bAEB{top:
     <div class="row"><button class="sec" id="oMenu">返回選單</button><button class="pri" id="oAgain">再玩一次</button></div>
   </div>
 </div>
-<div class="credit">Q 版屯門 · 試玩版</div>
 
 <script src="three.min.js"></script>
 <script src="game.js"></script>

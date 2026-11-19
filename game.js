@@ -476,9 +476,17 @@ MAP.roads.forEach(r=>{ const [a,b]=r.n, A=NODES[a], B=NODES[b]; const [ux,uz,L]=
   const P=s=>[A[0]+ux*s,A[1]+uz*s];
   const line=(arr,o,hw,dash)=>{ const solid=r.elev?4:1e9; for(let s=s0;s<s1-0.5;s+=dash?8:solid){ const e=Math.min(s1,s+(dash?4:solid)); const p=P(s), q=P(e);
       arr.push(p[0]+nx*(o+hw),0,p[1]+nz*(o+hw), q[0]+nx*(o+hw),0,q[1]+nz*(o+hw), q[0]+nx*(o-hw),0,q[1]+nz*(o-hw),  p[0]+nx*(o+hw),0,p[1]+nz*(o+hw), q[0]+nx*(o-hw),0,q[1]+nz*(o-hw), p[0]+nx*(o-hw),0,p[1]+nz*(o-hw)); } };
+  if(REGION==='st'){ // 沙田冇輕鐵：用返正常分隔線——中間雙黃線、行車線虛線、路邊白實線
+    const ew=r.w/2-0.6;
+    if(r.t==='avenue'){ line(mY,0.3,0.12,false); line(mY,-0.3,0.12,false); line(mW,6.5,0.12,true); line(mW,-6.5,0.12,true); }
+    else if(r.t==='main'){ line(mY,0.25,0.12,false); line(mY,-0.25,0.12,false); }
+    else line(mW,0,0.13,true);
+    if(!r.bridge||r.t!=='street'){ line(mW,ew,0.1,false); line(mW,-ew,0.1,false); } }
+  else {
   if(r.t==='avenue'){ line(mY,6.1,0.15,false); line(mY,-6.1,0.15,false);
     [-3.2,3.2].forEach(o=>[-0.7,0.7].forEach(q=>{ const p=A,q2=B; mR.push(p[0]+nx*(o+q+0.1),0,p[1]+nz*(o+q+0.1), q2[0]+nx*(o+q+0.1),0,q2[1]+nz*(o+q+0.1), q2[0]+nx*(o+q-0.1),0,q2[1]+nz*(o+q-0.1), p[0]+nx*(o+q+0.1),0,p[1]+nz*(o+q+0.1), q2[0]+nx*(o+q-0.1),0,q2[1]+nz*(o+q-0.1), p[0]+nx*(o+q-0.1),0,p[1]+nz*(o+q-0.1)); })); }
   else line(r.t==='main'?mY:mW,0,0.18,r.t!=='main');
+  }
   // 斑馬線：喺有燈路口嘅每條入口
   [[a,0,1],[b,L,-1]].forEach(([k,sb,sg])=>{ if(!SIGNAL[k]) return; const s=sb+sg*(CLR[k]+0.6), s2=s+sg*3; const hw=r.w/2;
     for(let o=-hw+0.9;o<=hw-0.9;o+=1.6){ const p=P(s), q=P(s2); quadA(mW,[[p[0]+nx*(o-0.5),p[1]+nz*(o-0.5)],[q[0]+nx*(o-0.5),q[1]+nz*(o-0.5)],[q[0]+nx*(o+0.5),q[1]+nz*(o+0.5)],[p[0]+nx*(o+0.5),p[1]+nz*(o+0.5)]]); }
@@ -1306,14 +1314,14 @@ const LEVELS_TM=[
  {id:'L3',caseId:'townhall',tod:'dusk',todName:'黃昏',      cars:26,works:1,jam:1,dash:1,limit:1.7},
  {id:'L4',caseId:'station',tod:'night',todName:'夜晚',      cars:22,works:1,jam:1,dash:2,limit:1.7},
  {id:'L5',caseId:'market', tod:'rain', todName:'夜晚落雨',  cars:24,works:2,jam:1,dash:2,limit:1.8},
- {id:'L6',caseId:'crash',  tod:'day',  todName:'日間',      cars:24,works:0,jam:1,dash:1,limit:1.7},
+ {id:'L6',caseId:'crash',  tod:'day',  todName:'日間',      cars:24,works:0,jam:1,dash:1,limit:1.7,support:['police','fire']},
  {id:'L7',caseId:'mass',   tod:'dusk', todName:'黃昏',      cars:22,works:1,jam:0,dash:1,limit:1.7,escort:4},
- {id:'L8',caseId:'yltrauma',tod:'day', todName:'日間・元朗',  cars:22,works:0,jam:0,dash:1,limit:2.0,depot:'yl'},
+ {id:'L8',caseId:'yltrauma',tod:'day', todName:'日間・元朗',  cars:22,works:0,jam:0,dash:1,limit:2.0,depot:'yl',support:['moto','fire']},
  {id:'L9',caseId:'ylstroke',tod:'night',todName:'夜晚・元朗',  cars:20,works:0,jam:1,dash:1,limit:2.0,depot:'yl'},
- {id:'L10',caseId:'ylarrest',tod:'dusk',todName:'黃昏・元朗',  cars:20,works:0,jam:0,dash:1,limit:2.0,depot:'yl'},
- {id:'L11',caseId:'tswtrauma',tod:'day',todName:'日間・天水圍',cars:22,works:0,jam:1,dash:1,limit:2.0,depot:'tsw'},
+ {id:'L10',caseId:'ylarrest',tod:'dusk',todName:'黃昏・元朗',  cars:20,works:0,jam:0,dash:1,limit:2.0,depot:'yl',support:['moto']},
+ {id:'L11',caseId:'tswtrauma',tod:'day',todName:'日間・天水圍',cars:22,works:0,jam:1,dash:1,limit:2.0,depot:'tsw',support:['police']},
  {id:'L12',caseId:'tswstroke',tod:'dusk',todName:'黃昏・天水圍',cars:20,works:1,jam:0,dash:1,limit:2.0,depot:'tsw'},
- {id:'L13',caseId:'tswarrest',tod:'night',todName:'夜晚・天水圍',cars:20,works:0,jam:1,dash:1,limit:2.0,depot:'yl'}];
+ {id:'L13',caseId:'tswarrest',tod:'night',todName:'夜晚・天水圍',cars:20,works:0,jam:1,dash:1,limit:2.0,depot:'yl',support:['moto']}];
 /* ---------- 救護任務（沙田）：6 關 ---------- */
 CASES.push(
  {id:'sttrauma',place:'沙田公園單車徑',poi:'stpark',title:'單車相撞',call:'沙田公園城門河單車徑，兩架單車相撞，一名男子跌落地。佢醒，但講嘢斷斷續續，呼吸每分鐘 34 次、急速，血壓 118/76。',
@@ -1351,9 +1359,9 @@ CASES.push(
   tips:['胸口好似俾大石壓住、痛到手臂或下巴，可能係心臟病','即刻停低休息，打 999','唔好自己揸車去醫院']}
 );
 const LEVELS_ST=[
- {id:'S1',caseId:'sttrauma',tod:'day',todName:'日間・沙田',cars:22,works:0,jam:1,dash:1,limit:2.0,depot:'st'},
+ {id:'S1',caseId:'sttrauma',tod:'day',todName:'日間・沙田',cars:22,works:0,jam:1,dash:1,limit:2.0,depot:'st',support:['police']},
  {id:'S2',caseId:'ststroke',tod:'day',todName:'日間・大圍',cars:20,works:0,jam:0,dash:1,limit:2.0,depot:'ts'},
- {id:'S3',caseId:'starrest',tod:'night',todName:'夜晚・沙田',cars:20,works:0,jam:1,dash:1,limit:2.0,depot:'st'},
+ {id:'S3',caseId:'starrest',tod:'night',todName:'夜晚・沙田',cars:20,works:0,jam:1,dash:1,limit:2.0,depot:'st',support:['moto','fire']},
  {id:'S4',caseId:'sthypo',tod:'dusk',todName:'黃昏・沙田',cars:22,works:1,jam:0,dash:1,limit:2.0,depot:'st'},
  {id:'S5',caseId:'stasthma',tod:'dusk',todName:'黃昏・火炭',cars:22,works:0,jam:1,dash:1,limit:2.0,depot:'st'},
  {id:'S6',caseId:'stcardiac',tod:'rain',todName:'落雨・沙田',cars:20,works:0,jam:1,dash:1,limit:2.0,depot:'ts'}];
@@ -1565,6 +1573,10 @@ function busWaitTick(dt){ if(!NEON||!NEON.stops.length) return; if((BUSW.t-=dt)>
   const near=show?NEON.stops.map(s=>[s,Math.hypot(s[0]-c.x,s[1]-c.z)]).filter(q=>q[1]<160).sort((a,b)=>a[1]-b[1]).slice(0,2):[];
   BUSW.pool.forEach((m,i)=>{ const q=near[Math.floor(i/3)]; if(!q){ m.visible=false; return; } const [x,z,nx,nz,ux,uz]=q[0], k=i%3-1, j=(i*7)%5*0.08;
     m.visible=true; m.position.set(x+ux*(k*1.25+j)-nx*(0.25+j),0.15,z+uz*(k*1.25+j)-nz*(0.25+j)); m.rotation.set(0,Math.atan2(-nx,-nz)+(k*0.35),0); }); }
+// 行人跳開：跳去佢本身嗰邊（遠離車頭），落點唔可以係建築物
+function pedDodge(p,c,lat){ const rx=Math.cos(c.a), rz=-Math.sin(c.a); let side=lat>=0?1:-1; const dist=VSPEC.kw*1.3+2.2-Math.abs(lat)*0.5;
+  let x1=p.pos[0]+rx*side*dist, z1=p.pos[1]+rz*side*dist; if(cellAt(x1,z1)&2){ side=-side; x1=p.pos[0]+rx*side*(dist+Math.abs(lat)*2); z1=p.pos[1]+rz*side*(dist+Math.abs(lat)*2); }
+  p.mode='jump'; p.jmp={t:0,x0:p.pos[0],z0:p.pos[1],x1,z1,side,ry:Math.atan2(rx*side,rz*side)}; }
 function placePed(p,nearX,nearZ){
   for(let tries=0;tries<50;tries++){
     if(Math.random()<0.4){ const c=MAP.crossings[Math.random()*MAP.crossings.length|0]; const d=Math.hypot(c.p[0]-nearX,c.p[1]-nearZ); if(d<60||d>280) continue; if(!spawnOK(c.p[0],c.p[1],4)) continue;
@@ -1897,7 +1909,9 @@ function tick(){
       const kx=Math.sin(k.pose.a), kz=Math.cos(k.pose.a);
       for(const q of AC){ const pr=Math.max(-half+1.3,Math.min(half-1.3,(q[0]-k.pose.x)*kx+(q[1]-k.pose.z)*kz)); const ex=k.pose.x+kx*pr-q[0], ez=k.pose.z+kz*pr-q[1]; if(ex*ex+ez*ez<3.0*3.0){ if(FUN.on&&cars.includes(k)&&funHitCar(k,c)) break; if(Math.abs(c.v)>2) bump('撞到車'); if(Math.abs(c.v)>2) stabHit(14); c.v=-c.v*0.3; const L=Math.hypot(ex,ez)||1; c.x-=ex/L*0.6; c.z-=ez/L*0.6; k.hit=1.5; k.yHit=true; break; } } }
     // 撞到行人 → 扣一粒心；同一個行人已經跌低咗就唔會再扣
-    for(const p of peds){ if(!p.pos) continue; for(const q of AC){ const ex=p.pos[0]-q[0], ez=p.pos[1]-q[1]; if(ex*ex+ez*ez<1.7*1.7&&Math.abs(c.v)>1.2&&p.mode!=='fly'&&p.mode!=='down'){ if(FUN.on){ funHitPed(p,c); break; } if(S.gm!=='ems'){ pedFly(p,c); break; } c.v=0; p.mode='down'; p.m.rotation.set(-Math.PI/2,p.m.rotation.y,0); loseLife('撞到行人','不能傷害市民！'); break; } } if(S.mode!=='drive') break; }
+    // 行人自動避開：救護車前面幾米有人就跳開（歡樂模式除外）
+    if(DODGE.on&&!FUN.on&&Math.abs(c.v)>1.5){ const fx=Math.sin(c.a),fz=Math.cos(c.a),sg=Math.sign(c.v); for(const p of peds){ if(!p.pos||p.mode==='fly'||p.mode==='down'||p.mode==='jump') continue; const dx=p.pos[0]-c.x, dz=p.pos[1]-c.z, ah=(dx*fx+dz*fz)*sg, lat=dx*fz-dz*fx; if(ah>-1&&ah<VSPEC.kl*3.2+2+Math.abs(c.v)*0.3&&Math.abs(lat)<VSPEC.kw*1.3+1.2) pedDodge(p,c,lat); } }
+    for(const p of peds){ if(!p.pos) continue; for(const q of AC){ const ex=p.pos[0]-q[0], ez=p.pos[1]-q[1]; if(ex*ex+ez*ez<1.7*1.7&&Math.abs(c.v)>1.2&&p.mode!=='fly'&&p.mode!=='down'&&p.mode!=='jump'){ if(FUN.on){ funHitPed(p,c); break; } if(DODGE.on){ pedDodge(p,c,(p.pos[0]-c.x)*Math.cos(c.a)-(p.pos[1]-c.z)*Math.sin(c.a)); break; } if(S.gm!=='ems'){ pedFly(p,c); break; } c.v=0; p.mode='down'; p.downT=2.5; p.m.rotation.set(-Math.PI/2,p.m.rotation.y,0); loseLife('撞到行人','不能傷害市民！'); break; } } if(S.mode!=='drive') break; }
     U.wheels.forEach(w=>w.rotation.x+=c.v*dt/0.6);
     // 過路口：冇開警號衝紅燈要扣分
     { let inX=-1; for(let kk=0;kk<NODES.length;kk++){ if(SIGNAL[kk]&&Math.hypot(NODES[kk][0]-c.x,NODES[kk][1]-c.z)<CLR[kk]-1.5){ inX=kk; break; } }
@@ -1969,6 +1983,10 @@ function tick(){
   if(FUN.on&&(!S.gm||S.gm==='ems')) pedFlyTick(dt);
   for(const p of peds){
     if(p.mode==='fly') continue;
+    if(p.mode==='jump'){ const J=p.jmp; J.t+=dt/0.55; const k=Math.min(1,J.t); p.pos=[J.x0+(J.x1-J.x0)*k,J.z0+(J.z1-J.z0)*k]; p.m.position.set(p.pos[0],0.15+Math.sin(k*Math.PI)*1.3,p.pos[1]); p.m.rotation.set(0,J.ry,J.side*Math.sin(k*Math.PI)*0.6); walk(p.m,t,true,J.t*6);
+      if(k>=1){ p.mode='idle'; p.m.rotation.set(0,J.ry+Math.PI,0); } continue; }
+    if(p.mode==='down'&&p.downT!=null){ p.downT-=dt; if(p.downT<0){ p.downT=null; p.m.visible=false; p.m.rotation.set(0,0,0); if(placePed(p,c.x,c.z)) p.m.visible=true; else p.mode='down'; } }   // 瞓一陣之後消失
+    if(p.mode==='down'&&!p.m.visible&&p.downT==null){ p.m.rotation.set(0,0,0); if(placePed(p,c.x,c.z)) p.m.visible=true; continue; }
     if(p.mode==='down'||p.mode==='idle'){ walk(p.m,t,false); if(!inView(p.pos[0],p.pos[1],4)&&Math.hypot(p.pos[0]-c.x,p.pos[1]-c.z)>40){ p.m.rotation.set(0,0,0); placePed(p,c.x,c.z); } p.m.position.set(p.pos[0],p.mode==='down'?0.5:0.15,p.pos[1]); continue; }
     if(p.mode==='dash'){ p.s+=3.4*dt; walk(p.m,t,true,p.s*3); p.pos=[p.x0+p.nx*p.s,p.z0+p.nz*p.s]; p.m.rotation.y=Math.atan2(p.nx,p.nz); if(p.s>p.len){ p.mode='idle'; } p.m.position.set(p.pos[0],0.15,p.pos[1]); continue; }
     if(p.mode==='walk'){ p.s+=p.dir*1.3*dt; if(p.s<p.lo||p.s>p.hi){p.dir*=-1; p.s=Math.max(p.lo,Math.min(p.hi,p.s));}
@@ -2002,7 +2020,7 @@ function tick(){
     camLook.lerp(new THREE.Vector3(c.x,2,c.z),Math.min(1,dt*6));
     if(!S.hold.G&&c.v<0.5) caption(VSPEC.siren?'按住「油」出車；撳「警號」開閃燈同警號':'按住「油」出車；呢款車冇警號，其他車唔會讓路，要守交通燈'); else caption(null);
   } else if(S.mode==='drive'||S.mode==='over'){
-    if(S.step===1&&S.leftDepot!==true){ S.leftDepot=true; caption(null); if(S.level&&S.level.escort) launchEscorts(S.level.escort); }
+    if(S.step===1&&S.leftDepot!==true){ S.leftDepot=true; caption(null); if(S.level&&S.level.escort) launchEscorts(S.level.escort); if(S.level&&S.level.support) launchSupport(S.level.support); }
     // 車仲喺車房入面：鏡頭最多繞到車側，留喺門口外面同低位，唔會俾車房屋頂同牆遮住；車尾出咗門先繞埋去車後
     const DP=DEPOT.pos, hx=Math.sin(DEPOT.a), hz=Math.cos(DEPOT.a), sC=(c.x-DP[0])*hx+(c.z-DP[1])*hz, latC=(c.x-DP[0])*hz-(c.z-DP[1])*hx;
     const inBay=S.depotCam&&S.step===1&&sC>-12&&sC<16&&Math.abs(latC)<12, prog=Math.max(0,Math.min(1,sC/16));
@@ -2088,6 +2106,8 @@ function sequence(dt,t){
 const store={ get(k,d){ try{ const v=localStorage.getItem('a188.'+k); return v?JSON.parse(v):d; }catch(e){ return d; } }, set(k,v){ try{ localStorage.setItem('a188.'+k,JSON.stringify(v)); }catch(e){} } };
 // 🎉 歡樂模式狀態（要早過選單同遊戲迴圈定義；功能喺 fun.part.js）
 const FUN={ unlocked:!!store.get('funU',0), on:!!store.get('funU',0)&&!!store.get('funOn',0), score:0, combo:0, comboT:0, slow:0 };
+// 🚶 行人自動避開（預設開）：救護車衝埋去會跳開；關咗就會撞倒、瞓喺地下一陣再消失
+const DODGE={on:store.get('dodge',true)};
 function bestStars(){ return store.get('best2',{}); }
 function saveBest(id,st){ const b=bestStars(); if(!(b[id]>=st)){ b[id]=st; store.set('best2',b); } }
 function markDone(id){ const d=store.get('done',{}); d[id]=1; store.set('done',d); }
@@ -2343,6 +2363,7 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
     const box=el('div'); box.id='cases'; LEVELS.forEach((lv,i)=>{ const k=caseOf(lv), lock=!unlockedAll()&&i>0&&!isDone(LEVELS[i-1].id), st=best[lv.id]||0;
       const b=el('button','case'+(lock?' locked':'')); b.disabled=lock;
       b.append(el('span','pl','第 '+(i+1)+' 關 · '+lv.todName+(lv.works?' · 修路':'')+(lv.jam?' · 塞車':'')), el('b',null,(lock?'🔒 ':'')+k.place+'：'+k.title), el('span','st','♥'.repeat(st)+'♡'.repeat(5-st)));
+      if(lv.support&&lv.support.length) b.append(el('span','sup',supTags(lv).join(' · ')));
       b.onclick=()=>startCase(i); box.append(b); }); B.append(box);
     const r=el('div','rules'); r.innerHTML='<b>點玩：</b>◀ ▶ 轉彎，按住「油」前進，「倒」倒車；撳「警號」開閃燈同警號，其他車會讓路，可以安全過紅燈。<br><b>限時：</b>準時到 +1 ❤，超時 −1 ❤。<br><b>心心：</b>5 粒；撞車、撞樓、撞人、冇警號衝紅燈、揀錯裝備、答錯小測、病人穩定度跌晒，每次 −1 ❤，扣晒遊戲結束。<br><b>送院：</b>轉彎同煞車要慢慢嚟，保持病人穩定。'; B.append(r); }
   if(tab==='cards'){ B.append(el('p',null,'完成關卡就收集到嗰個個案嘅急救知識卡：'));
@@ -2364,6 +2385,8 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
     if(FUN.unlocked){ sec('🎉 歡樂模式');
       row('歡樂模式',sw(FUN.on,v=>{ funSet(v); },'歡樂模式'),'全車解放、撞人噴血、撞車爆炸、🚀 氮氣、唔扣心（唔計正式成績）');
       if(FUN.on) B.append(el('p','set-warn','🎉 開咗：所有車款可以揀；揸車時右邊有 🚀 掣（鍵盤 Shift）。歡樂分 '+FUN.score.toLocaleString())); }
+    sec('🚶 行人');
+    row('行人自動避開',sw(DODGE.on,v=>{ DODGE.on=v; store.set('dodge',v); },'行人自動避開'),DODGE.on?'開：撞埋去之前行人會自己跳開，唔會受傷，亦唔扣心':'關：撞到行人會瞓喺地下，一陣後消失（會扣心）');
     sec('🖼️ 畫面質素');
     { const cur=store.get('gfx',2), segs=el('div','set-seg'); [['標準','最順，舊手機都得'],['精細','欄杆、街道設施、霓虹招牌'],['超精細','再多招牌同細節，新手機用']].forEach(([t,d],v)=>{ const b=el('button','set-segb'+(cur===v?' on':'')); b.append(el('b',null,t),el('small',null,d)); b.setAttribute('aria-pressed',cur===v);
         b.onclick=()=>{ if(cur===v) return; store.set('gfx',v); store.set('openTab','set'); B.innerHTML='<p style="text-align:center;padding:30px 0">🖼️ 轉做「'+t+'」，重新載入地圖中……</p>'; setTimeout(()=>location.reload(),60); }; segs.append(b); });
@@ -2420,19 +2443,45 @@ function launchEscorts(n){ const R=S.escRoute; if(!R) return;
     pts[0]=u.start.slice(); for(let j=1;j<pts.length;j++) cum[j]=cum[j-1]+Math.hypot(pts[j][0]-pts[j-1][0],pts[j][1]-pts[j-1][1]);
     ESC.push({m:u.m,pts,cum,s:0,delay:1+i*3.2,v:0,pose:null,done:false,parked:u.parked}); });
   toast('🚑 救護車隊跟住你出發！'); }
+/* 支援單位：交通意外 → 警車；危及生命 → 救護電單車；部分關卡 → 消防車（先遣急救員）。救護車出咗車房先喺後面出現，一齊去現場 */
+const SUP={police:{nm:'👮 警車',tag:'👮 警車協助',arr:'👮 警察到場協助',sp:15,mk:()=>SKB.police(),len:6},
+  moto:{nm:'🏍️ 救護電單車',tag:'🏍️ 救護電單車協助',arr:'🏍️ 救護電單車到場',sp:17,mk:()=>SKB.moto(),len:2.4},
+  fire:{nm:'🚒 消防車',tag:'🚒 先遣急救員（消防）',arr:'🚒 先遣急救員到場',sp:12.5,mk:()=>SKB.fire(),len:6.8}};
+function supTags(lv){ return (lv.support||[]).map(k=>SUP[k].tag); }
+function launchSupport(list){ const R=S.route; if(!R||!list||!list.length) return; const c=S.car, fx=Math.sin(c.a), fz=Math.cos(c.a);
+  list.forEach((k,i)=>{ const U=SUP[k]; let back=16+i*13; while(back>6&&!(cellAt(c.x-fx*back,c.z-fz*back)&1)) back-=2;
+    const start=[c.x-fx*back,c.z-fz*back], stopAt=Math.max(15,R.len-13-i*10), pts=[start], cum=[0];
+    for(let j=1;j<R.pts.length;j++){ if(R.cum[j]<=stopAt) pts.push(R.pts[j].slice()); else { const A=R.pts[j-1],B=R.pts[j],q=(stopAt-R.cum[j-1])/((R.cum[j]-R.cum[j-1])||1); pts.push([A[0]+(B[0]-A[0])*q,A[1]+(B[1]-A[1])*q]); break; } }
+    for(let j=1;j<pts.length;j++) cum.push(cum[j-1]+Math.hypot(pts[j][0]-pts[j-1][0],pts[j][1]-pts[j-1][1]));
+    const m=U.mk(); m.userData.len=U.len; m.visible=false; m.position.set(start[0],0,start[1]); scene.add(m);
+    ESC.push({m,pts,cum,s:0,delay:0.6+i*1.4,v:0,pose:null,done:false,vmax:U.sp,arrive:U.arr}); });
+  toast(list.map(k=>SUP[k].nm).join('、')+' 同你一齊出發！'); }
 function escortTick(dt,t){ const on=Math.floor(t*5)%2===0;
-  for(const e of ESC){ e.m.userData.blues.forEach((b,i)=>b.material.emissive.setHex((i%2===0)===on?0x1550ff:0));
+  for(const e of ESC){ if(e.static) continue; e.m.userData.blues.forEach((b,i)=>b.material.emissive.setHex((i%2===0)===on?(b.userData.on||0x1550ff):0));
     if(e.delay>0){ e.delay-=dt; if(e.delay<=0){ e.m.visible=true; } else continue; }
-    if(e.done){ e.m.userData.wheels.forEach(()=>{}); }
-    const L=e.cum[e.cum.length-1]; let target=e.done?0:14; if(L-e.s<12) target=Math.min(target,(L-e.s)*1.2);
-    // 前面有車或者玩家就停
-    if(e.pose){ const fx=Math.sin(e.pose.a), fz=Math.cos(e.pose.a); for(const o of [...cars,...trams,{pose:{x:S.car.x,z:S.car.z}},...ESC]){ if(o===e||!o.pose) continue; const qx=o.pose.x-e.pose.x, qz=o.pose.z-e.pose.z, ah=qx*fx+qz*fz;
-      if(ah>0&&ah<10&&Math.abs(qx*fz-qz*fx)<2.2){ target=0; break; } } }
-    e.v+=(target-e.v)*Math.min(1,dt*2); e.s=Math.min(L,e.s+e.v*dt); if(L-e.s<0.3) e.done=true;
-    let j=1; while(j<e.cum.length-1&&e.cum[j]<e.s) j++; const A=e.pts[j-1],B=e.pts[j],k=(e.s-e.cum[j-1])/((e.cum[j]-e.cum[j-1])||1);
-    const x=A[0]+(B[0]-A[0])*k, z=A[1]+(B[1]-A[1])*k, a=Math.atan2(B[0]-A[0],B[1]-A[1]);
-    const prevA=e.pose?e.pose.a:a; const na=prevA+(((a-prevA)%(Math.PI*2)+Math.PI*3)%(Math.PI*2)-Math.PI)*Math.min(1,dt*5);
-    e.pose={x,z,a:na}; groundPose(e.m,x,0.12,z,na,6); e.m.userData.wheels.forEach(w=>w.rotation.x+=e.v*dt/0.6); } }
+    if(e.done){ (e.m.userData.wheels||[]).forEach(()=>{}); }
+    const L=e.cum[e.cum.length-1]; let target=e.done?0:(e.vmax||14); if(L-e.s<12) target=Math.min(target,(L-e.s)*1.2);
+    // 行車線：e.lat 係向對面線偏移幾多米（0＝自己線）。前面有慢車就睇對面線清唔清，清就過對面線超車；唔清就停，唔會穿過其他車
+    const at=s=>{ let q=1; while(q<e.cum.length-1&&e.cum[q]<s) q++; const A=e.pts[q-1],B=e.pts[q],k=(s-e.cum[q-1])/((e.cum[q]-e.cum[q-1])||1); return [A[0]+(B[0]-A[0])*k,A[1]+(B[1]-A[1])*k,Math.atan2(B[0]-A[0],B[1]-A[1])]; };
+    const [bx,bz,ba]=at(e.s), ux=Math.sin(ba), uz=Math.cos(ba), ox=-uz, oz=ux;   // 自己線中心、前進方向、對面線方向
+    if(!e.oo||(e.ooT=(e.ooT||0)-dt)<0){ e.ooT=0.5; let best=null,bd=1e9; for(const r of MAP.roads){ const P=NODES[r.n[0]],Q=NODES[r.n[1]],dx=Q[0]-P[0],dz=Q[1]-P[1],L2=dx*dx+dz*dz||1; let k=((bx-P[0])*dx+(bz-P[1])*dz)/L2; k=Math.max(0,Math.min(1,k)); const d=(P[0]+dx*k-bx)**2+(P[1]+dz*k-bz)**2; if(d<bd){ bd=d; best=r; } } e.oo=best?Math.max(5,laneOff(best)*2-1.6):6; }
+    e.lat=e.lat||0; e.latT=e.latT||0; let block=99, oppAhead=99, ownBack=false, oppBusy=false;
+    if(!e.done) for(const o of [...cars,...trams,{pose:{x:S.car.x,z:S.car.z},me:1},...ESC]){ if(o===e||!o.pose||(o.m&&!o.m.visible&&!o.me)) continue; const qx=o.pose.x-bx, qz=o.pose.z-bz, ah=qx*ux+qz*uz, lo=qx*ox+qz*oz; if(ah<-12||ah>45) continue;
+      const half=((o.m&&o.m.userData.len)||4.4)/2+((e.m.userData.len||6)/2);
+      if(Math.abs(lo-e.lat)<2.4&&ah>0) block=Math.min(block,ah-half);                       // 前面同一條線
+      if(Math.abs(lo)<2.4&&ah>-half-3&&ah<half+6) ownBack=true;                               // 自己線（返嚟用）有車
+      if(Math.abs(lo-e.oo)<2.8){ if(ah>-half-4&&ah<half+30) oppBusy=true; if(ah>0) oppAhead=Math.min(oppAhead,ah-half); } }
+    const left=L-e.s;
+    if(e.latT===0&&block<30&&left>34&&!oppBusy) e.latT=e.oo;                                     // 出去對面線超車
+    else if(e.latT>0&&(!ownBack||left<20)&&block>6) e.latT=0;                                     // 超咗車：返自己線
+    else if(e.latT>0&&oppAhead<16&&!ownBack) e.latT=0;                                            // 對面有車嚟：避返入去
+    if(block<16) target=Math.min(target,Math.max(0,(block-3)*1.2)); if(block<4) e.v=0;            // 太近就即刻停，唔會撞埋去
+    if(e.latT>0&&oppAhead<10) { target=0; if(oppAhead<4) e.v=0; }
+    e.v+=(target-e.v)*Math.min(1,dt*2); e.s=Math.min(L,e.s+e.v*dt); if(L-e.s<0.3&&!e.done){ e.done=true; if(e.arrive) toast(e.arrive); }
+    const dl=e.latT-e.lat, step=Math.min(Math.abs(dl),dt*Math.max(3,e.v*0.5)); e.lat+=Math.sign(dl)*step;
+    const [x0,z0,a]=at(e.s), x=x0+(-Math.cos(a))*e.lat, z=z0+Math.sin(a)*e.lat, steer=Math.atan2(Math.sign(dl)*step/Math.max(dt,1e-3),Math.max(2,e.v))*0.6;
+    const want=a-steer, prevA=e.pose?e.pose.a:want; const na=prevA+(((want-prevA)%(Math.PI*2)+Math.PI*3)%(Math.PI*2)-Math.PI)*Math.min(1,dt*5);
+    e.pose={x,z,a:na}; groundPose(e.m,x,0.12,z,na,e.m.userData.len||6); (e.m.userData.wheels||[]).forEach(w=>w.rotation.x+=e.v*dt/0.6); } }
 
 /* ---------- 隱藏解鎖：撳左上角 A188 五下 ---------- */
 let badgeN=0, badgeT=0;
@@ -2573,7 +2622,7 @@ function pedFly(p,c){ if(p.mode==='fly') return; const sp=Math.max(6,Math.abs(c.
 function pedFlyTick(dt){ for(const p of peds){ if(p.mode!=='fly') continue; const f=p.fly; f.t+=dt;
     if(f.y>0||f.vy>0){ f.vy-=22*dt; f.y=Math.max(0,f.y+f.vy*dt); p.pos=[p.pos[0]+f.vx*dt,p.pos[1]+f.vz*dt]; p.m.rotation.x+=f.spin*dt; if(f.y===0&&f.vy<0){ f.vy=f.vy<-6?-f.vy*0.35:0; f.vx*=0.5; f.vz*=0.5; } }
     else { f.vx*=0.8; f.vz*=0.8; p.m.rotation.x=-Math.PI/2*Math.min(1,(1.6-f.t)>0?1:0); if(p.funPool&&f.t>0.5){ p.funPool=false; bloodPool(p.pos[0],p.pos[1],f.base); } }   // 歡樂模式：倒地後血泊慢慢擴大
-    if(f.t>1.6){ if(FUN.on){ p.m.rotation.set(-Math.PI/2,p.m.rotation.y,0); p.mode='down'; p.fly=null; } else { p.m.rotation.x=0; p.m.rotation.z=0; p.mode='idle'; p.fly=null; } }
+    if(f.t>1.6){ if(FUN.on||!DODGE.on){ p.m.rotation.set(-Math.PI/2,p.m.rotation.y,0); p.mode='down'; p.fly=null; if(!FUN.on) p.downT=2; } else { p.m.rotation.x=0; p.m.rotation.z=0; p.mode='idle'; p.fly=null; } }
     p.m.position.set(p.pos[0],f.base+(f.y||0),p.pos[1]); } }
 window.__TX=TX;
 
@@ -3383,7 +3432,7 @@ function funCarTick(k,dt){ const f=k.fly; f.t+=dt; const m=k.m;
 /* ----- 分數、連環、慢鏡、七彩 ----- */
 const funEl=document.createElement('div'); funEl.id='funTxt'; document.body.append(funEl);
 const funHudEl=document.createElement('div'); funHudEl.id='funHud'; document.body.append(funHudEl);
-function funHud(){ funHudEl.style.display=FUN.on&&S.mode==='drive'?'block':'none'; funHudEl.textContent='🎉 '+FUN.score.toLocaleString(); const n=$('bN'); if(n) n.hidden=!FUN.on; }
+function funHud(){ funHudEl.style.display=FUN.on&&S.mode==='drive'?'block':'none'; funHudEl.textContent='🎉 '+FUN.score.toLocaleString(); const n=$('bN'); if(n) n.style.display=FUN.on?'':'none'; }
 function funScore(pts,label){ FUN.combo=FUN.comboT>0?FUN.combo+1:1; FUN.comboT=3; const mul=Math.min(10,FUN.combo); FUN.score+=pts*mul; funHud();
   funEl.innerHTML=label+(FUN.combo>1?'<br><b>COMBO ×'+FUN.combo+'</b>':'')+'<small>+'+(pts*mul)+'</small>'; funEl.classList.remove('pop'); void funEl.offsetWidth; funEl.classList.add('pop');
   if(FUN.combo>=5&&FUN.combo%5===0) funBurst(); }
@@ -3409,11 +3458,12 @@ function funTick(dt,t){ BLOOD.tick(dt,'splat'); DEBRIS.tick(dt,'bounce'); PAPER.
 #funHud{position:fixed;left:50%;top:calc(118px + env(safe-area-inset-top));transform:translateX(-50%);display:none;z-index:30;background:linear-gradient(90deg,#ff2d95,#ff7a00,#ffd400);color:#fff;font-weight:900;font-size:15px;padding:4px 14px;border-radius:99px;text-shadow:1px 1px 0 #0006;pointer-events:none}
 .btn.nitro{background:linear-gradient(#ff7a00,#ff2d95);color:#fff;font-size:20px}`; document.head.append(st); }
 // 🚀 氮氣掣（Shift 鍵都得）
-{ const col=document.querySelector('.btns .right .col'); if(col){ const b=document.createElement('button'); b.className='btn small nitro'; b.id='bN'; b.setAttribute('aria-label','氮氣加速'); b.textContent='🚀'; b.hidden=!FUN.on; col.prepend(b); bindHold('bN','N'); } }
+{ const col=document.querySelector('.btns .right .col'); if(col){ const b=document.createElement('button'); b.className='btn small nitro'; b.id='bN'; b.setAttribute('aria-label','氮氣加速'); b.textContent='🚀'; b.style.display=FUN.on?'':'none'; col.prepend(b); bindHold('bN','N'); } }
 addEventListener('keydown',e=>{ if(e.key==='Shift') S.hold.N=true; }); addEventListener('keyup',e=>{ if(e.key==='Shift') S.hold.N=false; });
 window.__FUN=FUN;
 window.__funHitCar=funHitCar; window.__funHitPed=funHitPed;
 
+window.__ESC=ESC;
 
 renderMenu(); show('menu',true); tick();
 window.__S=S; window.__hit=hitBuilding; window.__cell=cellAt; window.__NEON=NEON; window.__MAP=MAP; window.__NODES=NODES; window.__setTarget=setTarget; window.__refreshRoute=refreshRoute; window.__AE=()=>AE; window.__DEPOT=()=>DEPOT; window.__setTOD=setTOD; window.__cars=cars; window.__sg=()=>gain&&gain.gain.value; window.__oc=openChoice; window.__veh=applyLivery; window.__LMK=LMK; window.__fwTest=fireworks; window.__R=R; window.__person=person; window.__peds=peds; window.__store=store; window.__scene=scene; window.__cam=cam; window.__startCase=startCase; window.__peds=peds;
