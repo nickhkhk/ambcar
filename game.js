@@ -1729,17 +1729,18 @@ function arriveHospital(){ sirenSet(false); S.mode='hseq'; S.seq=0; S.step=5; S.
   hud(AE.name+'急症室','⑤ 交接病人'); }
 function finish(){
   S.stars=S.lives; S.mode='result'; caption(null); sirenSet(false);
-  const lv=S.level; saveBest(lv.id,S.stars); markDone(lv.id);
-  // 成就
-  ach('first'); if(S.lives===5) ach('perfect'); if(S.onTime>=2) ach('ontime'); if(S.stabLow>=85) ach('steady'); if(S.qScore>=2) ach('quiz');
-  if(lv.tod==='night'||lv.tod==='rain') ach('night'); if(LEVELS.every(l=>isDone(l.id))) ach('all'); if(!S.redRun&&S.sirenUsed) ach('siren');
-  $('rTitle').textContent='任務完成';
+  const lv=S.level; if(!FUN.on){ saveBest(lv.id,S.stars); markDone(lv.id); }
+  // 成就（歡樂模式唔計）
+  if(!FUN.on){ ach('first'); if(S.lives===5) ach('perfect'); if(S.onTime>=2) ach('ontime'); if(S.stabLow>=85) ach('steady'); if(S.qScore>=2) ach('quiz');
+  if(lv.tod==='night'||lv.tod==='rain') ach('night'); if(LEVELS.every(l=>isDone(l.id))) ach('all'); if(!S.redRun&&S.sirenUsed) ach('siren'); }
+  $('rTitle').textContent=FUN.on?'🎉 歡樂模式完成（唔計成績）':'任務完成';
   $('rStars').textContent='♥'.repeat(S.stars)+'♡'.repeat(5-S.stars);
   $('rTime').textContent='到場 '+fmt(S.tScene)+' · 送院完成 '+fmt(S.tHosp);
   const ex=[];
   ex.push((S.onTime>=2?'⏱️ 兩段都準時':'⏱️ 準時 '+S.onTime+' / 2 段'));
   ex.push('🛏️ 病人穩定度最低 '+Math.round(S.stabLow)+'%');
   ex.push('🧰 裝備 '+(S.equipOk?'揀啱':'揀錯')+' · 小測 '+(S.quizOk?'答啱':'答錯'));
+  if(FUN.on) ex.push('🎉 歡樂分 '+FUN.score.toLocaleString());
   if(S.yieldPass) ex.push('🚑 順利越過讓路車 '+S.yieldPass+' 架'); if((S.yieldPass||0)>=5) ach('yield');
   $('rNote').innerHTML=(S.lives===5?'完美！全程冇犯錯。':'扣咗 '+(5-S.lives)+' 粒：'+S.log.join('、'))+'<br><small>'+ex.join(' · ')+'</small>';
   $('rAch').innerHTML=S.newAch.length?'<b>🏆 新成就：</b>'+S.newAch.map(a=>ACH[a].name).join('、'):'';
@@ -1767,7 +1768,7 @@ function fireworks(n){ const cv=$('fw'); if(FW){ cancelAnimationFrame(FW.raf); F
 function stopFireworks(){ if(FW){ cancelAnimationFrame(FW.raf); FW=null; } const cv=$('fw'); cv.getContext('2d').clearRect(0,0,cv.width,cv.height); }
 /* ---------- 心心：做錯一樣扣一粒，扣晒就遊戲結束 ---------- */
 function drawLives(lost){ $('lives').innerHTML=[0,1,2,3,4].map(i=>'<span class="'+(i<S.lives?'on':'off')+(i===lost?' lost':'')+'" style="animation-delay:'+(i*0.12)+'s">♥</span>').join(''); $('lives').setAttribute('aria-label','心心 '+S.lives+' / 5'); }
-function loseLife(why,msg){ if(S.gm&&S.gm!=='ems') return; if(S.lives<=0) return; S.lives--; S.log.push(why); drawLives(S.lives); toast(msg+'  −1 ❤');
+function loseLife(why,msg){ if(FUN.on) return; if(S.gm&&S.gm!=='ems') return; if(S.lives<=0) return; S.lives--; S.log.push(why); drawLives(S.lives); toast(msg+'  −1 ❤');
   const el=$('lives'); el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit');
   if(S.lives<=0) setTimeout(()=>gameOver(why),700); }
 function gameOver(why){ if(S.mode==='result') return; S.mode='over'; S.car.v=0; sirenSet(false); show('quiz',false); S.quizOpen=false; S.sirenMuted=false;
@@ -1874,18 +1875,19 @@ function walk(g,t,on,ph=0){ const k=on&&!reduce?Math.sin(t*9+ph):0; g.userData.l
 let FOV0=55; function resize(){ const w=innerWidth,h=innerHeight; R.setSize(w,h); cam.aspect=w/h; cam.fov=FOV0=w<h?64:52; cam.updateProjectionMatrix(); }
 addEventListener('resize',resize); resize();
 function tick(){
-  const dt=Math.min(0.05,clock.getDelta()), t=clock.elapsedTime; const c=S.car, U=amb.userData;
+  let dt=Math.min(0.05,clock.getDelta()); const t=clock.elapsedTime; const c=S.car, U=amb.userData; dt=funTime(dt);   // 歡樂模式慢鏡
   // 閃燈：出勤期間長開
   const on=Math.floor(t*5)%2===0, lit=S.siren; // 閃燈跟警號一齊開關
   CURL.forEach((b,i)=>b.material.emissive.setHex(lit&&((i%2===0)===on)?(b.userData.on||0x1550ff):0)); U.pB.intensity=lit&&on?1.4:0; U.pR.intensity=lit&&!on?1.4:0;
+  if(FUN.on&&lit) CURL.forEach((b,i)=>{ if(b.material.emissive.getHex()) b.material.emissive.setHSL((t*0.9+i*0.17)%1,1,0.55); });   // 七彩警號燈
   if(S.mode==='cpr') cprTick(dt,t);
   if(S.mode==='drive'&&S.gm==='free'&&FRE.onFoot) freeTick(dt,t); else if(S.mode==='drive'){
     const H=S.hold, steer=(H.L?1:0)-(H.R?1:0);
-    const onRoad=cellAt(c.x,c.z)&1, vmax=onRoad?VSPEC.vmax:12, AK=VSPEC.acc;
+    const nitro=FUN.on&&S.hold.N, onRoad=(cellAt(c.x,c.z)&1)||FUN.on, vmax=(onRoad?(FUN.on?Math.max(VSPEC.vmax,38):VSPEC.vmax):12)*(nitro?1.6:1), AK=(FUN.on?Math.max(VSPEC.acc,1.35):VSPEC.acc)*(nitro?2.2:1);   // 歡樂模式：全車解放、上行人路唔減速、🚀 氮氣
     if(H.G&&!H.B) c.v=Math.min(vmax,c.v+(c.v<0?34:(c.v<12?26:17)*AK)*dt); else if(H.B&&!H.G) c.v=Math.max(-7,c.v-(c.v>0?34:14)*dt);
     else c.v=c.v>0?Math.max(0,c.v-(S.wet?9:14)*dt):Math.min(0,c.v+(S.wet?9:14)*dt);
     if(c.v>vmax) c.v=Math.max(vmax,c.v-20*dt);
-    aebTick(dt);
+    if(!FUN.on) aebTick(dt);
     c.a+=steer*dt*VSPEC.steer*(S.wet?0.82:1)*Math.min(1,Math.abs(c.v)/5+0.35)*(c.v<-0.1?-1:1); stabilityTick(dt,steer);
     const nx=c.x+Math.sin(c.a)*c.v*dt, nz=c.z+Math.cos(c.a)*c.v*dt;
     if(hitBuilding(nx,nz,c.a)){ if(Math.abs(c.v)>3){ bump('撞到建築物'); stabHit(14); } c.v=-c.v*0.25; } else { c.x=nx; c.z=nz; }
@@ -1893,9 +1895,9 @@ function tick(){
     const AC=ambCircles(c.x,c.z,c.a);
     for(const k of [...cars,...trams,...ESC]){ if(!k.pose) continue; const dx=k.pose.x-c.x, dz=k.pose.z-c.z; const half=(k.m.userData.len||4)/2; if(dx*dx+dz*dz>(half+6)**2) continue;
       const kx=Math.sin(k.pose.a), kz=Math.cos(k.pose.a);
-      for(const q of AC){ const pr=Math.max(-half+1.3,Math.min(half-1.3,(q[0]-k.pose.x)*kx+(q[1]-k.pose.z)*kz)); const ex=k.pose.x+kx*pr-q[0], ez=k.pose.z+kz*pr-q[1]; if(ex*ex+ez*ez<3.0*3.0){ if(Math.abs(c.v)>2) bump('撞到車'); if(Math.abs(c.v)>2) stabHit(14); c.v=-c.v*0.3; const L=Math.hypot(ex,ez)||1; c.x-=ex/L*0.6; c.z-=ez/L*0.6; k.hit=1.5; k.yHit=true; break; } } }
+      for(const q of AC){ const pr=Math.max(-half+1.3,Math.min(half-1.3,(q[0]-k.pose.x)*kx+(q[1]-k.pose.z)*kz)); const ex=k.pose.x+kx*pr-q[0], ez=k.pose.z+kz*pr-q[1]; if(ex*ex+ez*ez<3.0*3.0){ if(FUN.on&&cars.includes(k)&&funHitCar(k,c)) break; if(Math.abs(c.v)>2) bump('撞到車'); if(Math.abs(c.v)>2) stabHit(14); c.v=-c.v*0.3; const L=Math.hypot(ex,ez)||1; c.x-=ex/L*0.6; c.z-=ez/L*0.6; k.hit=1.5; k.yHit=true; break; } } }
     // 撞到行人 → 扣一粒心；同一個行人已經跌低咗就唔會再扣
-    for(const p of peds){ if(!p.pos) continue; for(const q of AC){ const ex=p.pos[0]-q[0], ez=p.pos[1]-q[1]; if(ex*ex+ez*ez<1.7*1.7&&Math.abs(c.v)>1.2&&p.mode!=='fly'&&p.mode!=='down'){ if(S.gm!=='ems'){ pedFly(p,c); break; } c.v=0; p.mode='down'; p.m.rotation.set(-Math.PI/2,p.m.rotation.y,0); loseLife('撞到行人','不能傷害市民！'); break; } } if(S.mode!=='drive') break; }
+    for(const p of peds){ if(!p.pos) continue; for(const q of AC){ const ex=p.pos[0]-q[0], ez=p.pos[1]-q[1]; if(ex*ex+ez*ez<1.7*1.7&&Math.abs(c.v)>1.2&&p.mode!=='fly'&&p.mode!=='down'){ if(FUN.on){ funHitPed(p,c); break; } if(S.gm!=='ems'){ pedFly(p,c); break; } c.v=0; p.mode='down'; p.m.rotation.set(-Math.PI/2,p.m.rotation.y,0); loseLife('撞到行人','不能傷害市民！'); break; } } if(S.mode!=='drive') break; }
     U.wheels.forEach(w=>w.rotation.x+=c.v*dt/0.6);
     // 過路口：冇開警號衝紅燈要扣分
     { let inX=-1; for(let kk=0;kk<NODES.length;kk++){ if(SIGNAL[kk]&&Math.hypot(NODES[kk][0]-c.x,NODES[kk][1]-c.z)<CLR[kk]-1.5){ inX=kk; break; } }
@@ -1918,6 +1920,7 @@ function tick(){
   /* --- 交通 --- */
   const SV=[]; if(S.siren&&S.mode==='drive') SV.push({x:c.x,z:c.z}); if(S.gm==='chase') CH.cops.forEach(p=>SV.push({x:p.x,z:p.z})); ESC.forEach(e=>{ if(e.pose&&e.m.visible&&!e.done) SV.push({x:e.pose.x,z:e.pose.z}); }); window.__SV=SV;
   for(const k of cars){
+    if(k.fly){ funCarTick(k,dt); continue; }   // 歡樂模式：彈飛緊
     if(!k.road) continue;
     let pose=carPose(k);
     if(k.stuck){ k.pose=pose; groundPose(k.m,pose.x,0.1,pose.z,pose.a,k.m.userData.len); if(k.haz) k.haz.forEach(h=>h.visible=Math.floor(t*3)%2===0); continue; }
@@ -1963,7 +1966,9 @@ function tick(){
   }
   tramTick(dt); rainTick(dt); escortTick(dt,t); audioTick(t); updFrustum(); S.lightT=(S.lightT||0)+dt; if(S.lightT>0.25){ S.lightT=0; updateLights(t); }
   /* --- 行人 --- */
+  if(FUN.on&&(!S.gm||S.gm==='ems')) pedFlyTick(dt);
   for(const p of peds){
+    if(p.mode==='fly') continue;
     if(p.mode==='down'||p.mode==='idle'){ walk(p.m,t,false); if(!inView(p.pos[0],p.pos[1],4)&&Math.hypot(p.pos[0]-c.x,p.pos[1]-c.z)>40){ p.m.rotation.set(0,0,0); placePed(p,c.x,c.z); } p.m.position.set(p.pos[0],p.mode==='down'?0.5:0.15,p.pos[1]); continue; }
     if(p.mode==='dash'){ p.s+=3.4*dt; walk(p.m,t,true,p.s*3); p.pos=[p.x0+p.nx*p.s,p.z0+p.nz*p.s]; p.m.rotation.y=Math.atan2(p.nx,p.nz); if(p.s>p.len){ p.mode='idle'; } p.m.position.set(p.pos[0],0.15,p.pos[1]); continue; }
     if(p.mode==='walk'){ p.s+=p.dir*1.3*dt; if(p.s<p.lo||p.s>p.hi){p.dir*=-1; p.s=Math.max(p.lo,Math.min(p.hi,p.s));}
@@ -1980,6 +1985,7 @@ function tick(){
     p.m.position.set(p.pos[0],0.15,p.pos[1]);
   }
   ANI.tick(dt,t);   // 城市動物
+  funTick(dt,t);
   if(NEON) NEON.tick(t); busWaitTick(dt);
   gfxWatch(dt);
   /* --- 到場／醫院動畫 --- */
@@ -2080,6 +2086,8 @@ function sequence(dt,t){
 }
 /* ================= 遊戲性：限時、突發事件、病人穩定度、日夜天氣、成就、車款、排行榜 ================= */
 const store={ get(k,d){ try{ const v=localStorage.getItem('a188.'+k); return v?JSON.parse(v):d; }catch(e){ return d; } }, set(k,v){ try{ localStorage.setItem('a188.'+k,JSON.stringify(v)); }catch(e){} } };
+// 🎉 歡樂模式狀態（要早過選單同遊戲迴圈定義；功能喺 fun.part.js）
+const FUN={ unlocked:!!store.get('funU',0), on:!!store.get('funU',0)&&!!store.get('funOn',0), score:0, combo:0, comboT:0, slow:0 };
 function bestStars(){ return store.get('best2',{}); }
 function saveBest(id,st){ const b=bestStars(); if(!(b[id]>=st)){ b[id]=st; store.set('best2',b); } }
 function markDone(id){ const d=store.get('done',{}); d[id]=1; store.set('done',d); }
@@ -2113,7 +2121,7 @@ function endLeg(){ if(legLeft()>=0){ S.onTime++; if(S.lives<5){ S.lives++; drawL
 
 /* ---------- 病人穩定度（送院途中） ---------- */
 function drawStab(){ const v=Math.max(0,S.stab); $('stabBar').style.width=v+'%'; $('stabBar').style.background=v>60?'#21b46b':v>30?'#f5a623':'#e8323c'; $('stabBox').setAttribute('aria-label','病人穩定度 '+Math.round(v)+'%'); }
-function stabHit(n){ if(S.step!==4) return; S.stab-=n; S.stabLow=Math.min(S.stabLow,S.stab); drawStab(); }
+function stabHit(n){ if(S.step!==4||FUN.on) return; S.stab-=n; S.stabLow=Math.min(S.stabLow,S.stab); drawStab(); }
 function stabilityTick(dt,steer){ if(S.step!==4||S.mode!=='drive') return; const c=S.car, v=Math.abs(c.v);
   let drop=0; const lat=v*Math.abs(steer)*2.2*Math.min(1,v/5+0.35); if(lat>26) drop+=(lat-26)*0.35;
   if(S.hold.B&&c.v>12) drop+=9; if(!(cellAt(c.x,c.z)&1)&&v>8) drop+=6;
@@ -2350,9 +2358,12 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
   if(tab==='set'){ const C=ANI.cfg(), save=()=>{ ANI.setCfg(C); renderMenu('set'); };
     const sec=t=>B.append(el('h3','set-h',t));
     const row=(lab,ctrl,sub)=>{ const r=el('div','set-row'); const l=el('div','set-l'); l.append(el('b',null,lab)); if(sub) l.append(el('small',null,sub)); r.append(l,ctrl); B.append(r); return r; };
-    const sw=(on,fn,label)=>{ const b=el('button','set-sw'+(on?' on':''),on?'開':'關'); b.setAttribute('role','switch'); b.setAttribute('aria-checked',on); b.setAttribute('aria-label',label); b.disabled=label!=='生成動物'&&!C.on; b.onclick=()=>{ fn(!on); save(); }; return b; };
+    const sw=(on,fn,label)=>{ const b=el('button','set-sw'+(on?' on':''),on?'開':'關'); b.setAttribute('role','switch'); b.setAttribute('aria-checked',on); b.setAttribute('aria-label',label); b.disabled=['飛機','麻鷹'].includes(label)&&!C.on; b.onclick=()=>{ fn(!on); save(); }; return b; };
     const step=(v,mn,mx,fn,label)=>{ const w=el('div','set-step'); const m=el('button',null,'－'), p=el('button',null,'＋'), n=el('span',null,String(v));
       m.setAttribute('aria-label',label+'減少'); p.setAttribute('aria-label',label+'增加'); m.disabled=v<=mn||!C.on; p.disabled=v>=mx||!C.on; m.onclick=()=>{ fn(v-1); save(); }; p.onclick=()=>{ fn(v+1); save(); }; w.append(m,n,p); return w; };
+    if(FUN.unlocked){ sec('🎉 歡樂模式');
+      row('歡樂模式',sw(FUN.on,v=>{ funSet(v); },'歡樂模式'),'全車解放、撞人噴血、撞車爆炸、🚀 氮氣、唔扣心（唔計正式成績）');
+      if(FUN.on) B.append(el('p','set-warn','🎉 開咗：所有車款可以揀；揸車時右邊有 🚀 掣（鍵盤 Shift）。歡樂分 '+FUN.score.toLocaleString())); }
     sec('🖼️ 畫面質素');
     { const cur=store.get('gfx',2), segs=el('div','set-seg'); [['標準','最順，舊手機都得'],['精細','欄杆、街道設施、霓虹招牌'],['超精細','再多招牌同細節，新手機用']].forEach(([t,d],v)=>{ const b=el('button','set-segb'+(cur===v?' on':'')); b.append(el('b',null,t),el('small',null,d)); b.setAttribute('aria-pressed',cur===v);
         b.onclick=()=>{ if(cur===v) return; store.set('gfx',v); store.set('openTab','set'); B.innerHTML='<p style="text-align:center;padding:30px 0">🖼️ 轉做「'+t+'」，重新載入地圖中……</p>'; setTimeout(()=>location.reload(),60); }; segs.append(b); });
@@ -2370,7 +2381,7 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
     const rs=el('button','sec wide','還原預設'); rs.onclick=()=>{ ANI.setCfg(JSON.parse(JSON.stringify(ANI.def))); renderMenu('set'); }; B.append(rs);
     B.querySelectorAll('.set-row').forEach((r,i)=>{ if(i>1&&!C.on) r.classList.add('dim'); }); }
   if(tab==='livery'){ const tot=totalStars(), cur=(LIVERY.find(l=>l.id===store.get('livery','yellow'))||LIVERY[0]).id; B.append(el('p',null,'累積最佳心心數：'+tot+' 粒。儲夠星數就解鎖新車款，每款性能唔同：'));
-    LIVERY.filter(l=>!l.hidden).forEach(L=>{ const lock=tot<L.need&&!unlockedAll(); const b=el('button','liv'+(L.id===cur?' on':'')); b.disabled=lock; const sw=el('span','sw'); sw.style.background=L.sw;
+    LIVERY.filter(l=>!l.hidden).forEach(L=>{ const lock=tot<L.need&&!unlockedAll()&&!FUN.on; const b=el('button','liv'+(L.id===cur?' on':'')); b.disabled=lock; const sw=el('span','sw'); sw.style.background=L.sw;
       const bar=n=>'●'.repeat(n)+'○'.repeat(5-n), sp=Math.max(1,Math.min(5,Math.round((L.vmax-20)/3.6))), ag=Math.max(1,Math.min(5,Math.round((L.steer-1.3)/0.29)));
       const t=el('div'); t.append(el('b',null,L.name+(L.id===cur?'（使用中）':'')),el('small',null,lock?' 🔒 需要 '+L.need+' 粒心心':' 已解鎖'),el('br'),el('small',null,'速度 '+bar(sp)+'　靈活 '+bar(ag)+'　'+(L.siren?'有警號':'冇警號')),el('br'),el('small',null,L.d)); b.append(sw,t); b.onclick=()=>{ applyLivery(L.id); renderMenu('livery'); }; B.append(b); }); }
 }
@@ -2561,8 +2572,8 @@ function pedFly(p,c){ if(p.mode==='fly') return; const sp=Math.max(6,Math.abs(c.
   p.prevMode=p.mode; p.mode='fly'; c.v*=0.85; txBeep(520,0.06); }
 function pedFlyTick(dt){ for(const p of peds){ if(p.mode!=='fly') continue; const f=p.fly; f.t+=dt;
     if(f.y>0||f.vy>0){ f.vy-=22*dt; f.y=Math.max(0,f.y+f.vy*dt); p.pos=[p.pos[0]+f.vx*dt,p.pos[1]+f.vz*dt]; p.m.rotation.x+=f.spin*dt; if(f.y===0&&f.vy<0){ f.vy=f.vy<-6?-f.vy*0.35:0; f.vx*=0.5; f.vz*=0.5; } }
-    else { f.vx*=0.8; f.vz*=0.8; p.m.rotation.x=-Math.PI/2*Math.min(1,(1.6-f.t)>0?1:0); }
-    if(f.t>1.6){ p.m.rotation.x=0; p.m.rotation.z=0; p.mode='idle'; p.fly=null; }
+    else { f.vx*=0.8; f.vz*=0.8; p.m.rotation.x=-Math.PI/2*Math.min(1,(1.6-f.t)>0?1:0); if(p.funPool&&f.t>0.5){ p.funPool=false; bloodPool(p.pos[0],p.pos[1],f.base); } }   // 歡樂模式：倒地後血泊慢慢擴大
+    if(f.t>1.6){ if(FUN.on){ p.m.rotation.set(-Math.PI/2,p.m.rotation.y,0); p.mode='down'; p.fly=null; } else { p.m.rotation.x=0; p.m.rotation.z=0; p.mode='idle'; p.fly=null; } }
     p.m.position.set(p.pos[0],f.base+(f.y||0),p.pos[1]); } }
 window.__TX=TX;
 
@@ -3306,6 +3317,102 @@ function gfxWatch(dt){ if(GFXW.done) return; const now=performance.now(); if(S.m
   const lv=GFX>=2?1:0, nm=lv?'精細':'標準', box=document.createElement('div'); box.className='gfxAsk';
   box.innerHTML='<div class="card"><b>🖼️ 部機有啲吃力</b><p>而家大約每秒 '+Math.round(fps)+' 格。轉做「'+nm+'」會順好多（要重新載入地圖）。</p><div class="gfxBtns"><button class="sec">唔使</button><button class="pri">轉做'+nm+'</button></div></div>';
   document.body.append(box); const [no,yes]=box.querySelectorAll('button'); no.onclick=()=>box.remove(); yes.onclick=()=>{ store.set('gfx',lv); location.reload(); }; }
+
+/* ---------- 🎉 歡樂模式（隱藏）：長按選單左上角 A188 五秒解鎖 ----------
+   只喺歡樂模式生效：全車性能解放、上行人路唔減速、撞人噴紅色液體同血泊、撞車爆炸彈飛、
+   🚀 氮氣加速、連環撞分數、慢鏡、七彩警號燈、彩紙、唔會扣心／唔會 Game Over（亦唔計正式成績同成就） */
+/* ----- 長按解鎖 ----- */
+{ const b=document.querySelector('#menu .badge'); let tm=null, t0=0, raf=0;
+  const ring=()=>{ const p=Math.min(1,(performance.now()-t0)/5000); b.style.background='conic-gradient(#ff2d95 '+(p*360)+'deg, var(--red, #e23b3b) 0)'; b.style.transform='scale('+(1+p*0.25)+')'; if(p<1) raf=requestAnimationFrame(ring); };
+  const stop=()=>{ clearTimeout(tm); tm=null; cancelAnimationFrame(raf); b.style.background=''; b.style.transform=''; };
+  const done=()=>{ stop(); const first=!FUN.unlocked; FUN.unlocked=true; FUN.on=true; store.set('funU',1); store.set('funOn',1); vib(200);
+      toast(first?'🎉 歡樂模式已解鎖！喺「設定」可以開關':'🎉 歡樂模式：開'); renderMenu('set'); try{ funBurst(); }catch(e){} };
+  b.addEventListener('pointerdown',e=>{ t0=performance.now(); raf=requestAnimationFrame(ring); tm=setTimeout(done,5000); });
+  b.addEventListener('pointerup',()=>{ if(tm&&performance.now()-t0>=5000) done(); else stop(); });   // 部機忙嘅時候計時器會遲，放手時再計一次
+  ['pointerleave','pointercancel'].forEach(k=>b.addEventListener(k,stop));
+  b.addEventListener('contextmenu',e=>e.preventDefault()); }
+function funSet(v){ FUN.on=!!v&&FUN.unlocked; store.set('funOn',FUN.on?1:0); funHud(); }
+
+/* ----- 共用貼圖 ----- */
+const FXT={
+  glow:canvasTex(64,64,(g,w,h)=>{ const r=g.createRadialGradient(w/2,h/2,0,w/2,h/2,w/2); r.addColorStop(0,'rgba(255,255,220,1)'); r.addColorStop(0.3,'rgba(255,190,60,.95)'); r.addColorStop(0.7,'rgba(255,80,0,.5)'); r.addColorStop(1,'rgba(120,20,0,0)'); g.fillStyle=r; g.fillRect(0,0,w,h); },false),
+  smoke:canvasTex(64,64,(g,w,h)=>{ const r=g.createRadialGradient(w/2,h/2,0,w/2,h/2,w/2); r.addColorStop(0,'rgba(70,70,70,.85)'); r.addColorStop(0.6,'rgba(50,50,50,.5)'); r.addColorStop(1,'rgba(40,40,40,0)'); g.fillStyle=r; g.fillRect(0,0,w,h); },false),
+  pool:canvasTex(128,128,(g,w,h)=>{ g.beginPath(); for(let i=0;i<=28;i++){ const a=i/28*Math.PI*2, r=w*0.42*(0.86+0.14*Math.sin(i*2.7)+0.06*Math.cos(i*5.3)); g.lineTo(w/2+Math.cos(a)*r,h/2+Math.sin(a)*r); } g.closePath();
+    const r=g.createRadialGradient(w/2,h/2,0,w/2,h/2,w*0.45); r.addColorStop(0,'#5c0000'); r.addColorStop(0.75,'#8c0000'); r.addColorStop(1,'#a30a0a'); g.fillStyle=r; g.fill(); g.fillStyle='rgba(255,255,255,.18)'; g.beginPath(); g.ellipse(w*0.4,h*0.38,w*0.1,h*0.05,-0.5,0,6.3); g.fill(); },false) };
+/* ----- 粒子：紅色液體、碎片、彩紙（InstancedMesh，三個繪製） ----- */
+function partSys(n,geo,mat,colored){ const im=new THREE.InstancedMesh(geo,mat,n); im.frustumCulled=false; im.count=0; scene.add(im);
+  const P=[]; for(let i=0;i<n;i++) P.push({life:0}); if(colored) im.instanceColor=new THREE.InstancedBufferAttribute(new Float32Array(n*3),3);
+  const o=new THREE.Object3D(), col=new THREE.Color(); let next=0;
+  return { emit(x,y,z,vx,vy,vz,life,s,hex,spin){ const p=P[next]; next=(next+1)%n; Object.assign(p,{x,y,z,vx,vy,vz,life,max:life,s,stuck:false,rx:Math.random()*6,ry:Math.random()*6,spin:spin||0}); if(colored){ col.setHex(hex); im.setColorAt(P.indexOf(p),col); im.instanceColor.needsUpdate=true; } },
+    tick(dt,ground){ let k=0; for(let i=0;i<n;i++){ const p=P[i]; if(p.life<=0) continue; p.life-=dt;
+        if(!p.stuck){ p.vy-=(ground==='paper'?3:22)*dt; if(ground==='paper'){ p.vx*=0.98; p.vz*=0.98; p.vy=Math.max(p.vy,-2.5); } p.x+=p.vx*dt; p.y+=p.vy*dt; p.z+=p.vz*dt; p.rx+=p.spin*dt; p.ry+=p.spin*0.7*dt;
+          if(p.y<0.16){ p.y=0.16; if(ground==='splat'){ p.stuck=true; p.vx=p.vz=p.vy=0; } else { p.vy=-p.vy*0.3; p.vx*=0.6; p.vz*=0.6; p.spin*=0.5; } } }
+        const fade=Math.min(1,p.life/0.5); o.position.set(p.x,p.y,p.z);
+        if(p.stuck){ o.rotation.set(0,p.ry,0); o.scale.set(p.s*2.2*fade,0.05,p.s*2.2*fade); } else { o.rotation.set(p.rx,p.ry,0); o.scale.setScalar(p.s*fade); }
+        o.updateMatrix(); im.setMatrixAt(i,o.matrix); k=i+1; }
+      for(let i=0;i<k;i++) if(P[i].life<=0){ o.scale.setScalar(0); o.updateMatrix(); im.setMatrixAt(i,o.matrix); }
+      im.count=k; im.instanceMatrix.needsUpdate=true; } }; }
+const BLOOD=partSys(260,new THREE.SphereGeometry(1,6,4),new THREE.MeshLambertMaterial({color:0xa00000}),false);
+const DEBRIS=partSys(140,new THREE.BoxGeometry(1,0.5,1),new THREE.MeshLambertMaterial({color:0xffffff}),true);
+const PAPER=partSys(320,new THREE.PlaneGeometry(1,0.6),new THREE.MeshBasicMaterial({color:0xffffff,side:THREE.DoubleSide}),true);
+/* ----- 火球、煙（Sprite 池，每個自己材質方便淡出） ----- */
+const SPR=[]; function sprite(map,add){ let s=SPR.find(q=>!q.visible&&q.userData.add===add); if(!s){ s=new THREE.Sprite(new THREE.SpriteMaterial({map,transparent:true,depthWrite:false,blending:add?THREE.AdditiveBlending:THREE.NormalBlending})); s.userData.add=add; scene.add(s); SPR.push(s); } s.visible=true; return s; }
+const FLASH=new THREE.PointLight(0xffa040,0,60,2); scene.add(FLASH);
+function explode(x,y,z,power){ const P=Math.min(2.2,0.6+power/20);
+  for(let i=0;i<7;i++){ const s=sprite(FXT.glow,true); s.position.set(x+(Math.random()-0.5)*2*P,y+1+Math.random()*1.5*P,z+(Math.random()-0.5)*2*P); s.userData.t=0; s.userData.max=0.55+Math.random()*0.4; s.userData.sz=(3+Math.random()*3)*P; s.userData.vy=1.5; s.material.opacity=1; s.scale.setScalar(0.5); }
+  for(let i=0;i<8;i++){ const s=sprite(FXT.smoke,false); s.position.set(x+(Math.random()-0.5)*3,y+1.5,z+(Math.random()-0.5)*3); s.userData.t=-Math.random()*0.3; s.userData.max=2.2+Math.random(); s.userData.sz=(4+Math.random()*4)*P; s.userData.vy=2.2+Math.random()*1.5; s.material.opacity=0; s.scale.setScalar(1); }
+  for(let i=0;i<Math.round(16*P);i++){ const a=Math.random()*6.28, v=6+Math.random()*10*P; DEBRIS.emit(x,y+1.2,z,Math.cos(a)*v,5+Math.random()*9*P,Math.sin(a)*v,2.4,0.25+Math.random()*0.35,[0x333333,0x777777,0xff7a00,0xffd000,0x222222][i%5],8+Math.random()*10); }
+  FLASH.position.set(x,y+3,z); FLASH.intensity=6*P; S.shake=Math.max(S.shake||0,0.5+0.3*P); vib(120); funBoom(P); }
+function bleed(x,z,dirx,dirz,sp){ const n=18+Math.min(30,sp*1.5|0);
+  for(let i=0;i<n;i++){ const a=Math.atan2(dirx,dirz)+(Math.random()-0.5)*1.6, v=2+Math.random()*(3+sp*0.25); BLOOD.emit(x,1.3+Math.random()*0.5,z,Math.sin(a)*v,3+Math.random()*5,Math.cos(a)*v,4+Math.random()*3,0.07+Math.random()*0.09); } }
+// 血泊：倒地之後由細變大
+const POOLS=[]; function bloodPool(x,z,base){ let m=POOLS.find(q=>!q.visible); if(!m){ if(POOLS.length>=14){ m=POOLS.sort((a,b)=>a.userData.t0-b.userData.t0)[0]; } else { m=new THREE.Mesh(new THREE.CircleGeometry(1,24),new THREE.MeshLambertMaterial({map:FXT.pool,transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-3})); m.rotation.x=-Math.PI/2; m.renderOrder=1; scene.add(m); POOLS.push(m); } }
+  m.visible=true; m.position.set(x,(base||0)+0.17,z); m.rotation.z=Math.random()*6.28; m.userData={t0:performance.now(),age:0,R:1.5+Math.random()*0.7}; m.scale.setScalar(0.05); m.material.opacity=1; }
+
+/* ----- 撞人／撞車 ----- */
+function funHitPed(p,c){ const sp=Math.abs(c.v); bleed(p.pos[0],p.pos[1],Math.sin(c.a),Math.cos(c.a),sp); p.funPool=true; pedFly(p,c); c.v/=0.85; funScore(100,'💥 撞飛路人'); }
+function funHitCar(k,c){ const sp=Math.abs(c.v); if(k.fly||sp<3) return false; const pos=k.pose; explode(pos.x,ELEV(pos.x,pos.z),pos.z,sp);
+  const a=Math.atan2(pos.x-c.x,pos.z-c.z); k.fly={x:pos.x,y:ELEV(pos.x,pos.z),z:pos.z,vx:Math.sin(a)*sp*0.45+Math.sin(c.a)*sp*0.55,vz:Math.cos(a)*sp*0.45+Math.cos(c.a)*sp*0.55,vy:6+sp*0.45,rx:(Math.random()-0.5)*6,ry:(Math.random()-0.5)*5,rz:(Math.random()-0.5)*8,t:0,smoke:0};
+  k.pose=null; c.v*=0.9; if(sp>18){ FUN.slow=0.7; } funScore(Math.round(200+sp*15),sp>18?'🔥 爆炸飛車！':'💥 撞爆車'); return true; }
+function funCarTick(k,dt){ const f=k.fly; f.t+=dt; const m=k.m;
+  if(f.y>0||f.vy>0){ f.vy-=20*dt; f.x+=f.vx*dt; f.z+=f.vz*dt; f.y=Math.max(0,f.y+f.vy*dt); m.rotation.x+=f.rx*dt; m.rotation.y+=f.ry*dt; m.rotation.z+=f.rz*dt;
+    if(f.y===0&&f.vy<0){ f.vy=f.vy<-5?-f.vy*0.3:0; f.vx*=0.5; f.vz*=0.5; f.rx*=0.4; f.rz*=0.4; if(Math.abs(f.vy)<1){ m.rotation.x=Math.round(m.rotation.x/Math.PI)*Math.PI; m.rotation.z=Math.round(m.rotation.z/Math.PI)*Math.PI; } } }
+  m.position.set(f.x,f.y+0.1,f.z); f.smoke-=dt; if(f.smoke<0&&f.t<7){ f.smoke=0.25; const s=sprite(FXT.smoke,false); s.position.set(f.x,f.y+1.5,f.z); s.userData.t=0; s.userData.max=1.8; s.userData.sz=3; s.userData.vy=2.5; s.material.opacity=0; }
+  if(f.t>6&&!inView(f.x,f.z,6)){ m.rotation.set(0,0,0); k.fly=null; if(!placeCar(k,S.car.x,S.car.z)){ k.fly=f; f.t=5; } } }
+
+/* ----- 分數、連環、慢鏡、七彩 ----- */
+const funEl=document.createElement('div'); funEl.id='funTxt'; document.body.append(funEl);
+const funHudEl=document.createElement('div'); funHudEl.id='funHud'; document.body.append(funHudEl);
+function funHud(){ funHudEl.style.display=FUN.on&&S.mode==='drive'?'block':'none'; funHudEl.textContent='🎉 '+FUN.score.toLocaleString(); const n=$('bN'); if(n) n.hidden=!FUN.on; }
+function funScore(pts,label){ FUN.combo=FUN.comboT>0?FUN.combo+1:1; FUN.comboT=3; const mul=Math.min(10,FUN.combo); FUN.score+=pts*mul; funHud();
+  funEl.innerHTML=label+(FUN.combo>1?'<br><b>COMBO ×'+FUN.combo+'</b>':'')+'<small>+'+(pts*mul)+'</small>'; funEl.classList.remove('pop'); void funEl.offsetWidth; funEl.classList.add('pop');
+  if(FUN.combo>=5&&FUN.combo%5===0) funBurst(); }
+function funBurst(){ const c=cam.position; const fw=new THREE.Vector3(); cam.getWorldDirection(fw);
+  for(let i=0;i<120;i++){ PAPER.emit(c.x+fw.x*14+(Math.random()-0.5)*16,c.y+4+Math.random()*6,c.z+fw.z*14+(Math.random()-0.5)*16,(Math.random()-0.5)*6,Math.random()*4,(Math.random()-0.5)*6,4+Math.random()*2,0.35+Math.random()*0.25,[0xff2d95,0xffd400,0x2bd4ff,0x7cff4f,0xff7a00,0xb26bff][i%6],6+Math.random()*8); } }
+let funAC=null; function funBoom(P){ try{ funAC=funAC||new (window.AudioContext||window.webkitAudioContext)(); const a=funAC, n=a.createBufferSource(), len=a.sampleRate*0.9, b=a.createBuffer(1,len,a.sampleRate), d=b.getChannelData(0);
+  for(let i=0;i<len;i++) d[i]=(Math.random()*2-1)*Math.pow(1-i/len,2.2); n.buffer=b; const f=a.createBiquadFilter(); f.type='lowpass'; f.frequency.value=700; const g=a.createGain(); g.gain.value=Math.min(1,0.35*P); n.connect(f).connect(g).connect(a.destination); n.start(); }catch(e){} }
+// 每格：dt 經過呢度做慢鏡
+function funTime(dt){ if(!FUN.on) return dt; if(FUN.slow>0){ FUN.slow-=dt; return dt*0.35; } return dt; }
+function funTick(dt,t){ BLOOD.tick(dt,'splat'); DEBRIS.tick(dt,'bounce'); PAPER.tick(dt,'paper');
+  SPR.forEach(s=>{ if(!s.visible) return; const u=s.userData; u.t+=dt; if(u.t<0) return; const k=u.t/u.max; if(k>=1){ s.visible=false; return; }
+    s.position.y+=u.vy*dt; s.scale.setScalar(u.add?u.sz*(0.3+k*0.9):u.sz*(0.4+k)); s.material.opacity=u.add?(1-k):Math.min(0.75,k*4)*(1-k); });
+  FLASH.intensity=Math.max(0,FLASH.intensity-dt*18);
+  POOLS.forEach(m=>{ if(!m.visible) return; const u=m.userData; u.age+=dt; m.scale.setScalar(Math.max(0.05,u.R*Math.min(1,u.age/2.2))*(1-Math.max(0,u.age-40)/10)); if(u.age>50) m.visible=false; });
+  if(FUN.comboT>0){ FUN.comboT-=dt; if(FUN.comboT<=0) FUN.combo=0; }
+  // 氮氣火焰
+  if(FUN.on&&S.hold.N&&S.mode==='drive'&&S.car.v>5){ const c=S.car; for(let k=0;k<2;k++){ const s=sprite(FXT.glow,true); s.position.set(c.x-Math.sin(c.a)*(3.6*VSPEC.kl)+(Math.random()-0.5)*0.6,ELEV(c.x,c.z)+0.7,c.z-Math.cos(c.a)*(3.6*VSPEC.kl)+(Math.random()-0.5)*0.6); s.userData.t=0; s.userData.max=0.25; s.userData.sz=1.6; s.userData.vy=0; s.material.opacity=1; } }
+  if((FUN.hudT=(FUN.hudT||0)-dt)<0){ FUN.hudT=0.5; funHud(); } }
+// 彈出字樣
+{ const st=document.createElement('style'); st.textContent=`#funTxt{position:fixed;left:50%;top:32%;transform:translate(-50%,-50%) scale(0);pointer-events:none;z-index:40;text-align:center;font-weight:900;font-size:26px;color:#fff;text-shadow:0 0 8px #ff2d95,0 0 18px #ff2d95,2px 2px 0 #000;opacity:0;white-space:nowrap}
+#funTxt b{font-size:34px;color:#ffe600;text-shadow:0 0 10px #ff7a00,2px 2px 0 #000}#funTxt small{display:block;font-size:16px;color:#7cff4f}
+#funTxt.pop{animation:funPop 1.3s ease-out forwards}@keyframes funPop{0%{transform:translate(-50%,-50%) scale(.3);opacity:0}15%{transform:translate(-50%,-50%) scale(1.25);opacity:1}30%{transform:translate(-50%,-50%) scale(1)}80%{opacity:1}100%{transform:translate(-50%,-80%) scale(1);opacity:0}}
+#funHud{position:fixed;left:50%;top:calc(118px + env(safe-area-inset-top));transform:translateX(-50%);display:none;z-index:30;background:linear-gradient(90deg,#ff2d95,#ff7a00,#ffd400);color:#fff;font-weight:900;font-size:15px;padding:4px 14px;border-radius:99px;text-shadow:1px 1px 0 #0006;pointer-events:none}
+.btn.nitro{background:linear-gradient(#ff7a00,#ff2d95);color:#fff;font-size:20px}`; document.head.append(st); }
+// 🚀 氮氣掣（Shift 鍵都得）
+{ const col=document.querySelector('.btns .right .col'); if(col){ const b=document.createElement('button'); b.className='btn small nitro'; b.id='bN'; b.setAttribute('aria-label','氮氣加速'); b.textContent='🚀'; b.hidden=!FUN.on; col.prepend(b); bindHold('bN','N'); } }
+addEventListener('keydown',e=>{ if(e.key==='Shift') S.hold.N=true; }); addEventListener('keyup',e=>{ if(e.key==='Shift') S.hold.N=false; });
+window.__FUN=FUN;
+window.__funHitCar=funHitCar; window.__funHitPed=funHitPed;
 
 
 renderMenu(); show('menu',true); tick();
