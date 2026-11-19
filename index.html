@@ -97,6 +97,17 @@ canvas{display:block}
 .bhead{font-weight:800;font-size:13px;margin:8px 0 4px;color:var(--muted)}
 .liv{display:flex;align-items:center;gap:10px;border:2px solid #e3e8ee;border-radius:14px;padding:8px 12px;margin-bottom:8px;width:100%;font:inherit;text-align:left;background:#fff}
 .liv .sw{width:34px;height:22px;border-radius:6px;border:2px solid #1c2733}.liv.on{border-color:var(--orange)}.liv:disabled{opacity:.5}
+.set-h{font-size:15px;margin:12px 2px 6px}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;margin:6px 0;background:#f7f9fb;border:2px solid #e3e8ee;border-radius:14px}
+.set-row.dim{opacity:.45}.set-l{display:flex;flex-direction:column;min-width:0}.set-l b{font-size:14px}.set-l small{font-size:11px;color:#8a94a3}
+.set-row:has(.set-chips){flex-direction:column;align-items:stretch}
+.set-sw{min-width:58px;padding:7px 0;border:0;border-radius:99px;font:inherit;font-weight:700;background:#d5dbe3;color:#55606e}.set-sw.on{background:#2e9d5b;color:#fff}
+.set-step{display:flex;align-items:center;gap:6px}.set-step button{width:36px;height:36px;border:0;border-radius:10px;font:inherit;font-size:18px;font-weight:700;background:#e3e8ee}.set-step button:disabled{opacity:.35}.set-step span{min-width:24px;text-align:center;font-weight:800;font-size:16px}
+.set-chips{display:flex;flex-wrap:wrap;gap:6px}.set-chip{border:2px solid #e3e8ee;border-radius:99px;padding:6px 10px;font:inherit;font-size:13px;background:#fff}.set-chip.on{border-color:#2e9d5b;background:#e6f6ec;font-weight:700}.set-chip:disabled{opacity:.45}
+.set-col{flex-direction:column;align-items:stretch}.set-seg{display:flex;gap:6px}.set-segb{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border:2px solid #e3e8ee;border-radius:12px;background:#fff;font:inherit;cursor:pointer}
+.set-segb b{font-size:14px}.set-segb small{font-size:10px;color:#8a94a3;text-align:center}.set-segb.on{border-color:#e23b3b;background:#fff1f1}
+.gfxAsk{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:60}.gfxAsk .card{max-width:300px;margin:16px}.gfxAsk p{font-size:13px;margin:8px 0 12px}.gfxBtns{display:flex;gap:8px}.gfxBtns button{flex:1}
+.set-warn{color:#b26b00;font-size:12px;margin:4px 2px}
 .ach-new{text-align:center;color:#b26b00;font-size:14px;margin:4px 0}
 .namerow{display:flex;gap:8px;margin:6px 0}.namerow input{flex:1;min-width:0;border:2px solid #e3e8ee;border-radius:12px;padding:9px 10px;font:inherit;font-size:15px}
 .namerow button{border:0;border-radius:12px;padding:0 12px;font:inherit;font-weight:800;font-size:14px}
@@ -261,7 +272,7 @@ body.taxi #bMenu{top:calc(208px + env(safe-area-inset-top))}body.taxi #bAEB{top:
   <div class="panel">
     <div class="brand"><span class="badge">A188</span><h1>屯門救護車</h1></div>
     <div class="tabs" role="tablist" id="tabs">
-      <button role="tab" data-t="levels">關卡</button><button role="tab" data-t="cards">知識卡</button><button role="tab" data-t="ach">成就</button><button role="tab" data-t="board">排行榜</button><button role="tab" data-t="livery">車款</button>
+      <button role="tab" data-t="levels">關卡</button><button role="tab" data-t="cards">知識卡</button><button role="tab" data-t="ach">成就</button><button role="tab" data-t="board">排行榜</button><button role="tab" data-t="livery">車款</button><button role="tab" data-t="set">設定</button>
     </div>
     <div id="tabBody"></div>
   </div>
