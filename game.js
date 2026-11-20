@@ -1,3 +1,910 @@
+/* three.js r128 examples（EffectComposer、UnrealBloomPass，MIT）*/
+( function () {
+
+	/**
+ * Full-screen textured quad shader
+ */
+	var CopyShader = {
+		uniforms: {
+			'tDiffuse': {
+				value: null
+			},
+			'opacity': {
+				value: 1.0
+			}
+		},
+		vertexShader:
+  /* glsl */
+  `
+
+		varying vec2 vUv;
+
+		void main() {
+
+			vUv = uv;
+			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
+		}`,
+		fragmentShader:
+  /* glsl */
+  `
+
+		uniform float opacity;
+
+		uniform sampler2D tDiffuse;
+
+		varying vec2 vUv;
+
+		void main() {
+
+			vec4 texel = texture2D( tDiffuse, vUv );
+			gl_FragColor = opacity * texel;
+
+		}`
+	};
+
+	THREE.CopyShader = CopyShader;
+
+} )();
+( function () {
+
+	/**
+ * Luminosity
+ * http://en.wikipedia.org/wiki/Luminosity
+ */
+
+	const LuminosityHighPassShader = {
+		shaderID: 'luminosityHighPass',
+		uniforms: {
+			'tDiffuse': {
+				value: null
+			},
+			'luminosityThreshold': {
+				value: 1.0
+			},
+			'smoothWidth': {
+				value: 1.0
+			},
+			'defaultColor': {
+				value: new THREE.Color( 0x000000 )
+			},
+			'defaultOpacity': {
+				value: 0.0
+			}
+		},
+		vertexShader:
+  /* glsl */
+  `
+
+		varying vec2 vUv;
+
+		void main() {
+
+			vUv = uv;
+
+			gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+
+		}`,
+		fragmentShader:
+  /* glsl */
+  `
+
+		uniform sampler2D tDiffuse;
+		uniform vec3 defaultColor;
+		uniform float defaultOpacity;
+		uniform float luminosityThreshold;
+		uniform float smoothWidth;
+
+		varying vec2 vUv;
+
+		void main() {
+
+			vec4 texel = texture2D( tDiffuse, vUv );
+
+			vec3 luma = vec3( 0.299, 0.587, 0.114 );
+
+			float v = dot( texel.xyz, luma );
+
+			vec4 outputColor = vec4( defaultColor.rgb, defaultOpacity );
+
+			float alpha = smoothstep( luminosityThreshold, luminosityThreshold + smoothWidth, v );
+
+			gl_FragColor = mix( outputColor, texel, alpha );
+
+		}`
+	};
+
+	THREE.LuminosityHighPassShader = LuminosityHighPassShader;
+
+} )();
+( function () {
+
+	class EffectComposer {
+
+		constructor( renderer, renderTarget ) {
+
+			this.renderer = renderer;
+
+			if ( renderTarget === undefined ) {
+
+				const parameters = {
+					minFilter: THREE.LinearFilter,
+					magFilter: THREE.LinearFilter,
+					format: THREE.RGBAFormat
+				};
+				const size = renderer.getSize( new THREE.Vector2() );
+				this._pixelRatio = renderer.getPixelRatio();
+				this._width = size.width;
+				this._height = size.height;
+				renderTarget = new THREE.WebGLRenderTarget( this._width * this._pixelRatio, this._height * this._pixelRatio, parameters );
+				renderTarget.texture.name = 'EffectComposer.rt1';
+
+			} else {
+
+				this._pixelRatio = 1;
+				this._width = renderTarget.width;
+				this._height = renderTarget.height;
+
+			}
+
+			this.renderTarget1 = renderTarget;
+			this.renderTarget2 = renderTarget.clone();
+			this.renderTarget2.texture.name = 'EffectComposer.rt2';
+			this.writeBuffer = this.renderTarget1;
+			this.readBuffer = this.renderTarget2;
+			this.renderToScreen = true;
+			this.passes = []; // dependencies
+
+			if ( THREE.CopyShader === undefined ) {
+
+				console.error( 'THREE.EffectComposer relies on THREE.CopyShader' );
+
+			}
+
+			if ( THREE.ShaderPass === undefined ) {
+
+				console.error( 'THREE.EffectComposer relies on THREE.ShaderPass' );
+
+			}
+
+			this.copyPass = new THREE.ShaderPass( THREE.CopyShader );
+			this.clock = new THREE.Clock();
+
+		}
+
+		swapBuffers() {
+
+			const tmp = this.readBuffer;
+			this.readBuffer = this.writeBuffer;
+			this.writeBuffer = tmp;
+
+		}
+
+		addPass( pass ) {
+
+			this.passes.push( pass );
+			pass.setSize( this._width * this._pixelRatio, this._height * this._pixelRatio );
+
+		}
+
+		insertPass( pass, index ) {
+
+			this.passes.splice( index, 0, pass );
+			pass.setSize( this._width * this._pixelRatio, this._height * this._pixelRatio );
+
+		}
+
+		removePass( pass ) {
+
+			const index = this.passes.indexOf( pass );
+
+			if ( index !== - 1 ) {
+
+				this.passes.splice( index, 1 );
+
+			}
+
+		}
+
+		isLastEnabledPass( passIndex ) {
+
+			for ( let i = passIndex + 1; i < this.passes.length; i ++ ) {
+
+				if ( this.passes[ i ].enabled ) {
+
+					return false;
+
+				}
+
+			}
+
+			return true;
+
+		}
+
+		render( deltaTime ) {
+
+			// deltaTime value is in seconds
+			if ( deltaTime === undefined ) {
+
+				deltaTime = this.clock.getDelta();
+
+			}
+
+			const currentRenderTarget = this.renderer.getRenderTarget();
+			let maskActive = false;
+
+			for ( let i = 0, il = this.passes.length; i < il; i ++ ) {
+
+				const pass = this.passes[ i ];
+				if ( pass.enabled === false ) continue;
+				pass.renderToScreen = this.renderToScreen && this.isLastEnabledPass( i );
+				pass.render( this.renderer, this.writeBuffer, this.readBuffer, deltaTime, maskActive );
+
+				if ( pass.needsSwap ) {
+
+					if ( maskActive ) {
+
+						const context = this.renderer.getContext();
+						const stencil = this.renderer.state.buffers.stencil; //context.stencilFunc( context.NOTEQUAL, 1, 0xffffffff );
+
+						stencil.setFunc( context.NOTEQUAL, 1, 0xffffffff );
+						this.copyPass.render( this.renderer, this.writeBuffer, this.readBuffer, deltaTime ); //context.stencilFunc( context.EQUAL, 1, 0xffffffff );
+
+						stencil.setFunc( context.EQUAL, 1, 0xffffffff );
+
+					}
+
+					this.swapBuffers();
+
+				}
+
+				if ( THREE.MaskPass !== undefined ) {
+
+					if ( pass instanceof THREE.MaskPass ) {
+
+						maskActive = true;
+
+					} else if ( pass instanceof THREE.ClearMaskPass ) {
+
+						maskActive = false;
+
+					}
+
+				}
+
+			}
+
+			this.renderer.setRenderTarget( currentRenderTarget );
+
+		}
+
+		reset( renderTarget ) {
+
+			if ( renderTarget === undefined ) {
+
+				const size = this.renderer.getSize( new THREE.Vector2() );
+				this._pixelRatio = this.renderer.getPixelRatio();
+				this._width = size.width;
+				this._height = size.height;
+				renderTarget = this.renderTarget1.clone();
+				renderTarget.setSize( this._width * this._pixelRatio, this._height * this._pixelRatio );
+
+			}
+
+			this.renderTarget1.dispose();
+			this.renderTarget2.dispose();
+			this.renderTarget1 = renderTarget;
+			this.renderTarget2 = renderTarget.clone();
+			this.writeBuffer = this.renderTarget1;
+			this.readBuffer = this.renderTarget2;
+
+		}
+
+		setSize( width, height ) {
+
+			this._width = width;
+			this._height = height;
+			const effectiveWidth = this._width * this._pixelRatio;
+			const effectiveHeight = this._height * this._pixelRatio;
+			this.renderTarget1.setSize( effectiveWidth, effectiveHeight );
+			this.renderTarget2.setSize( effectiveWidth, effectiveHeight );
+
+			for ( let i = 0; i < this.passes.length; i ++ ) {
+
+				this.passes[ i ].setSize( effectiveWidth, effectiveHeight );
+
+			}
+
+		}
+
+		setPixelRatio( pixelRatio ) {
+
+			this._pixelRatio = pixelRatio;
+			this.setSize( this._width, this._height );
+
+		}
+
+	}
+
+	class Pass {
+
+		constructor() {
+
+			// if set to true, the pass is processed by the composer
+			this.enabled = true; // if set to true, the pass indicates to swap read and write buffer after rendering
+
+			this.needsSwap = true; // if set to true, the pass clears its buffer before rendering
+
+			this.clear = false; // if set to true, the result of the pass is rendered to screen. This is set automatically by EffectComposer.
+
+			this.renderToScreen = false;
+
+		}
+
+		setSize( ) {}
+
+		render( ) {
+
+			console.error( 'THREE.Pass: .render() must be implemented in derived pass.' );
+
+		}
+
+	} // Helper for passes that need to fill the viewport with a single quad.
+
+
+	const _camera = new THREE.OrthographicCamera( - 1, 1, 1, - 1, 0, 1 ); // https://github.com/mrdoob/three.js/pull/21358
+
+
+	const _geometry = new THREE.BufferGeometry();
+
+	_geometry.setAttribute( 'position', new THREE.Float32BufferAttribute( [ - 1, 3, 0, - 1, - 1, 0, 3, - 1, 0 ], 3 ) );
+
+	_geometry.setAttribute( 'uv', new THREE.Float32BufferAttribute( [ 0, 2, 0, 0, 2, 0 ], 2 ) );
+
+	class FullScreenQuad {
+
+		constructor( material ) {
+
+			this._mesh = new THREE.Mesh( _geometry, material );
+
+		}
+
+		dispose() {
+
+			this._mesh.geometry.dispose();
+
+		}
+
+		render( renderer ) {
+
+			renderer.render( this._mesh, _camera );
+
+		}
+
+		get material() {
+
+			return this._mesh.material;
+
+		}
+
+		set material( value ) {
+
+			this._mesh.material = value;
+
+		}
+
+	}
+
+	THREE.EffectComposer = EffectComposer;
+	THREE.FullScreenQuad = FullScreenQuad;
+	THREE.Pass = Pass;
+
+} )();
+( function () {
+
+	class RenderPass extends THREE.Pass {
+
+		constructor( scene, camera, overrideMaterial, clearColor, clearAlpha ) {
+
+			super();
+			this.scene = scene;
+			this.camera = camera;
+			this.overrideMaterial = overrideMaterial;
+			this.clearColor = clearColor;
+			this.clearAlpha = clearAlpha !== undefined ? clearAlpha : 0;
+			this.clear = true;
+			this.clearDepth = false;
+			this.needsSwap = false;
+			this._oldClearColor = new THREE.Color();
+
+		}
+
+		render( renderer, writeBuffer, readBuffer
+			/*, deltaTime, maskActive */
+		) {
+
+			const oldAutoClear = renderer.autoClear;
+			renderer.autoClear = false;
+			let oldClearAlpha, oldOverrideMaterial;
+
+			if ( this.overrideMaterial !== undefined ) {
+
+				oldOverrideMaterial = this.scene.overrideMaterial;
+				this.scene.overrideMaterial = this.overrideMaterial;
+
+			}
+
+			if ( this.clearColor ) {
+
+				renderer.getClearColor( this._oldClearColor );
+				oldClearAlpha = renderer.getClearAlpha();
+				renderer.setClearColor( this.clearColor, this.clearAlpha );
+
+			}
+
+			if ( this.clearDepth ) {
+
+				renderer.clearDepth();
+
+			}
+
+			renderer.setRenderTarget( this.renderToScreen ? null : readBuffer ); // TODO: Avoid using autoClear properties, see https://github.com/mrdoob/three.js/pull/15571#issuecomment-465669600
+
+			if ( this.clear ) renderer.clear( renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil );
+			renderer.render( this.scene, this.camera );
+
+			if ( this.clearColor ) {
+
+				renderer.setClearColor( this._oldClearColor, oldClearAlpha );
+
+			}
+
+			if ( this.overrideMaterial !== undefined ) {
+
+				this.scene.overrideMaterial = oldOverrideMaterial;
+
+			}
+
+			renderer.autoClear = oldAutoClear;
+
+		}
+
+	}
+
+	THREE.RenderPass = RenderPass;
+
+} )();
+( function () {
+
+	class ShaderPass extends THREE.Pass {
+
+		constructor( shader, textureID ) {
+
+			super();
+			this.textureID = textureID !== undefined ? textureID : 'tDiffuse';
+
+			if ( shader instanceof THREE.ShaderMaterial ) {
+
+				this.uniforms = shader.uniforms;
+				this.material = shader;
+
+			} else if ( shader ) {
+
+				this.uniforms = THREE.UniformsUtils.clone( shader.uniforms );
+				this.material = new THREE.ShaderMaterial( {
+					defines: Object.assign( {}, shader.defines ),
+					uniforms: this.uniforms,
+					vertexShader: shader.vertexShader,
+					fragmentShader: shader.fragmentShader
+				} );
+
+			}
+
+			this.fsQuad = new THREE.FullScreenQuad( this.material );
+
+		}
+
+		render( renderer, writeBuffer, readBuffer
+			/*, deltaTime, maskActive */
+		) {
+
+			if ( this.uniforms[ this.textureID ] ) {
+
+				this.uniforms[ this.textureID ].value = readBuffer.texture;
+
+			}
+
+			this.fsQuad.material = this.material;
+
+			if ( this.renderToScreen ) {
+
+				renderer.setRenderTarget( null );
+				this.fsQuad.render( renderer );
+
+			} else {
+
+				renderer.setRenderTarget( writeBuffer ); // TODO: Avoid using autoClear properties, see https://github.com/mrdoob/three.js/pull/15571#issuecomment-465669600
+
+				if ( this.clear ) renderer.clear( renderer.autoClearColor, renderer.autoClearDepth, renderer.autoClearStencil );
+				this.fsQuad.render( renderer );
+
+			}
+
+		}
+
+	}
+
+	THREE.ShaderPass = ShaderPass;
+
+} )();
+( function () {
+
+	/**
+ * UnrealBloomPass is inspired by the bloom pass of Unreal Engine. It creates a
+ * mip map chain of bloom textures and blurs them with different radii. Because
+ * of the weighted combination of mips, and because larger blurs are done on
+ * higher mips, this effect provides good quality and performance.
+ *
+ * Reference:
+ * - https://docs.unrealengine.com/latest/INT/Engine/Rendering/PostProcessEffects/Bloom/
+ */
+
+	class UnrealBloomPass extends THREE.Pass {
+
+		constructor( resolution, strength, radius, threshold ) {
+
+			super();
+			this.strength = strength !== undefined ? strength : 1;
+			this.radius = radius;
+			this.threshold = threshold;
+			this.resolution = resolution !== undefined ? new THREE.Vector2( resolution.x, resolution.y ) : new THREE.Vector2( 256, 256 ); // create color only once here, reuse it later inside the render function
+
+			this.clearColor = new THREE.Color( 0, 0, 0 ); // render targets
+
+			const pars = {
+				minFilter: THREE.LinearFilter,
+				magFilter: THREE.LinearFilter,
+				format: THREE.RGBAFormat
+			};
+			this.renderTargetsHorizontal = [];
+			this.renderTargetsVertical = [];
+			this.nMips = 5;
+			let resx = Math.round( this.resolution.x / 2 );
+			let resy = Math.round( this.resolution.y / 2 );
+			this.renderTargetBright = new THREE.WebGLRenderTarget( resx, resy, pars );
+			this.renderTargetBright.texture.name = 'UnrealBloomPass.bright';
+			this.renderTargetBright.texture.generateMipmaps = false;
+
+			for ( let i = 0; i < this.nMips; i ++ ) {
+
+				const renderTargetHorizonal = new THREE.WebGLRenderTarget( resx, resy, pars );
+				renderTargetHorizonal.texture.name = 'UnrealBloomPass.h' + i;
+				renderTargetHorizonal.texture.generateMipmaps = false;
+				this.renderTargetsHorizontal.push( renderTargetHorizonal );
+				const renderTargetVertical = new THREE.WebGLRenderTarget( resx, resy, pars );
+				renderTargetVertical.texture.name = 'UnrealBloomPass.v' + i;
+				renderTargetVertical.texture.generateMipmaps = false;
+				this.renderTargetsVertical.push( renderTargetVertical );
+				resx = Math.round( resx / 2 );
+				resy = Math.round( resy / 2 );
+
+			} // luminosity high pass material
+
+
+			if ( THREE.LuminosityHighPassShader === undefined ) console.error( 'THREE.UnrealBloomPass relies on THREE.LuminosityHighPassShader' );
+			const highPassShader = THREE.LuminosityHighPassShader;
+			this.highPassUniforms = THREE.UniformsUtils.clone( highPassShader.uniforms );
+			this.highPassUniforms[ 'luminosityThreshold' ].value = threshold;
+			this.highPassUniforms[ 'smoothWidth' ].value = 0.01;
+			this.materialHighPassFilter = new THREE.ShaderMaterial( {
+				uniforms: this.highPassUniforms,
+				vertexShader: highPassShader.vertexShader,
+				fragmentShader: highPassShader.fragmentShader,
+				defines: {}
+			} ); // Gaussian Blur Materials
+
+			this.separableBlurMaterials = [];
+			const kernelSizeArray = [ 3, 5, 7, 9, 11 ];
+			resx = Math.round( this.resolution.x / 2 );
+			resy = Math.round( this.resolution.y / 2 );
+
+			for ( let i = 0; i < this.nMips; i ++ ) {
+
+				this.separableBlurMaterials.push( this.getSeperableBlurMaterial( kernelSizeArray[ i ] ) );
+				this.separableBlurMaterials[ i ].uniforms[ 'texSize' ].value = new THREE.Vector2( resx, resy );
+				resx = Math.round( resx / 2 );
+				resy = Math.round( resy / 2 );
+
+			} // Composite material
+
+
+			this.compositeMaterial = this.getCompositeMaterial( this.nMips );
+			this.compositeMaterial.uniforms[ 'blurTexture1' ].value = this.renderTargetsVertical[ 0 ].texture;
+			this.compositeMaterial.uniforms[ 'blurTexture2' ].value = this.renderTargetsVertical[ 1 ].texture;
+			this.compositeMaterial.uniforms[ 'blurTexture3' ].value = this.renderTargetsVertical[ 2 ].texture;
+			this.compositeMaterial.uniforms[ 'blurTexture4' ].value = this.renderTargetsVertical[ 3 ].texture;
+			this.compositeMaterial.uniforms[ 'blurTexture5' ].value = this.renderTargetsVertical[ 4 ].texture;
+			this.compositeMaterial.uniforms[ 'bloomStrength' ].value = strength;
+			this.compositeMaterial.uniforms[ 'bloomRadius' ].value = 0.1;
+			this.compositeMaterial.needsUpdate = true;
+			const bloomFactors = [ 1.0, 0.8, 0.6, 0.4, 0.2 ];
+			this.compositeMaterial.uniforms[ 'bloomFactors' ].value = bloomFactors;
+			this.bloomTintColors = [ new THREE.Vector3( 1, 1, 1 ), new THREE.Vector3( 1, 1, 1 ), new THREE.Vector3( 1, 1, 1 ), new THREE.Vector3( 1, 1, 1 ), new THREE.Vector3( 1, 1, 1 ) ];
+			this.compositeMaterial.uniforms[ 'bloomTintColors' ].value = this.bloomTintColors; // copy material
+
+			if ( THREE.CopyShader === undefined ) {
+
+				console.error( 'THREE.UnrealBloomPass relies on THREE.CopyShader' );
+
+			}
+
+			const copyShader = THREE.CopyShader;
+			this.copyUniforms = THREE.UniformsUtils.clone( copyShader.uniforms );
+			this.copyUniforms[ 'opacity' ].value = 1.0;
+			this.materialCopy = new THREE.ShaderMaterial( {
+				uniforms: this.copyUniforms,
+				vertexShader: copyShader.vertexShader,
+				fragmentShader: copyShader.fragmentShader,
+				blending: THREE.AdditiveBlending,
+				depthTest: false,
+				depthWrite: false,
+				transparent: true
+			} );
+			this.enabled = true;
+			this.needsSwap = false;
+			this._oldClearColor = new THREE.Color();
+			this.oldClearAlpha = 1;
+			this.basic = new THREE.MeshBasicMaterial();
+			this.fsQuad = new THREE.FullScreenQuad( null );
+
+		}
+
+		dispose() {
+
+			for ( let i = 0; i < this.renderTargetsHorizontal.length; i ++ ) {
+
+				this.renderTargetsHorizontal[ i ].dispose();
+
+			}
+
+			for ( let i = 0; i < this.renderTargetsVertical.length; i ++ ) {
+
+				this.renderTargetsVertical[ i ].dispose();
+
+			}
+
+			this.renderTargetBright.dispose();
+
+		}
+
+		setSize( width, height ) {
+
+			let resx = Math.round( width / 2 );
+			let resy = Math.round( height / 2 );
+			this.renderTargetBright.setSize( resx, resy );
+
+			for ( let i = 0; i < this.nMips; i ++ ) {
+
+				this.renderTargetsHorizontal[ i ].setSize( resx, resy );
+				this.renderTargetsVertical[ i ].setSize( resx, resy );
+				this.separableBlurMaterials[ i ].uniforms[ 'texSize' ].value = new THREE.Vector2( resx, resy );
+				resx = Math.round( resx / 2 );
+				resy = Math.round( resy / 2 );
+
+			}
+
+		}
+
+		render( renderer, writeBuffer, readBuffer, deltaTime, maskActive ) {
+
+			renderer.getClearColor( this._oldClearColor );
+			this.oldClearAlpha = renderer.getClearAlpha();
+			const oldAutoClear = renderer.autoClear;
+			renderer.autoClear = false;
+			renderer.setClearColor( this.clearColor, 0 );
+			if ( maskActive ) renderer.state.buffers.stencil.setTest( false ); // Render input to screen
+
+			if ( this.renderToScreen ) {
+
+				this.fsQuad.material = this.basic;
+				this.basic.map = readBuffer.texture;
+				renderer.setRenderTarget( null );
+				renderer.clear();
+				this.fsQuad.render( renderer );
+
+			} // 1. Extract Bright Areas
+
+
+			this.highPassUniforms[ 'tDiffuse' ].value = readBuffer.texture;
+			this.highPassUniforms[ 'luminosityThreshold' ].value = this.threshold;
+			this.fsQuad.material = this.materialHighPassFilter;
+			renderer.setRenderTarget( this.renderTargetBright );
+			renderer.clear();
+			this.fsQuad.render( renderer ); // 2. Blur All the mips progressively
+
+			let inputRenderTarget = this.renderTargetBright;
+
+			for ( let i = 0; i < this.nMips; i ++ ) {
+
+				this.fsQuad.material = this.separableBlurMaterials[ i ];
+				this.separableBlurMaterials[ i ].uniforms[ 'colorTexture' ].value = inputRenderTarget.texture;
+				this.separableBlurMaterials[ i ].uniforms[ 'direction' ].value = UnrealBloomPass.BlurDirectionX;
+				renderer.setRenderTarget( this.renderTargetsHorizontal[ i ] );
+				renderer.clear();
+				this.fsQuad.render( renderer );
+				this.separableBlurMaterials[ i ].uniforms[ 'colorTexture' ].value = this.renderTargetsHorizontal[ i ].texture;
+				this.separableBlurMaterials[ i ].uniforms[ 'direction' ].value = UnrealBloomPass.BlurDirectionY;
+				renderer.setRenderTarget( this.renderTargetsVertical[ i ] );
+				renderer.clear();
+				this.fsQuad.render( renderer );
+				inputRenderTarget = this.renderTargetsVertical[ i ];
+
+			} // Composite All the mips
+
+
+			this.fsQuad.material = this.compositeMaterial;
+			this.compositeMaterial.uniforms[ 'bloomStrength' ].value = this.strength;
+			this.compositeMaterial.uniforms[ 'bloomRadius' ].value = this.radius;
+			this.compositeMaterial.uniforms[ 'bloomTintColors' ].value = this.bloomTintColors;
+			renderer.setRenderTarget( this.renderTargetsHorizontal[ 0 ] );
+			renderer.clear();
+			this.fsQuad.render( renderer ); // Blend it additively over the input texture
+
+			this.fsQuad.material = this.materialCopy;
+			this.copyUniforms[ 'tDiffuse' ].value = this.renderTargetsHorizontal[ 0 ].texture;
+			if ( maskActive ) renderer.state.buffers.stencil.setTest( true );
+
+			if ( this.renderToScreen ) {
+
+				renderer.setRenderTarget( null );
+				this.fsQuad.render( renderer );
+
+			} else {
+
+				renderer.setRenderTarget( readBuffer );
+				this.fsQuad.render( renderer );
+
+			} // Restore renderer settings
+
+
+			renderer.setClearColor( this._oldClearColor, this.oldClearAlpha );
+			renderer.autoClear = oldAutoClear;
+
+		}
+
+		getSeperableBlurMaterial( kernelRadius ) {
+
+			return new THREE.ShaderMaterial( {
+				defines: {
+					'KERNEL_RADIUS': kernelRadius,
+					'SIGMA': kernelRadius
+				},
+				uniforms: {
+					'colorTexture': {
+						value: null
+					},
+					'texSize': {
+						value: new THREE.Vector2( 0.5, 0.5 )
+					},
+					'direction': {
+						value: new THREE.Vector2( 0.5, 0.5 )
+					}
+				},
+				vertexShader: `varying vec2 vUv;
+				void main() {
+					vUv = uv;
+					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+				}`,
+				fragmentShader: `#include <common>
+				varying vec2 vUv;
+				uniform sampler2D colorTexture;
+				uniform vec2 texSize;
+				uniform vec2 direction;
+
+				float gaussianPdf(in float x, in float sigma) {
+					return 0.39894 * exp( -0.5 * x * x/( sigma * sigma))/sigma;
+				}
+				void main() {
+					vec2 invSize = 1.0 / texSize;
+					float fSigma = float(SIGMA);
+					float weightSum = gaussianPdf(0.0, fSigma);
+					vec3 diffuseSum = texture2D( colorTexture, vUv).rgb * weightSum;
+					for( int i = 1; i < KERNEL_RADIUS; i ++ ) {
+						float x = float(i);
+						float w = gaussianPdf(x, fSigma);
+						vec2 uvOffset = direction * invSize * x;
+						vec3 sample1 = texture2D( colorTexture, vUv + uvOffset).rgb;
+						vec3 sample2 = texture2D( colorTexture, vUv - uvOffset).rgb;
+						diffuseSum += (sample1 + sample2) * w;
+						weightSum += 2.0 * w;
+					}
+					gl_FragColor = vec4(diffuseSum/weightSum, 1.0);
+				}`
+			} );
+
+		}
+
+		getCompositeMaterial( nMips ) {
+
+			return new THREE.ShaderMaterial( {
+				defines: {
+					'NUM_MIPS': nMips
+				},
+				uniforms: {
+					'blurTexture1': {
+						value: null
+					},
+					'blurTexture2': {
+						value: null
+					},
+					'blurTexture3': {
+						value: null
+					},
+					'blurTexture4': {
+						value: null
+					},
+					'blurTexture5': {
+						value: null
+					},
+					'dirtTexture': {
+						value: null
+					},
+					'bloomStrength': {
+						value: 1.0
+					},
+					'bloomFactors': {
+						value: null
+					},
+					'bloomTintColors': {
+						value: null
+					},
+					'bloomRadius': {
+						value: 0.0
+					}
+				},
+				vertexShader: `varying vec2 vUv;
+				void main() {
+					vUv = uv;
+					gl_Position = projectionMatrix * modelViewMatrix * vec4( position, 1.0 );
+				}`,
+				fragmentShader: `varying vec2 vUv;
+				uniform sampler2D blurTexture1;
+				uniform sampler2D blurTexture2;
+				uniform sampler2D blurTexture3;
+				uniform sampler2D blurTexture4;
+				uniform sampler2D blurTexture5;
+				uniform sampler2D dirtTexture;
+				uniform float bloomStrength;
+				uniform float bloomRadius;
+				uniform float bloomFactors[NUM_MIPS];
+				uniform vec3 bloomTintColors[NUM_MIPS];
+
+				float lerpBloomFactor(const in float factor) {
+					float mirrorFactor = 1.2 - factor;
+					return mix(factor, mirrorFactor, bloomRadius);
+				}
+
+				void main() {
+					gl_FragColor = bloomStrength * ( lerpBloomFactor(bloomFactors[0]) * vec4(bloomTintColors[0], 1.0) * texture2D(blurTexture1, vUv) +
+						lerpBloomFactor(bloomFactors[1]) * vec4(bloomTintColors[1], 1.0) * texture2D(blurTexture2, vUv) +
+						lerpBloomFactor(bloomFactors[2]) * vec4(bloomTintColors[2], 1.0) * texture2D(blurTexture3, vUv) +
+						lerpBloomFactor(bloomFactors[3]) * vec4(bloomTintColors[3], 1.0) * texture2D(blurTexture4, vUv) +
+						lerpBloomFactor(bloomFactors[4]) * vec4(bloomTintColors[4], 1.0) * texture2D(blurTexture5, vUv) );
+				}`
+			} );
+
+		}
+
+	}
+
+	UnrealBloomPass.BlurDirectionX = new THREE.Vector2( 1.0, 0.0 );
+	UnrealBloomPass.BlurDirectionY = new THREE.Vector2( 0.0, 1.0 );
+
+	THREE.UnrealBloomPass = UnrealBloomPass;
+
+} )();
+
 (function(){
 "use strict";
 /* ================= Q 版屯門：城市生成 ================= */
@@ -1720,7 +2627,7 @@ function startCase(i){
   patient.userData.blanket.visible=false; patient.userData.p.position.set(0,0.5,1.2); patient.userData.p.rotation.set(-Math.PI/2,0,0);
   bystander.visible=true; bystander.position.set(L.patient[0]+2,0.2,L.patient[1]+1.5);
   setTarget(L.stop); refreshRoute(true); startLeg(); S.escRoute=S.route?{pts:S.route.pts.map(p=>p.slice()),cum:S.route.cum.slice(),len:S.route.len}:null; // 其他救護車跟住呢條橙色線
-  caption(null); show('menu',false); show('result',false); show('over',false); show('quiz',false); show('hudWrap',true); drawLives();
+  caption(null); show('menu',false); show('result',false); show('over',false); show('quiz',false); show('hudWrap',true); drawLives(); realBegin(!!S.realPick);
   hud(lv.id.replace('L','第 ')+' 關 · '+k.place,'① 出車 · '+k.title+' · '+lv.todName); $('call').textContent='控制中心：'+k.call; show('callBox',true); setTimeout(()=>show('callBox',false),4200);
   alarm();
 }
@@ -1740,6 +2647,7 @@ function toHospital(){
 function arriveHospital(){ sirenSet(false); S.mode='hseq'; S.seq=0; S.step=5; S.tHosp=performance.now()/1000-S.t0; endLeg(); show('stabBox',false); clearEvents(); S.car.v=0; ring.visible=beacon.visible=arrow.visible=false; if(routeMesh) routeMesh.visible=false;
   hud(AE.name+'急症室','⑤ 交接病人'); }
 function finish(){
+  if(REAL.on&&S.gm==='ems'&&!REAL.ending){ realAVM(); return; }   // 寫實模式：交接完先 AVM 返站
   S.stars=S.lives; S.mode='result'; caption(null); sirenSet(false);
   const lv=S.level; if(!FUN.on){ saveBest(lv.id,S.stars); markDone(lv.id); }
   // 成就（歡樂模式唔計）
@@ -1753,6 +2661,7 @@ function finish(){
   ex.push('🛏️ 病人穩定度最低 '+Math.round(S.stabLow)+'%');
   ex.push('🧰 裝備 '+(S.equipOk?'揀啱':'揀錯')+' · 小測 '+(S.quizOk?'答啱':'答錯'));
   if(FUN.on) ex.push('🎉 歡樂分 '+FUN.score.toLocaleString());
+  if(REAL.on) ex.push('💼 今更完成 '+REAL.jobs+' 單 · 收入 $'+REAL.shift.toLocaleString()+' · 總收入 $'+REAL.cash.toLocaleString());
   if(S.yieldPass) ex.push('🚑 順利越過讓路車 '+S.yieldPass+' 架'); if((S.yieldPass||0)>=5) ach('yield');
   $('rNote').innerHTML=(S.lives===5?'完美！全程冇犯錯。':'扣咗 '+(5-S.lives)+' 粒：'+S.log.join('、'))+'<br><small>'+ex.join(' · ')+'</small>';
   $('rAch').innerHTML=S.newAch.length?'<b>🏆 新成就：</b>'+S.newAch.map(a=>ACH[a].name).join('、'):'';
@@ -1809,7 +2718,7 @@ $('bH').addEventListener('click',()=>{ if(!VSPEC.siren){ horn(); return; } siren
 $('rAgain').onclick=()=>{ stopFireworks(); S.gm==='cpr'?startCPR(CP.mode,CP.breaths):S.gm==='taxi'?startTaxi():S.gm==='chase'?startChase():startCase(S.lvl); }; $('rNext').onclick=()=>{ stopFireworks(); startCase(S.lvl+1); }; $('rMenu').onclick=()=>{ stopFireworks(); show('result',false);toMenu();};
 $('oAgain').onclick=()=>S.gm==='taxi'?startTaxi():S.gm==='chase'?startChase():startCase(S.lvl); $('oMenu').onclick=()=>{show('over',false);toMenu();};
 $('bMenu').onclick=()=>{ sirenSet(false); toMenu(); };
-function toMenu(){ chModeExit(); clearEvents(); setTOD('day'); show('stabBox',false); show('quiz',false); S.quizOpen=false; S.sirenMuted=false; S.mode='menu'; resetActors(); ring.visible=beacon.visible=arrow.visible=false; if(routeMesh) routeMesh.visible=false; caption(null); show('hudWrap',false); renderMenu(); show('menu',true); }
+function toMenu(){ realBegin(false); S.realPick=false; chModeExit(); clearEvents(); setTOD('day'); show('stabBox',false); show('quiz',false); S.quizOpen=false; S.sirenMuted=false; S.mode='menu'; resetActors(); ring.visible=beacon.visible=arrow.visible=false; if(routeMesh) routeMesh.visible=false; caption(null); show('hudWrap',false); renderMenu(); show('menu',true); }
 
 /* ---------- 聲音：警號（撳一下開／關）、出車鐘聲 ---------- */
 let actx=null, osc=null, gain=null, sirenTimer=null;
@@ -1871,7 +2780,7 @@ function hitBuilding(x,z,a){ const ux=Math.sin(a),uz=Math.cos(a), rx=uz, rz=-ux;
   if(ELEV(x,z)>2) return false; const mask=(cellAt(x,z)&1)?2:6;
   for(const o0 of [-3,-1,1,3]) for(const s0 of [-1.1,1.1]){ const o=o0*VSPEC.kl, s=s0*VSPEC.kw; if(cellAt(x+ux*o+rx*s,z+uz*o+rz*s)&mask) return true; } return false; }
 function vib(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){} }
-function bump(why){ const now=performance.now()/1000; S.collided=true; if(now-(S.lastShake||0)>0.4){ S.lastShake=now; S.shake=0.45; vib(60); } if(now-S.lastHit>2.5){ S.collisions++; S.lastHit=now; loseLife(why,why+'！'); } }
+function bump(why){ const now=performance.now()/1000; S.collided=true; if(REAL.on) REAL.stress+=12; if(now-(S.lastShake||0)>0.4){ S.lastShake=now; S.shake=0.45; vib(60); } if(now-S.lastHit>2.5){ S.collisions++; S.lastHit=now; loseLife(why,why+'！'); } }
 
 /* ---------- 主迴圈 ---------- */
 function clampCam(want,look){
@@ -1888,6 +2797,7 @@ let FOV0=55; function resize(){ const w=innerWidth,h=innerHeight; R.setSize(w,h)
 addEventListener('resize',resize); resize();
 function tick(){
   let dt=Math.min(0.05,clock.getDelta()); const t=clock.elapsedTime; const c=S.car, U=amb.userData; dt=funTime(dt);   // 歡樂模式慢鏡
+  if(S.mode==='map'){ if(REAL.on) realRender(t); else R.render(scene,cam); requestAnimationFrame(tick); return; }   // 大地圖：暫停
   // 閃燈：出勤期間長開
   const on=Math.floor(t*5)%2===0, lit=S.siren; // 閃燈跟警號一齊開關
   CURL.forEach((b,i)=>b.material.emissive.setHex(lit&&((i%2===0)===on)?(b.userData.on||0x1550ff):0)); U.pB.intensity=lit&&on?1.4:0; U.pR.intensity=lit&&!on?1.4:0;
@@ -1923,11 +2833,11 @@ function tick(){
     S.routeT+=dt; if(S.gm!=='chase'&&S.gm!=='free'){ const pr=S.route&&routeProj(); if((pr&&pr.d>11&&S.routeT>0.4)||S.routeT>8){ S.routeT=0; refreshRoute(); } }
     const d=Math.hypot(c.x-S.target[0],c.z-S.target[1]);
     $('hDist').textContent=d>1000?(d/1000).toFixed(1)+' 公里':Math.round(d)+' 米';
-    if(S.gm==='ems'){ legTimer(); dashTick(dt); }
+    if(S.gm==='ems'&&S.step!==6){ legTimer(); dashTick(dt); } else if(S.step===6) $('hTime').textContent='—';
     if(S.route){ const n=d<22?S.target:lookAhead(18); const want=Math.atan2(n[0]-c.x,n[1]-c.z);
       if(S.arrowA==null) S.arrowA=want; S.arrowA+=(((want-S.arrowA)%(Math.PI*2)+Math.PI*3)%(Math.PI*2)-Math.PI)*Math.min(1,dt*7);
       arrow.position.set(c.x,7.8+ELEV(c.x,c.z)+Math.sin(t*4)*0.25,c.z); arrow.rotation.y=S.arrowA; }
-    if(S.gm==='taxi') taxiTick(dt,d); else if(S.gm==='chase') chaseTick(dt); else if(S.gm==='free') freeTick(dt,t); else if(d<7.5){ S.step===1?arriveScene():arriveHospital(); }
+    if(S.gm==='taxi') taxiTick(dt,d); else if(S.gm==='chase') chaseTick(dt); else if(S.gm==='free') freeTick(dt,t); else if(d<7.5){ S.step===1?arriveScene():S.step===6?realAtDepot():arriveHospital(); }
   }
   groundPose(amb,c.x,0.12,c.z,c.a,VSPEC.kl*6);
   ring.scale.setScalar(1+Math.sin(t*4)*0.06);
@@ -2003,7 +2913,7 @@ function tick(){
     p.m.position.set(p.pos[0],0.15,p.pos[1]);
   }
   ANI.tick(dt,t);   // 城市動物
-  funTick(dt,t);
+  funTick(dt,t); realTick(dt);
   if(NEON) NEON.tick(t); busWaitTick(dt);
   gfxWatch(dt);
   /* --- 到場／醫院動畫 --- */
@@ -2031,13 +2941,13 @@ function tick(){
     else S.camYaw+=dYaw*Math.min(1,dt*4.5);
     camDragTick(dt); const D=S.camDrag, yaw=S.camYaw+D.yaw;
     S.hwK=(S.hwK||0)+(((ANI.hw()&&S.leftDepot&&!(S.gm==='free'&&FRE.onFoot))?1:0)-(S.hwK||0))*Math.min(1,dt*1.2); const hk=S.hwK;   // 高速公路鏡頭：低啲、望遠啲，見到天空
-    const fs=(S.gm==='free'&&FRE.onFoot)?0.5:1, back=(portrait?19:16)*fs*(1-D.pitch*0.25), up=(portrait?14:10.5)*fs*(1+D.pitch)*(1-0.42*hk);
+    const rk=REAL.on?1:0, fs=(S.gm==='free'&&FRE.onFoot)?0.5:1, back=(portrait?19:16)*fs*(1-D.pitch*0.25)*(rk?0.8:1), up=(portrait?14:10.5)*fs*(1+D.pitch)*(1-0.42*hk)*(rk?0.48:1);   // 寫實模式：低鏡頭、貼車
     const eh=ELEV(c.x,c.z);
     if(inBay){ const R=16+(back-16)*prog, W=new THREE.Vector3(c.x-Math.sin(yaw)*R,5.5+(up-5.5)*prog,c.z-Math.cos(yaw)*R); const sw=(W.x-DP[0])*hx+(W.z-DP[1])*hz;
       if(sw<9.5){ W.x+=hx*(9.5-sw); W.z+=hz*(9.5-sw); W.y=Math.max(W.y,10); }   // 鏡頭唔入車房：最多退到門口上方
       cam.position.lerp(W,Math.min(1,dt*8)); camLook.lerp(new THREE.Vector3(c.x+Math.sin(c.a)*6*prog,1.6,c.z+Math.cos(c.a)*6*prog),Math.min(1,dt*9)); }
     else { const nearDepot=S.depotCam&&S.step===1&&sC<45&&Math.abs(latC)<30; const CW=new THREE.Vector3(c.x-Math.sin(yaw)*back,up+eh,c.z-Math.cos(yaw)*back); if(nearDepot){ const sw=(CW.x-DP[0])*hx+(CW.z-DP[1])*hz; if(sw<9.5){ CW.x+=hx*(9.5-sw); CW.z+=hz*(9.5-sw); } } cam.position.lerp(nearDepot?CW:clampCam(CW,new THREE.Vector3(c.x,0,c.z)),Math.min(1,dt*(D.on||S.swingT>0?12:6)));
-    camLook.lerp(new THREE.Vector3(c.x+Math.sin(yaw)*(6+34*hk),1.5+4*hk+eh,c.z+Math.cos(yaw)*(6+34*hk)),Math.min(1,dt*9)); }
+    camLook.lerp(new THREE.Vector3(c.x+Math.sin(yaw)*(6+34*hk+(REAL.on?10:0)),1.5+4*hk+eh+(REAL.on?1.4:0),c.z+Math.cos(yaw)*(6+34*hk+(REAL.on?10:0))),Math.min(1,dt*9)); }
   } else if(S.mode==='seq'||S.mode==='hseq'||S.mode==='result'){
     const P=S.mode==='hseq'?AE.door:(S.kase.loc?S.kase.loc.patient:[c.x+Math.sin(c.a)*8,c.z+Math.cos(c.a)*8]); const rear=[c.x-Math.sin(c.a)*4,c.z-Math.cos(c.a)*4];
     const mx=(rear[0]+P[0])/2, mz=(rear[1]+P[1])/2; let dx=mx-P[0], dz=mz-P[1]; const L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
@@ -2055,10 +2965,10 @@ function tick(){
   if((S.pkT=(S.pkT||0)+1)%15===0){ const px=cam.position.x, pz=cam.position.z; for(const c of PARKM){ const dx=c.position.x-px, dz=c.position.z-pz; c.visible=dx*dx+dz*dz<28900; } }
   // 速度感：揸快時視野變闊、畫面邊有速度線；撞車時鏡頭震一震
   { const sp=S.mode==='drive'?Math.abs(S.car.v)/Math.max(10,VSPEC.vmax):0, red=matchMedia('(prefers-reduced-motion: reduce)').matches;
-    const want=FOV0+(red?0:sp*sp*12); if(Math.abs(cam.fov-want)>0.05){ cam.fov+=(want-cam.fov)*Math.min(1,dt*3); cam.updateProjectionMatrix(); }
+    const want=(REAL.on?Math.min(FOV0,58):FOV0)+(red?0:sp*sp*12); if(Math.abs(cam.fov-want)>0.05){ cam.fov+=(want-cam.fov)*Math.min(1,dt*3); cam.updateProjectionMatrix(); }
     const so=red?0:Math.max(0,(sp-0.62)/0.38); const fx=$('speedfx'); if(fx){ fx.style.opacity=(so*0.75).toFixed(2); if(so>0) fx.style.transform='rotate('+((t*37)%3)+'deg) scale(1.15)'; }
     if(S.shake>0&&!red){ S.shake=Math.max(0,S.shake-dt); const k=S.shake*1.6; cam.position.x+=(Math.random()-0.5)*k; cam.position.y+=(Math.random()-0.5)*k; } }
-  R.render(scene,cam); requestAnimationFrame(tick);
+  if(REAL.on) realRender(t); else R.render(scene,cam); requestAnimationFrame(tick);
 }
 /* ---------- 到場：揀裝備、急救小測（各一題，錯就扣一粒） ---------- */
 function openChoice(kind){ S.quizOpen=true; sirenMute(true); S.qKind=kind; caption(null); const Q=kind==='equip'?S.kase.equip:kind==='triage'?S.kase.triage:S.kase.quiz[0]; const n=Q.o.length;
@@ -2335,9 +3245,9 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
   document.querySelectorAll('#tabs button').forEach(b=>{ b.setAttribute('aria-selected',b.dataset.t===tab); b.onclick=()=>renderMenu(b.dataset.t); });
   const best=bestStars(), el=(tag,cls,txt)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; };
   if(S.unlockMsg){ S.unlockMsg=false; B.append(el('p','ach-new','🔓 已解鎖全部關卡、知識卡同車款！')); }
-  if(tab==='levels'){ S.menuMode=S.menuMode||store.get('menuMode',REGION==='st'?'st':'ems'); if((S.menuMode==='st')!==(REGION==='st')) S.menuMode=REGION==='st'?'st':'ems';
-    const MODES=[['ems','🚑','救護任務',true],['taxi','🚕','的士接客',true],['chase','🚓','追逐模式',true],['free','🚶','自由探索',true],['cpr','❤️','CPR（測試）',true],['st','🏥','救護任務（沙田）',true]];
-    const mr=el('div','modes'); MODES.forEach(([id,ic,nm,on])=>{ const b=el('button','mode'+(S.menuMode===id?' on':'')); b.disabled=!on; b.append(el('span','mi',ic),el('b',null,nm),el('small',null,on?'':'即將推出')); b.onclick=()=>{ const need=id==='st'?'st':'tm'; if(need!==REGION){ store.set('region',need); store.set('menuMode',id); B.innerHTML='<p style="text-align:center;padding:30px 0">🗺️ 載入'+(need==='st'?'沙田':'屯門')+'地圖中……</p>'; setTimeout(()=>location.reload(),60); return; } S.menuMode=id; store.set('menuMode',id); renderMenu('levels'); }; mr.append(b); }); B.append(mr);
+  if(tab==='levels'){ S.menuMode=S.menuMode||store.get('menuMode',REGION==='st'?'st':'ems'); if(S.menuMode!=='real'&&(S.menuMode==='st')!==(REGION==='st')) S.menuMode=REGION==='st'?'st':'ems';
+    const MODES=[['ems','🚑','救護任務',true],['real','🎬','寫實模式',true],['taxi','🚕','的士接客',true],['chase','🚓','追逐模式',true],['free','🚶','自由探索',true],['cpr','❤️','CPR（測試）',true],['st','🏥','救護任務（沙田）',true]];
+    const mr=el('div','modes'); MODES.forEach(([id,ic,nm,on])=>{ const b=el('button','mode'+(S.menuMode===id?' on':'')); b.disabled=!on; b.append(el('span','mi',ic),el('b',null,nm),el('small',null,on?'':'即將推出')); b.onclick=()=>{ const need=id==='st'?'st':id==='real'?REGION:'tm'; if(need!==REGION){ store.set('region',need); store.set('menuMode',id); B.innerHTML='<p style="text-align:center;padding:30px 0">🗺️ 載入'+(need==='st'?'沙田':'屯門')+'地圖中……</p>'; setTimeout(()=>location.reload(),60); return; } S.menuMode=id; store.set('menuMode',id); renderMenu('levels'); }; mr.append(b); }); B.append(mr);
     if(S.menuMode==='taxi'){ B.append(el('p',null,'60 秒內不停接客送客！停喺乘客旁邊就上車，跟橙色導航線送到目的地。'));
       const lg=el('div','txleg'); [['o','橙色','近程','$10','+5 秒'],['y','黃色','中程','$25','+8 秒'],['g','綠色','遠程','$50','+12 秒']].forEach(([k,n,dd,m,s])=>{ const r=el('div'); const dot=el('span','dot'); dot.style.background=TX.cls[k].css; r.append(dot,el('b',null,n+' '+dd),el('span',null,m+' · '+s)); lg.append(r); }); B.append(lg);
       B.append(el('p',null,'提早送到有貼士。撞車、撞人、衝紅燈都冇罰，只會慢落嚟。'));
@@ -2359,12 +3269,13 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
       B.append(el('p',null,'使用車款：'+L.name+'（喺「車款」分頁可以換）'));
       const cb=store.get('chaseBest',{st:0,s:0}); B.append(el('p','txbest','最佳紀錄：'+(cb.st?cb.st+' 粒心心逃脫':cb.s?'撐 '+cb.s+' 秒':'未有')));
       const go=el('button','go','🚓 開始追逐'); go.style.background='#1f4fbf'; go.onclick=()=>startChase(); B.append(go); return; }
+    if(S.menuMode==='real') B.append(el('p','realIntro','🎬 寫實模式：電影感黃昏光影、光暈同調色、低鏡頭跟車，加上派遣接 Call（RES 接受／REJ 拒絕）、圓形小地圖、狀態條、收入同時鐘。用嘅係'+(REGION==='st'?'沙田':'屯門')+'嘅關卡（要較新嘅手機）。'));
     B.append(el('p',null,REGION==='st'?'沙田區：由沙田或者田心救護站出車，到場處理，再送去威爾斯親王醫院急症室。完成一關解鎖下一關：':'由屯門救護站出車，到場處理，再送去屯門醫院急症室。完成一關解鎖下一關：'));
     const box=el('div'); box.id='cases'; LEVELS.forEach((lv,i)=>{ const k=caseOf(lv), lock=!unlockedAll()&&i>0&&!isDone(LEVELS[i-1].id), st=best[lv.id]||0;
       const b=el('button','case'+(lock?' locked':'')); b.disabled=lock;
       b.append(el('span','pl','第 '+(i+1)+' 關 · '+lv.todName+(lv.works?' · 修路':'')+(lv.jam?' · 塞車':'')), el('b',null,(lock?'🔒 ':'')+k.place+'：'+k.title), el('span','st','♥'.repeat(st)+'♡'.repeat(5-st)));
       if(lv.support&&lv.support.length) b.append(el('span','sup',supTags(lv).join(' · ')));
-      b.onclick=()=>startCase(i); box.append(b); }); B.append(box);
+      b.onclick=()=>{ S.realPick=S.menuMode==='real'; startCase(i); }; box.append(b); }); B.append(box);
     const r=el('div','rules'); r.innerHTML='<b>點玩：</b>◀ ▶ 轉彎，按住「油」前進，「倒」倒車；撳「警號」開閃燈同警號，其他車會讓路，可以安全過紅燈。<br><b>限時：</b>準時到 +1 ❤，超時 −1 ❤。<br><b>心心：</b>5 粒；撞車、撞樓、撞人、冇警號衝紅燈、揀錯裝備、答錯小測、病人穩定度跌晒，每次 −1 ❤，扣晒遊戲結束。<br><b>送院：</b>轉彎同煞車要慢慢嚟，保持病人穩定。'; B.append(r); }
   if(tab==='cards'){ B.append(el('p',null,'完成關卡就收集到嗰個個案嘅急救知識卡：'));
     LEVELS.forEach((lv,i)=>{ const k=caseOf(lv), d=el('div','kcard'+(isDone(lv.id)||unlockedAll()?'':' lock'));
@@ -3463,9 +4374,174 @@ addEventListener('keydown',e=>{ if(e.key==='Shift') S.hold.N=true; }); addEventL
 window.__FUN=FUN;
 window.__funHitCar=funHitCar; window.__funHitPed=funHitPed;
 
+/* ---------- 🎬 寫實模式：黃昏光影＋光暈（bloom）＋電影調色、低鏡頭、GTA 式介面（派遣接 Call、圓形小地圖、狀態條、錢、時間） ----------
+   只係救護任務嘅另一種玩法外觀；關卡、路線同計分照用救護任務。 */
+TOD.real={sky:0x2c2f52,hemi:[0xb4a6d6,0x3b3046,0.5],sun:[0xff9a5a,0.55],fog:[110,430],cloud:0x7a6f9a,night:true};
+const REAL={on:false,comp:null,stress:0,cash:store.get('realCash',0),clock:0,dispatch:false};
+// 天空：由地平線橙粉色漸變到頂部深藍（只喺寫實模式）
+const realSky=(()=>{ const g=new THREE.SphereGeometry(400,32,16), col=[], P=g.attributes.position, c=new THREE.Color();
+  const H=new THREE.Color(0xff9a6a), M=new THREE.Color(0x8a6aa8), T=new THREE.Color(0x1a2048);
+  for(let i=0;i<P.count;i++){ const y=P.getY(i)/400; if(y<0.04) c.copy(H).lerp(M,Math.max(0,y)/0.04); else if(y<0.3) c.copy(M).lerp(T,(y-0.04)/0.26); else c.copy(T); if(y<0) c.copy(H).multiplyScalar(0.6); col.push(c.r,c.g,c.b); }
+  g.setAttribute('color',new THREE.Float32BufferAttribute(col,3));
+  const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide,fog:false,depthWrite:false})); m.renderOrder=-10; m.visible=false; m.frustumCulled=false; scene.add(m); return m; })();
+// 調色：邊位少少色散、對比、暗位偏藍／亮位偏橙、飽和度、暗角、菲林顆粒
+const GRADE={uniforms:{tDiffuse:{value:null},time:{value:0}},
+  vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+  fragmentShader:`uniform sampler2D tDiffuse; uniform float time; varying vec2 vUv;
+    void main(){ vec2 d=vUv-0.5; float r=dot(d,d); float ca=0.0025*r;
+      vec3 col=vec3(texture2D(tDiffuse,vUv+d*ca).r,texture2D(tDiffuse,vUv).g,texture2D(tDiffuse,vUv-d*ca).b);
+      col*=1.03; col=(col-0.5)*1.05+0.5;
+      float l=dot(col,vec3(0.299,0.587,0.114));
+      col=mix(col,col*vec3(0.9,0.95,1.1),(1.0-l)*0.22); col=mix(col,col*vec3(1.08,1.0,0.9),l*0.15);
+      col=mix(vec3(l),col,1.06);
+      col*=1.0-smoothstep(0.2,0.7,r*1.5)*0.28;
+      float n=fract(sin(dot(vUv*vec2(12.9898,78.233)+time,vec2(1.0)))*43758.5453); col+=(n-0.5)*0.012;
+      gl_FragColor=vec4(clamp(col,0.0,1.0),1.0); }`};
+function realComposer(){ if(REAL.comp) return REAL.comp; const w=innerWidth, h=innerHeight;
+  const C=new THREE.EffectComposer(R); C.addPass(new THREE.RenderPass(scene,cam));
+  const bloom=new THREE.UnrealBloomPass(new THREE.Vector2(w/2,h/2),0.42,0.4,0.9); C.addPass(bloom);
+  const gp=new THREE.ShaderPass(GRADE); C.addPass(gp); REAL.gp=gp; REAL.bloom=bloom;
+  addEventListener('resize',()=>{ C.setSize(innerWidth,innerHeight); bloom.setSize(innerWidth/2,innerHeight/2); }); return REAL.comp=C; }
+function realRender(t){ if(!REAL.fx){ R.render(scene,cam); return; } REAL.gp.uniforms.time.value=t%10; realSky.position.copy(cam.position); REAL.comp.render(); }
+
+/* ----- 介面 ----- */
+const RH=(()=>{ const d=document.createElement('div'); d.id='rHud'; d.innerHTML=`
+  <div id="rMis"><div class="mt"><div class="ic">🚑</div><div><small id="rmS">緊急輔助醫療救護服務</small><b id="rmT">--</b><span id="rmP">--</span><span class="row">距離 <b id="rmD">--</b> · <span id="rmLl">限時</span> <b id="rmL">--</b></span></div></div>
+    <div id="rBars"><div class="rb"><i>❤️</i><span>病人狀況</span><em id="rb1t">穩定</em><div><u id="rb1"></u></div></div>
+    <div class="rb"><i>⏱️</i><span>剩餘時間</span><em id="rb2t">--</em><div><u id="rb2"></u></div></div>
+    <div class="rb"><i>🔥</i><span>壓力值</span><em id="rb3t">低</em><div><u id="rb3"></u></div></div></div></div>
+  <div id="rDisp"><div class="hd"><div class="ic blue"><svg viewBox="-12 -12 24 24" width="28" height="28"><g fill="#fff"><rect x="-3" y="-11" width="6" height="22" rx="1"/><rect x="-3" y="-11" width="6" height="22" rx="1" transform="rotate(60)"/><rect x="-3" y="-11" width="6" height="22" rx="1" transform="rotate(-60)"/></g><path d="M0-7V7" stroke="#1e5bd8" stroke-width="1.6"/></svg></div><div><b>緊急輔助醫療救護服務</b><span>接 CALL</span></div><div class="ph">📞</div></div>
+    <p class="who" id="rdW">A188 救護車<br>收到控制中心指示</p><p class="cs" id="rdC">--</p><p class="pl" id="rdP">--</p>
+    <div class="bt"><button id="rRes">RES</button><button id="rRej">REJ</button></div><div class="bl"><span>接受</span><span>拒絕</span></div></div>
+  <div id="rTR"><div id="rlStars"></div><div id="rCash">$0</div><div id="rClock">時間：19:30</div><div id="rTag"><b>AMBULANCE ${CALLSIGN}</b><span>${REGION==='st'?'SHA TIN':'TUEN MUN'}</span><em id="rAvm"></em></div></div>`;
+  document.body.append(d);
+  const st=document.createElement('style'); st.textContent=`#rHud{display:none}body.real #rHud{display:block}
+  body.real .top .card,body.real #stabBox,body.real #callBox{display:none!important}
+  body.real #mini{position:fixed;left:12px;bottom:calc(132px + env(safe-area-inset-bottom));width:118px;height:118px;border:4px solid #2ea44f;border-right-color:#2563eb;border-bottom-color:#2563eb;box-shadow:0 4px 18px #0008;z-index:6}
+  #rHud>div{position:fixed;z-index:6;color:#fff;font-family:inherit;text-shadow:0 1px 2px #000a}
+  #rMis{left:10px;top:calc(10px + env(safe-area-inset-top));background:#141821d9;border-radius:10px;padding:7px 10px 7px 7px;max-width:min(62vw,330px);backdrop-filter:blur(3px)}
+  #rMis .mt{display:flex;gap:8px}
+  #rMis .ic,#rDisp .ic{width:38px;height:38px;flex:none;border-radius:8px;background:#c62828;display:grid;place-items:center;font-size:20px}
+  #rMis small{display:block;font-size:10px;color:#ffb4b4;letter-spacing:1px}#rMis b{display:block;font-size:14px}#rMis span{display:block;font-size:12px;color:#d9dde3}#rMis .row{font-size:11px;margin-top:2px}#rMis .row b,#rMis .row span{display:inline;font-size:12px}#rMis .row b{color:#ffd166}
+  #rMis.avm .ic{background:#2e7d32}#rMis.avm small{color:#a5f3b5}
+  #rBars{display:flex;flex-direction:column;gap:3px;margin-top:6px;transition:opacity .3s,max-height .3s;max-height:90px;overflow:hidden}#rBars.hide{opacity:0;max-height:0;margin-top:0}
+  .rb{display:grid;grid-template-columns:18px auto 32px 1fr;align-items:center;gap:4px;font-size:11px}
+  .rb i{font-style:normal}.rb span{white-space:nowrap}.rb em{font-style:normal;font-weight:800;color:#ff8a65}.rb div{height:8px;min-width:50px;border:1.5px solid #ff6b4a;border-radius:5px;overflow:hidden}.rb u{display:block;height:100%;width:50%;background:linear-gradient(90deg,#ff3b2f,#ff8a3d)}
+  #rDisp{left:10px;right:10px;top:calc(76px + env(safe-area-inset-top));max-width:340px;background:#141821ee;border-radius:12px;padding:10px;display:none}
+  #rDisp.on{display:block;animation:rIn .35s ease-out}@keyframes rIn{from{transform:translateX(-30px);opacity:0}}
+  #rDisp .hd{display:flex;gap:9px;align-items:center}#rDisp .ic.blue{background:#1e5bd8;font-size:24px}#rDisp .hd b{display:block;font-size:17px;color:#ffcf9a}#rDisp .hd span{font-size:16px;color:#ffcf9a}
+  #rDisp .ph{margin-left:auto;font-size:24px;animation:rRing .5s infinite alternate}@keyframes rRing{to{transform:rotate(-18deg) scale(1.12)}}
+  #rDisp p{margin:6px 2px;font-size:15px;line-height:1.35}#rDisp .cs{font-size:18px;font-weight:800}#rDisp .pl{font-size:16px;color:#d9dde3}
+  #rDisp .bt{display:flex;gap:10px;margin-top:8px}#rDisp .bt button{flex:1;font:inherit;font-size:22px;font-weight:800;color:#fff;border-radius:6px;padding:8px 0;border:2px solid #fff6}
+  #rRes{background:#237a3b}#rRej{background:#a12a2a}#rDisp .bl{display:flex;gap:10px}#rDisp .bl span{flex:1;text-align:center;font-size:11px;color:#bbb}
+  #rTR{right:10px;top:calc(118px + env(safe-area-inset-top));text-align:right}
+  #rlStars{color:#2f6fe8;display:flex;gap:3px;justify-content:flex-end;filter:drop-shadow(0 1px 2px #000a)}#rlStars span{display:block;line-height:0}#rlStars .off{color:#ffffff30;opacity:.5}
+  #rCash,#rTag{display:none!important}#rCash{font-size:24px;font-weight:900}#rClock{display:inline-block;margin-top:4px;background:#141821cc;border-radius:6px;padding:3px 9px;font-size:16px;font-weight:700}
+  body.real #toast{top:auto;bottom:calc(222px + env(safe-area-inset-bottom));background:none;color:#fff;font-size:19px;font-weight:900;text-shadow:0 0 3px #000,0 2px 4px #000,0 0 10px #000;max-width:92vw;text-align:center;white-space:normal}
+  body.real #cap{bottom:calc(250px + env(safe-area-inset-bottom))}
+  #rTR{top:calc(10px + env(safe-area-inset-top))}
+  #rTag{margin-top:4px;font-weight:900;letter-spacing:1px}#rTag b{display:block;font-size:12px}#rTag span{display:block;font-size:10px;color:#cfd4da}#rTag em{display:block;font-style:normal;font-size:11px;font-weight:900;color:#7dff9a}#rTag.hide{display:none}
+  body.real #bMenu{top:calc(150px + env(safe-area-inset-top))!important}body.real #bAEB{top:calc(184px + env(safe-area-inset-top))!important}
+  @media (orientation:portrait){ #rMis{max-width:56vw}
+    body.real #toast{bottom:auto;top:calc(172px + env(safe-area-inset-top));font-size:14px;line-height:1.3;max-width:94vw} #rDisp{top:calc(84px + env(safe-area-inset-top))} }`; document.head.append(st);
+  return d; })();
+const rq_=id=>document.getElementById(id);
+function realStars(){ rq_('rlStars').innerHTML=[0,1,2,3,4].map(i=>'<span class="'+(i<S.lives?'':'off')+'"><svg viewBox="-12 -12 24 24" width="22" height="22"><g fill="currentColor" stroke="#fff" stroke-width="1.2"><rect x="-3" y="-11" width="6" height="22" rx="1"/><rect x="-3" y="-11" width="6" height="22" rx="1" transform="rotate(60)"/><rect x="-3" y="-11" width="6" height="22" rx="1" transform="rotate(-60)"/></g><path d="M0-7V7" stroke="#fff" stroke-width="1.4"/></svg></span>').join(''); }
+function realCash(){ rq_('rCash').textContent='$'+REAL.cash.toLocaleString(); }
+/* ----- 開／關 ----- */
+function realBegin(on){ REAL.on=!!on; document.body.classList.toggle('real',REAL.on); realSky.visible=false; REAL.fx=false;
+  if(!REAL.on){ REAL.dispatch=false; REAL.avm=false; REAL.pend=null; rq_('rDisp').classList.remove('on'); cam.fov=FOV0; cam.updateProjectionMatrix(); return; }
+  realComposer(); REAL.stress=0; REAL.jobs=0; REAL.shift=0; REAL.avm=false; REAL.jobAt=null; REAL.pend=null; REAL.ending=false; REAL.dep=S.level.depot; rq_('rMis').classList.remove('avm'); rq_('rmS').textContent='緊急輔助醫療救護服務'; REAL.clock={day:14*60+20,dusk:19*60+28,night:2*60+40,rain:4*60}[S.level.tod]??19*60+28;
+  REAL.fx=S.level.tod!=='day'; realSky.visible=S.level.tod==='dusk';   // 日間照用日間；黃昏、夜晚、落雨先加光暈同調色
+  if(S.level.tod==='dusk') setTOD('real');
+  realStars(); realCash();
+  const k=S.kase; rq_('rdC').textContent=k.title; rq_('rdP').textContent=k.place; rq_('rdW').innerHTML='A188 救護車<br>收到控制中心指示';
+  rq_('rDisp').classList.add('on'); REAL.dispatch=true; S.mode='dispatch'; vib([80,60,80]); }
+rq_('rRes').onclick=()=>{ if(!REAL.dispatch) return; REAL.dispatch=false; rq_('rDisp').classList.remove('on');
+  if(REAL.pend!=null){ const i=REAL.pend; REAL.pend=null; realNewJob(i); return; }
+  S.mode='drive'; S.legStart=performance.now()/1000; toast('控制中心：'+S.kase.call); };
+rq_('rRej').onclick=()=>{ if(!REAL.dispatch) return; REAL.dispatch=false; rq_('rDisp').classList.remove('on');
+  if(REAL.pend!=null){ REAL.pend=null; toast('已拒絕 · 繼續 AVM 返'+DEPOT_NAME()); realAVMHud(); return; }
+  toMenu(); };
+const DEPOT_NAME=()=>{ const k=REAL.dep; return REGION==='st'?(k==='ts'?'田心救護站':'沙田救護站'):(k==='yl'?'元朗救護站':k==='tsw'?'天水圍救護站':'屯門救護站'); };
+/* ----- 送院後：AVM（可供調派）返站，途中 30% 機會再接單 ----- */
+function depotGate(){ const d=DEPOT.pos, fx=Math.sin(DEPOT.a), fz=Math.cos(DEPOT.a); for(let k=4;k<70;k+=2){ const px=d[0]+fx*k, pz=d[1]+fz*k; if(cellAt(px,pz)&1) return [px+fx*4,pz+fz*4]; } return d.slice(); }
+function realAVMHud(){ hud('AVM · 返'+DEPOT_NAME(),'⑥ 可供調派 · 跟住橙色路線返站'); rq_('rmS').textContent='AVM · 可供調派'; rq_('rmT').textContent='返回'+DEPOT_NAME(); rq_('rMis').classList.add('avm'); }
+function realAVM(){   // 由 finish() 截住：交接完成 → AVM
+  S.stars=S.lives; const pay=realPay(); REAL.jobs++; REAL.shift+=pay; REAL.avm=true; REAL.avmT=0;
+  REAL.jobAt=Math.random()<0.9?6+Math.random()*22:null;   // 90%：返站途中再有新任務
+  sirenSet(false); caption(null); clearEvents(); show('stabBox',false); patient.visible=false; bystander.visible=false;
+  S.mode='drive'; S.step=6; S.leftDepot=true; S.depotCam=true; S.legLimit=1e6; S.legStart=performance.now()/1000;
+  setTarget(depotGate()); refreshRoute(true); if(routeMesh) routeMesh.visible=true;
+  realAVMHud(); toast('交接完成 +$'+pay.toLocaleString()+' · AVM 返站');
+}
+function realAtDepot(){ S.car.v=0; REAL.avm=false; REAL.ending=true; rq_('rMis').classList.remove('avm'); ring.visible=beacon.visible=arrow.visible=false; if(routeMesh) routeMesh.visible=false; finish(); REAL.ending=false; }
+function realOffer(){   // 控制中心派新單
+  const pool=LEVELS.map((_,i)=>i).filter(i=>i!==S.lvl&&LMK[caseOf(LEVELS[i]).poi]); if(!pool.length) return;
+  const i=pool[Math.floor(Math.random()*pool.length)], k=caseOf(LEVELS[i]); REAL.pend=i;
+  rq_('rdC').textContent=k.title; rq_('rdP').textContent=k.place; rq_('rdW').innerHTML='A188 救護車（AVM）<br>控制中心有新任務';
+  rq_('rDisp').classList.add('on'); REAL.dispatch=true; vib([80,60,80]); alarm(); }
+function realNewJob(i){
+  const lv=LEVELS[i]; S.lvl=i; S.level=lv; const k=caseOf(lv); S.kase=k; k.loc=LMK[k.poi]; const L=k.loc;
+  if(NEON&&L.stop&&L.patient) NEON.rail.cutPath([L.stop,L.patient],3);
+  AE=HOSPS[DEF_H]; S.dest=DEF_H; clearEvents(); REAL.avm=false; rq_('rMis').classList.remove('avm'); rq_('rmS').textContent='緊急輔助醫療救護服務';
+  Object.assign(S,{mode:'drive',step:1,leftDepot:true,depotCam:true,equipOk:false,quizOk:false,triageOk:false,stab:100,stabLow:100,quizOpen:false,qDone:[false,false,!k.triage],qScore:0,qPending:0,dashLeft:lv.dash,dashT:14+Math.random()*10,tScene:0,tHosp:0,t0:performance.now()/1000,overT:false});
+  setupScene(k,lv);
+  patient.visible=true; patient.position.set(L.patient[0],0.3,L.patient[1]); patient.rotation.set(0,Math.random()*6,0);
+  patient.userData.blanket.visible=false; patient.userData.p.position.set(0,0.5,1.2); patient.userData.p.rotation.set(-Math.PI/2,0,0);
+  bystander.visible=true; bystander.position.set(L.patient[0]+2,0.2,L.patient[1]+1.5);
+  setTarget(L.stop); refreshRoute(true); if(routeMesh) routeMesh.visible=true; startLeg(); S.escRoute=null;
+  if(lv.support) launchSupport(lv.support);
+  hud('任務：'+k.place,'① 出車 · '+k.title); sirenSet(true); S.sirenUsed=true; toast('控制中心：'+k.call); }
+/* ----- 每格 ----- */
+function realTick(dt){ if(!REAL.on) return;
+  if(REAL.avm&&S.mode==='drive'&&!REAL.dispatch){ REAL.avmT+=dt; if(REAL.jobAt!=null&&REAL.avmT>REAL.jobAt){ REAL.jobAt=null; realOffer(); } }
+  { const hideB=S.quizOpen||REAL.dispatch||REAL.avm||S.step>=5||S.mode!=='drive'; rq_('rBars').classList.toggle('hide',hideB);
+    rq_('rMis').style.display=REAL.dispatch||S.mode==='map'||S.mode==='result'||S.mode==='over'?'none':'';
+    rq_('rTag').classList.toggle('hide',S.mode==='map'||S.mode==='result'); rq_('rAvm').textContent=REAL.avm?'● AVM':''; }
+  if(S.mode==='drive'){ REAL.clock+=dt; const r=legLeft(); if(r<15) REAL.stress+=dt*5; REAL.stress-=dt*(S.siren?1.6:1); }
+  REAL.stress=Math.max(0,Math.min(100,REAL.stress));
+  if((REAL.ht=(REAL.ht||0)-dt)>0) return; REAL.ht=0.25;
+  rq_('rmT').textContent=REAL.avm?'返回'+DEPOT_NAME():S.kase?S.kase.title:'--'; rq_('rmP').textContent=$('hTitle').textContent; rq_('rmD').textContent=$('hDist').textContent; rq_('rmL').textContent=REAL.avm?'—':$('hTime').textContent; rq_('rmLl').textContent=REAL.avm?'返站':'限時';
+  const m=Math.floor(REAL.clock)%1440; rq_('rClock').textContent='時間：'+String(Math.floor(m/60)).padStart(2,'0')+String(m%60).padStart(2,'0');
+  const st=S.stab??100; rq_('rb1').style.width=st+'%'; rq_('rb1t').textContent=st>70?'穩定':st>40?'一般':'危殆';
+  const lf=S.legLimit?Math.max(0,legLeft())/S.legLimit:1; rq_('rb2').style.width=(lf*100)+'%'; rq_('rb2t').textContent=lf>0.5?'充足':lf>0.2?'緊張':'告急';
+  rq_('rb3').style.width=REAL.stress+'%'; rq_('rb3t').textContent=REAL.stress<35?'低':REAL.stress<70?'中':'高';
+  realStars(); }
+function realPay(){ const pay=S.stars*400+S.onTime*250+(S.collided?0:300); REAL.cash+=pay; store.set('realCash',REAL.cash); realCash(); return pay; }
+/* ----- 撳小地圖：放大地圖 + 暫停 ----- */
+const BIGMAP=(()=>{ const d=document.createElement('div'); d.id='bigMap'; d.innerHTML='<div class="bh"><b>🗺️ 地圖 · 已暫停</b><button id="bmX" aria-label="關閉地圖">✕ 繼續</button></div><canvas id="bmC"></canvas><div class="lg"><span><i style="background:#1f4fbf"></i>救護車</span><span><i style="background:#e8323c"></i>目的地</span><span><i style="background:#ff7a1a"></i>路線</span><span>🏥 醫院</span><span>🚑 救護站</span></div>'; document.body.append(d);
+  const st=document.createElement('style'); st.textContent=`#mini{pointer-events:auto;cursor:zoom-in}
+  #bigMap{position:fixed;inset:0;z-index:60;background:#0b0f16f0;display:none;flex-direction:column;padding:calc(10px + env(safe-area-inset-top)) 10px calc(10px + env(safe-area-inset-bottom));color:#fff;font-family:inherit}
+  #bigMap.on{display:flex}#bigMap .bh{display:flex;align-items:center;gap:10px;margin-bottom:8px}#bigMap .bh b{font-size:17px}
+  #bmX{margin-left:auto;font:inherit;font-size:16px;font-weight:800;color:#fff;background:#237a3b;border:2px solid #fff6;border-radius:8px;padding:8px 16px}
+  #bmC{flex:1;width:100%;min-height:0;border-radius:10px;background:#eef2e8}
+  #bigMap .lg{display:flex;flex-wrap:wrap;gap:12px;font-size:12px;margin-top:8px;color:#d9dde3}#bigMap .lg i{display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:4px}`; document.head.append(st);
+  let t0=0;
+  function draw(){ const cv=rq_('bmC'), dpr=Math.min(2,devicePixelRatio||1), W=cv.clientWidth, H=cv.clientHeight; cv.width=W*dpr; cv.height=H*dpr; const g=cv.getContext('2d'); g.scale(dpr,dpr);
+    const c=S.car, P=[[c.x,c.z]]; if(S.target) P.push(S.target); if(S.route) S.route.pts.forEach(p=>P.push(p)); P.push(DEPOT.pos);
+    let x0=Math.min(...P.map(p=>p[0]))-160, x1=Math.max(...P.map(p=>p[0]))+160, z0=Math.min(...P.map(p=>p[1]))-160, z1=Math.max(...P.map(p=>p[1]))+160;
+    const cx=(x0+x1)/2, cz=(z0+z1)/2, sp=Math.max(600,x1-x0,(z1-z0)*W/H); const s=W/sp;   // 每米幾多 px
+    const T=(x,z)=>[W/2+(x-cx)*s,H/2+(z-cz)*s];
+    g.fillStyle='#eef2e8'; g.fillRect(0,0,W,H); g.imageSmoothingEnabled=true;
+    const [ox,oz]=T(BX0-60,BZ0-60); g.drawImage(MM,ox,oz,MM.width/MMS*s,MM.height/MMS*s);
+    if(S.route&&S.mode!=='seq'){ g.strokeStyle='#ff7a1a'; g.lineWidth=5; g.lineJoin=g.lineCap='round'; g.beginPath(); g.moveTo(...T(c.x,c.z)); S.route.pts.forEach((p,k)=>{ if(k) g.lineTo(...T(p[0],p[1])); }); g.stroke(); }
+    g.font='20px sans-serif'; g.textAlign='center'; g.textBaseline='middle';
+    Object.values(HOSPS).forEach(h=>{ const [a,b]=T(h.door[0],h.door[1]); g.fillText('🏥',a,b); g.font='bold 12px sans-serif'; g.fillStyle='#111'; g.fillText(h.name,a,b+18); g.font='20px sans-serif'; });
+    { const [a,b]=T(DEPOT.pos[0],DEPOT.pos[1]); g.fillText('🚑',a,b); g.font='bold 12px sans-serif'; g.fillStyle='#111'; g.fillText(DEPOT_NAME(),a,b+18); }
+    if(S.target){ const [a,b]=T(S.target[0],S.target[1]); g.fillStyle='#e8323c'; g.strokeStyle='#fff'; g.lineWidth=3; g.beginPath(); g.arc(a,b,9,0,7); g.fill(); g.stroke(); }
+    { const [a,b]=T(c.x,c.z); g.save(); g.translate(a,b); g.rotate(-c.a+Math.PI); g.fillStyle='#1f4fbf'; g.strokeStyle='#fff'; g.lineWidth=2.5; g.beginPath(); g.moveTo(0,-13); g.lineTo(9,9); g.lineTo(0,4); g.lineTo(-9,9); g.closePath(); g.fill(); g.stroke(); g.restore(); }
+  }
+  function open(){ if(S.mode!=='drive'||REAL.dispatch) return; S.mode='map'; t0=performance.now(); S.hold.L=S.hold.R=S.hold.G=S.hold.B=false; d.classList.add('on'); try{ if(actx) actx.suspend(); }catch(e){} requestAnimationFrame(draw); }
+  function close(){ if(S.mode!=='map') return; const p=(performance.now()-t0)/1000; S.legStart+=p; S.t0+=p; S.mode='drive'; d.classList.remove('on'); try{ if(actx) actx.resume(); }catch(e){} clock.getDelta(); }
+  $('mini').addEventListener('click',e=>{ e.stopPropagation(); open(); }); rq_('bmX').onclick=close; d.addEventListener('click',e=>{ if(e.target===d) close(); });
+  addEventListener('keydown',e=>{ if(e.code==='KeyM'&&!e.repeat){ S.mode==='map'?close():open(); } if(e.code==='Escape') close(); });
+  addEventListener('resize',()=>{ if(S.mode==='map') draw(); });
+  return {open,close,draw}; })();
+
 window.__ESC=ESC;
 
 renderMenu(); show('menu',true); tick();
-window.__S=S; window.__hit=hitBuilding; window.__cell=cellAt; window.__NEON=NEON; window.__MAP=MAP; window.__NODES=NODES; window.__setTarget=setTarget; window.__refreshRoute=refreshRoute; window.__AE=()=>AE; window.__DEPOT=()=>DEPOT; window.__setTOD=setTOD; window.__cars=cars; window.__sg=()=>gain&&gain.gain.value; window.__oc=openChoice; window.__veh=applyLivery; window.__LMK=LMK; window.__fwTest=fireworks; window.__R=R; window.__person=person; window.__peds=peds; window.__store=store; window.__scene=scene; window.__cam=cam; window.__startCase=startCase; window.__peds=peds;
+window.__S=S; window.__finish=()=>finish(); window.__REAL=REAL; window.__gate=()=>depotGate(); window.__hit=hitBuilding; window.__cell=cellAt; window.__NEON=NEON; window.__MAP=MAP; window.__NODES=NODES; window.__setTarget=setTarget; window.__refreshRoute=refreshRoute; window.__AE=()=>AE; window.__DEPOT=()=>DEPOT; window.__setTOD=setTOD; window.__cars=cars; window.__sg=()=>gain&&gain.gain.value; window.__oc=openChoice; window.__veh=applyLivery; window.__LMK=LMK; window.__fwTest=fireworks; window.__R=R; window.__person=person; window.__peds=peds; window.__store=store; window.__scene=scene; window.__cam=cam; window.__startCase=startCase; window.__peds=peds;
 
 })();
