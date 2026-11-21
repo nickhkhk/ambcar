@@ -1690,7 +1690,7 @@ LMK.ae=buildHosp('PWH','威爾斯親王醫院',['#eef1f6','#1f5fa8'],['#e8f0fb',
   const trk=add(new THREE.RingGeometry(14,19,40),M(0xc0503a,{r:0.95}),f.g,0,0.36,30,false); trk.rotation.x=-Math.PI/2; trk.scale.set(1.6,1,1);
   const fd=add(new THREE.PlaneGeometry(36,22),M(0x5fae4a,{r:0.95}),f.g,0,0.37,30,false); fd.rotation.x=-Math.PI/2;
   const st=f.rq(-24,2,24,7); boxQ(st,0.3,9,M(0xdfe3e6),M(0x2a7ab8),12,3); addBldQ(st,9);
-  labelPlane('沙田運動場',0,9.6,1.6,Math.PI,'#2a7ab8',16,f.g); MAP.parks.push(f.rq(-35,8,35,56)); }
+  labelPlane('沙田運動場',0,9.6,1.6,Math.PI,'#2a7ab8',16,f.g); MAP.parks.push(f.rq(-35,8,35,56)); LMK.stsport={patient:f.L(-14,-2.2),stop:curbStop(f,-18)}; MAP.poi.stsport=f.L(0,30); }
 // 沙田賽馬會游泳池
 { const f=placeLM(...RP(300,-250),40,30,r=>r.name==='沙田鄉事會路');
   const c=f.rq(-18,2,0,26); boxQ(c,0.3,8,M(0xe6eef2),M(0x2a7ab8),10,3); addBldQ(c,8);
@@ -1699,11 +1699,11 @@ LMK.ae=buildHosp('PWH','威爾斯親王醫院',['#eef1f6','#1f5fa8'],['#e8f0fb',
 // 禾輋廣場
 { const f=placeLM(...RP(400,-380),44,32,r=>r.name==='禾輋街');
   const c=f.rq(-21,2,21,30); boxQ(c,0.3,10,pick(shopMats),podMat,24,4.5); addBldQ(c,10,'plaza'); const t=f.rq(-10,10,10,26); boxQ(t,10,48,housingMats[2],roofMat,8,3);
-  labelPlane('禾輋廣場',0,6,2.1,Math.PI,'#e07a1f',14,f.g); }
+  labelPlane('禾輋廣場',0,6,2.1,Math.PI,'#e07a1f',14,f.g); LMK.stwoche={patient:f.L(-10,-2.2),stop:curbStop(f,-14)}; MAP.poi.stwoche=f.L(0,16); }
 // 沙田大會堂
 { const f=placeLM(...RP(250,240),44,30,r=>r.name==='担杆莆街');
   const c=f.rq(-20,4,20,28); boxQ(c,0.3,13,texMat('sttownh',canvasTex(256,96,(g,w,h)=>{ g.fillStyle='#e9e3d6'; g.fillRect(0,0,w,h); g.fillStyle='#8a6e4b'; for(let x=10;x<w;x+=26) g.fillRect(x,8,8,h-16); })),M(0x8a6e4b),10,3); addBldQ(c,13);
-  labelPlane('沙田大會堂',0,4,0.6,Math.PI,'#8a6e4b',14,f.g); }
+  labelPlane('沙田大會堂',0,4,0.6,Math.PI,'#8a6e4b',14,f.g); LMK.sttownh={patient:f.L(-10,-2.2),stop:curbStop(f,-14)}; MAP.poi.sttownh=f.L(0,16); }
 // 新城市廣場：大型商場，玻璃幕牆、上面有寫字樓
 { const f=placeLM(...RP(230,70),58,42,r=>r.name==='橫壆街');
   const gm=texMat('ntp',canvasTex(256,128,(g,w,h)=>{ g.fillStyle='#cfd8e3'; g.fillRect(0,0,w,h); g.fillStyle='#7fa7c9'; for(let x=6;x<w;x+=22) g.fillRect(x,10,16,h-20); g.fillStyle='#e94e1b'; g.fillRect(0,0,w,8); }));
@@ -1712,7 +1712,7 @@ LMK.ae=buildHosp('PWH','威爾斯親王醫院',['#eef1f6','#1f5fa8'],['#e8f0fb',
 // 沙田站（東鐵綫）
 { const f=placeLM(...RP(-110,70),44,26,r=>r.name==='沙田正街');
   const sm=texMat('ststn',canvasTex(256,96,(g,w,h)=>{ g.fillStyle='#e8eef3'; g.fillRect(0,0,w,h); g.fillStyle='#5eb7e8'; g.fillRect(0,h-18,w,18); g.fillStyle='#a9bfd0'; for(let k=0;k<6;k++) g.fillRect(8+k*41,16,33,44); }));
-  const c=f.rq(-21,3,21,24); boxQ(c,0.3,12,sm,roofMat,16,6); addBldQ(c,12,'station'); labelPlane('沙田站',0,9,2.9,Math.PI,'#3a8fc4',14,f.g); }
+  const c=f.rq(-21,3,21,24); boxQ(c,0.3,12,sm,roofMat,16,6); addBldQ(c,12,'station'); labelPlane('沙田站',0,9,2.9,Math.PI,'#3a8fc4',14,f.g); LMK.ststn={patient:f.L(-10,-2.2),stop:curbStop(f,-14)}; MAP.poi.ststn=f.L(0,14); }
 // 沙田公園：城門河邊大草地、湖、單車徑
 { const f=placeLM(...RP(470,40),64,40,r=>r.name==='源禾路');
   boxQ(f.rq(-32,0,32,40),0,0.32,grassMat,grassMat); const ln=add(new THREE.BoxGeometry(60,0.05,3),M(0xb5523b,{r:0.9}),f.g,0,0.36,34,false);   // 單車徑
@@ -2271,7 +2271,32 @@ CASES.push(
   steps:['救護員問 OPQRST，評估懷疑心源性胸痛','排除禁忌症，給予 ASA','做 12 導程心電圖，盡快送院'],
   quiz:[{q:'以下邊個情況，唔可以俾病人服用 ASA（阿士匹靈）？',o:['病人對 ASA 或 NSAIDs 過敏','病人 58 歲','血壓 146/88'],why:'ASA 禁忌症（SAPHBUS）：唔識吞嚥、< 12 歲、懷孕、對 ASA 或 NSAIDs 過敏、不能控制嘅出血、24 小時內已因今次不適服用、一星期內做過手術；裝有 LVAD 亦唔可以。劑量係 200 mg，只俾一次。'}],
   equip:{q:'懷疑心源性胸痛，救護員應該用咩裝備評估心臟？',o:['📈 12 導程心電圖','🩸 血糖機','💨 Ventolin 噴劑','🦺 頸套同脊椎板'],why:'12 歲或以上有心源性胸痛或不適，可以做 12-Lead ECG；如情況許可，盡量喺給予相應治療後喺現場做。'},
-  tips:['胸口好似俾大石壓住、痛到手臂或下巴，可能係心臟病','即刻停低休息，打 999','唔好自己揸車去醫院']}
+  tips:['胸口好似俾大石壓住、痛到手臂或下巴，可能係心臟病','即刻停低休息，打 999','唔好自己揸車去醫院']},
+ {id:'stbleed',place:'沙田運動場',poi:'stsport',title:'跑步跌倒流血',call:'沙田運動場，一名 40 歲男子跑步時跌倒，膝頭同手臂擦傷，前臂有一條深傷口不停流血。佢清醒，有少少頭暈。',
+  steps:['救護員戴手套，用敷料直接加壓止血','檢查有冇其他傷勢，量維生指數','包紮固定傷口，送院處理'],
+  quiz:[{q:'傷口不停流血，第一時間應該點做？',o:['用乾淨布料直接用力按住傷口','先用水沖走啲血再算','用紙巾抹乾就得'],why:'直接加壓係最有效嘅止血方法。按住唔好放手；血滲出嚟就喺上面再加一層，唔好拎走第一層。'}],
+  equip:{q:'前臂傷口流血不止，救護員應該用咩裝備？',o:['🩹 加壓敷料同繃帶','🩸 血糖機','💨 Ventolin 噴劑','📈 12 導程心電圖'],why:'加壓敷料可以直接壓住傷口止血，再用繃帶包紮固定。'},
+  tips:['流血時用乾淨布料直接用力按住傷口','血滲出唔好拎走敷料，再加一層繼續按','處理傷口前後要洗手，可以嘅話戴手套']},
+ {id:'stallergy',place:'禾輋廣場',poi:'stwoche',title:'食物嚴重過敏',call:'禾輋廣場食肆，一位 25 歲女士食完嘢之後成身出紅疹、口唇同眼腫，聲沙、氣促。佢話自己對花生過敏，手袋入面有腎上腺素自動注射器。',
+  steps:['救護員評估氣道同呼吸，給予氧氣','協助使用腎上腺素，量維生指數','密切監察，盡快送院'],
+  quiz:[{q:'有人嚴重過敏、氣促，身上有醫生處方嘅腎上腺素自動注射器，應該點做？',o:['協助佢喺大腿外側注射，然後即刻打 999','叫佢飲多啲水沖淡','等症狀自己退咗先算'],why:'嚴重過敏反應可以好快危及生命。病人有醫生處方嘅腎上腺素自動注射器，應該協助佢喺大腿外側使用，並立即召救護車。'}],
+  equip:{q:'女士嚴重過敏、聲沙氣促，救護員最需要即刻準備咩藥物？',o:['💉 腎上腺素（Adrenaline）','🩸 血糖機','🦺 頸套同脊椎板','🩹 加壓敷料同繃帶'],why:'嚴重過敏反應嘅首要藥物係腎上腺素，可以紓緩氣道腫脹同血壓下降。'},
+  tips:['知道自己有嚴重過敏，要隨身帶備醫生處方嘅腎上腺素注射器','面腫、聲沙、氣促係危險訊號，即刻打 999','用咗腎上腺素注射器都一定要送院觀察']},
+ {id:'stseizure',place:'沙田站',poi:'ststn',title:'抽筋後人事不省',call:'沙田站大堂，一名 30 歲男子突然倒地全身抽搐，大約兩分鐘後停止。依家叫佢冇反應，但有呼吸。途人話佢有癲癇病史。',
+  steps:['救護員評估氣道同呼吸，檢查有冇撞傷','擺復原臥式，給予氧氣，驗血糖','監察清醒程度，送院'],
+  quiz:[{q:'有人抽筋（癲癇發作）期間，旁人應該點做？',o:['移開附近硬物、保護佢個頭，記低抽筋時間','塞嘢入佢口，防止咬脷','用力按住佢手腳，令佢停'],why:'抽筋期間唔好塞任何嘢入口，亦唔好強行按住。移開危險物件、保護頭部、記低時間；停咗之後有呼吸就擺側臥。抽筋超過 5 分鐘要即刻打 999。'}],
+  equip:{q:'男子抽筋後冇反應，救護員要即刻排除邊個常見原因？揀啱裝備：',o:['🩸 血糖機','🩹 加壓敷料同繃帶','💨 Ventolin 噴劑','🦺 頸套同脊椎板'],why:'血糖過低都可以引致抽筋同昏迷，救護員要盡快驗血糖。'},
+  tips:['抽筋時唔好塞嘢入口，亦唔好強行按住','保護頭部，記低抽筋開始同停止嘅時間','抽筋停咗仍然冇反應，有呼吸就擺側臥']},
+ {id:'stbreath',place:'曾大屋',poi:'sttsang',title:'伯伯嚴重氣促',call:'曾大屋附近，一位 75 歲伯伯行完樓梯之後非常氣促，坐低都唔夠氣，嘴唇有啲發紫，講嘢只講到幾個字。佢有慢性肺病。',
+  steps:['救護員檢查 SpO2，給予氧氣','聽肺，量維生指數','讓伯伯坐直身，盡快送院'],
+  quiz:[{q:'有人嚴重氣促，等救護車期間應該點樣幫佢？',o:['讓佢坐直身或身向前傾，鬆開緊身衣物','叫佢平躺瞓低休息','叫佢行吓透吓氣'],why:'坐直或身向前傾可以幫助呼吸，亦要鬆開衣領、保持空氣流通。嘴唇發紫、講唔到完整句子係危險訊號，要即刻打 999。'}],
+  equip:{q:'伯伯嚴重氣促、嘴唇發紫，救護員應該即刻俾咩？',o:['🫁 氧氣','🩸 血糖機','🦺 頸套同脊椎板','🩹 加壓敷料同繃帶'],why:'病人血含氧量低，救護員會用 SpO2 監察，按需要給予氧氣。'},
+  tips:['嚴重氣促時坐直或身向前傾','講唔到完整句子、嘴唇發紫，即刻打 999','病人有醫生處方嘅噴劑，可以協助佢使用']},
+ {id:'stfever',place:'沙田大會堂',poi:'sttownh',title:'婆婆發燒神志混亂',call:'沙田大會堂，一位 80 歲婆婆發燒咗兩日，今日睇表演期間變得神志混亂、好虛弱，企都企唔穩，摸落身體好熱。',
+  steps:['救護員量體溫、血壓、脈搏同 SpO2','評估清醒程度，驗血糖','保持婆婆舒適，送院'],
+  quiz:[{q:'有人發燒，以下邊個情況要即刻打 999？',o:['發燒加上神志混亂、叫唔醒或者呼吸困難','體溫 38°C 但精神正常','發燒之後出咗身汗'],why:'發燒本身唔一定危險，但加上神志混亂、昏睡、呼吸困難或者出紅疹按都唔褪色，可能係嚴重感染，要即刻打 999。'}],
+  equip:{q:'婆婆發燒、神志混亂，救護員要先量咩？揀啱裝備：',o:['🌡️ 體溫計','🦺 頸套同脊椎板','💨 Ventolin 噴劑','🩹 加壓敷料同繃帶'],why:'救護員會量體溫同其他維生指數，評估有冇嚴重感染嘅跡象。'},
+  tips:['發燒時多飲水，穿著輕便衣物','唔好用冰水或者酒精抹身','發燒加神志混亂或呼吸困難，即刻打 999']}
 );
 const LEVELS_ST=[
  {id:'S1',caseId:'sttrauma',tod:'day',todName:'日間・沙田',cars:22,works:0,jam:1,dash:1,limit:2.0,depot:'st',support:['police']},
@@ -2279,7 +2304,12 @@ const LEVELS_ST=[
  {id:'S3',caseId:'starrest',tod:'night',todName:'夜晚・沙田',cars:20,works:0,jam:1,dash:1,limit:2.0,depot:'st',support:['moto','fire']},
  {id:'S4',caseId:'sthypo',tod:'dusk',todName:'黃昏・沙田',cars:22,works:1,jam:0,dash:1,limit:2.0,depot:'st'},
  {id:'S5',caseId:'stasthma',tod:'dusk',todName:'黃昏・火炭',cars:22,works:0,jam:1,dash:1,limit:2.0,depot:'st'},
- {id:'S6',caseId:'stcardiac',tod:'rain',todName:'落雨・沙田',cars:20,works:0,jam:1,dash:1,limit:2.0,depot:'ts'}];
+ {id:'S6',caseId:'stcardiac',tod:'rain',todName:'落雨・沙田',cars:20,works:0,jam:1,dash:1,limit:2.0,depot:'ts'},
+ {id:'S7',caseId:'stbleed',tod:'day',todName:'日間・沙田',cars:20,works:0,jam:0,dash:1,limit:2.0,depot:'st'},
+ {id:'S8',caseId:'stallergy',tod:'dusk',todName:'黃昏・禾輋',cars:20,works:0,jam:1,dash:1,limit:2.0,depot:'st'},
+ {id:'S9',caseId:'stseizure',tod:'night',todName:'夜晚・沙田',cars:18,works:0,jam:0,dash:1,limit:2.0,depot:'ts'},
+ {id:'S10',caseId:'stbreath',tod:'day',todName:'日間・大圍',cars:20,works:0,jam:0,dash:1,limit:2.0,depot:'ts'},
+ {id:'S11',caseId:'stfever',tod:'rain',todName:'落雨・沙田',cars:18,works:0,jam:1,dash:1,limit:2.0,depot:'st'}];
 
 const LEVELS=REGION==='st'?LEVELS_ST:LEVELS_TM; const DEF_H=REGION==='st'?'pwh':'tmh';
 const caseOf=lv=>CASES.find(c=>c.id===lv.caseId);
