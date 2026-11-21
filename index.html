@@ -40,7 +40,7 @@ canvas{display:block}
 #cap{position:fixed;left:50%;bottom:calc(122px + env(safe-area-inset-bottom));transform:translateX(-50%);display:none;max-width:min(92vw,420px);background:rgba(28,39,51,.88);color:#fff;font-size:16px;font-weight:700;padding:10px 16px;border-radius:14px;text-align:center;line-height:1.4}
 
 .lives{font-size:20px;letter-spacing:1px;line-height:1;margin-bottom:4px}
-.lives span{display:inline-block}.lives .on{color:#ff3b5c;text-shadow:0 1px 0 #b3002d;animation:beat 1.6s ease-in-out infinite}.lives .off{color:#d5dbe2}
+.lives span{display:inline-block}.lives span{line-height:0;margin-right:1px}.lives .on{color:#1f63e0;filter:drop-shadow(0 1px 0 #0b2f7a);animation:beat 1.6s ease-in-out infinite}.lives .off{color:#c9d0da}#rStars span{display:inline-block;line-height:0;margin:0 2px}#rStars .on{color:#1f63e0}#rStars .off{color:#c9d0da}
 .lives .lost{animation:lostHeart .9s ease-out}
 @keyframes beat{0%,100%{transform:scale(1)}15%{transform:scale(1.18)}30%{transform:scale(1)}45%{transform:scale(1.1)}}
 @keyframes lostHeart{0%{transform:scale(1.9);color:#ff3b5c;text-shadow:0 0 10px #ff3b5c}40%{transform:scale(1.4) rotate(-14deg);color:#ff3b5c}70%{transform:scale(.8) rotate(10deg) translateY(4px)}100%{transform:scale(1);color:#d5dbe2}}
@@ -64,7 +64,7 @@ canvas{display:block}
 .case:active{border-color:var(--orange)}
 .rules{font-size:12.5px;color:var(--muted);margin-top:12px;line-height:1.6}
 .rules b{color:var(--ink)}
-.stars{font-size:44px;color:#ff3b5c;text-align:center;letter-spacing:4px;margin:6px 0}
+.st i,td i{font-style:normal;display:inline-block;line-height:0;margin-right:1px}.st .on,td .on{color:#1f63e0}.st .off{color:#c9d0da}.stars{font-size:44px;color:#1f63e0;text-align:center;letter-spacing:4px;margin:6px 0}
 .row{display:flex;gap:10px;margin-top:14px}
 .row button{flex:1;border:0;border-radius:14px;padding:12px;font:inherit;font-weight:800;font-size:15px}
 .pri{background:var(--red);color:#fff}.sec{background:#eef1f5;color:var(--ink)}
@@ -219,17 +219,38 @@ body.taxi #bMenu{top:calc(208px + env(safe-area-inset-top))}body.taxi #bAEB{top:
 </head>
 <body>
 <div id="pinGate" style="position:fixed;inset:0;z-index:2147483647;background:#0f1720;color:#fff;display:flex;align-items:center;justify-content:center;font-family:-apple-system,'PingFang HK','Noto Sans TC',sans-serif">
-<div style="width:min(320px,86vw);text-align:center">
+<div style="width:min(380px,90vw);max-height:100vh;overflow:auto;box-sizing:border-box;padding:16px 0;text-align:center">
 <div style="font-size:20px;font-weight:700;margin-bottom:6px">請輸入 PIN</div>
 <div style="font-size:13px;opacity:.7;margin-bottom:18px">只需輸入一次，之後呢部機會記住</div>
 <input id="pinIn" type="password" inputmode="numeric" autocomplete="off" maxlength="12" style="width:100%;box-sizing:border-box;font-size:24px;letter-spacing:6px;text-align:center;padding:12px;border-radius:12px;border:1px solid #3a4756;background:#1b2632;color:#fff;outline:none">
 <button id="pinBtn" style="width:100%;margin-top:12px;padding:12px;font-size:17px;font-weight:600;border:0;border-radius:12px;background:#e23b3b;color:#fff">確定</button>
-<div id="pinMsg" style="height:20px;margin-top:10px;font-size:14px;color:#ff8a8a"></div>
+<div id="pinMsg" style="height:18px;margin-top:8px;font-size:14px;color:#ff8a8a"></div>
+<div id="pinLegal" style="margin-top:6px;text-align:left;background:#16212c;border:1px solid #2c3a49;border-radius:12px;padding:10px 12px 4px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:14px">免責聲明 Disclaimer</b>
+<span style="margin-left:auto;display:flex;gap:4px"><button type="button" data-l="zh" class="plt" style="font:inherit;font-size:12px;padding:3px 9px;border-radius:8px;border:1px solid #3a4756;background:#e23b3b;color:#fff">中文</button><button type="button" data-l="en" class="plt" style="font:inherit;font-size:12px;padding:3px 9px;border-radius:8px;border:1px solid #3a4756;background:transparent;color:#fff">English</button></span></div>
+<div id="pinLegalZh" class="plx" style="max-height:30vh;overflow:auto;font-size:12px;line-height:1.55;color:#c9d3de"><p><b>1. 非官方作品</b><br>本遊戲為個人私人開發的非商業作品，與香港特別行政區政府、消防處、醫院管理局、香港警務處、港鐵公司、各巴士公司，以及遊戲內提及的任何機構或商戶均無任何關係，亦未獲其授權、贊助或認可。</p>
+<p><b>2. 名稱及商標</b><br>遊戲內出現的地點、街道、建築物、景點、商場、醫院、機構及車輛的名稱、標誌、塗裝及商標，均屬其各自擁有人所有，只用作識別及模擬場景，並不表示擁有人與本遊戲有任何關係或認可本遊戲。</p>
+<p><b>3. 急救資料只供參考</b><br>遊戲內的急救知識、處理程序、藥物劑量及分流準則已經簡化，只供娛樂及一般參考，不能取代正式急救訓練、專業醫療意見或現行官方指引。開發者已致力保持內容準確，但不保證其完整、準確或最新。如遇緊急情況，請立即致電 999。</p>
+<p><b>4. 責任限制</b><br>在法律容許的最大範圍內，開發者不會就任何人因使用或依賴本遊戲或其內容而引致的任何直接或間接損失、損害、傷亡或法律責任承擔任何責任。本遊戲按「現狀」提供，不附帶任何明示或默示保證。</p>
+<p><b>5. 虛構內容</b><br>遊戲內的個案、人物、事件及對白均屬虛構，如有雷同，純屬巧合。</p>
+<p><b>6. 權利人通知</b><br>如任何權利人認為本遊戲內容侵犯其權益，請透過本遊戲的 <a href="https://github.com/nickhkhk/ambcar/issues" target="_blank" rel="noopener">GitHub 專頁</a>聯絡開發者，開發者會盡快修改或移除有關內容。</p>
+<p>輸入 PIN 並繼續使用本遊戲，即表示你已閱讀、明白並同意本聲明。</p></div>
+<div id="pinLegalEn" class="plx" style="display:none;max-height:30vh;overflow:auto;font-size:12px;line-height:1.5;color:#c9d3de"><p><b>1. Unofficial work</b><br>This game is a private, non-commercial project developed by an individual. It is not affiliated with, authorised, sponsored or endorsed by the Government of the Hong Kong SAR, the Fire Services Department, the Hospital Authority, the Hong Kong Police Force, MTR Corporation, any bus operator, or any organisation or business shown in the game.</p>
+<p><b>2. Names and trademarks</b><br>All names, logos, liveries and trademarks of places, streets, buildings, attractions, shopping centres, hospitals, organisations and vehicles appearing in the game belong to their respective owners. They are used only for identification and scene simulation and do not imply any connection with, or endorsement by, their owners.</p>
+<p><b>3. First-aid information is for reference only</b><br>First-aid knowledge, procedures, drug doses and triage rules in the game are simplified and provided for entertainment and general reference only. They are not a substitute for formal first-aid training, professional medical advice or current official guidelines. The developer has made every effort to keep the content accurate but gives no guarantee that it is complete, accurate or up to date. In an emergency, call 999 immediately.</p>
+<p><b>4. Limitation of liability</b><br>To the fullest extent permitted by law, the developer accepts no liability for any direct or indirect loss, damage, injury or legal liability arising from the use of, or reliance on, this game or its content. The game is provided "as is" without any warranty, express or implied.</p>
+<p><b>5. Fictional content</b><br>All cases, characters, events and dialogue in the game are fictional. Any resemblance to real persons or events is purely coincidental.</p>
+<p><b>6. Notice to rights holders</b><br>If you are a rights holder and believe any content infringes your rights, please contact the developer via the game's <a href="https://github.com/nickhkhk/ambcar/issues" target="_blank" rel="noopener">GitHub page</a>. The content will be amended or removed as soon as possible.</p>
+<p>By entering the PIN and continuing to use this game, you confirm that you have read, understood and agreed to this notice.</p></div>
+</div>
+<style>#pinLegal p{margin:0 0 8px}#pinLegal a{color:#8fc3ff}</style>
+<script>document.querySelectorAll('#pinLegal .plt').forEach(function(b){b.onclick=function(){var l=b.getAttribute('data-l');document.getElementById('pinLegalZh').style.display=l==='zh'?'':'none';document.getElementById('pinLegalEn').style.display=l==='en'?'':'none';document.querySelectorAll('#pinLegal .plt').forEach(function(x){x.style.background=x===b?'#e23b3b':'transparent'});};});</script>
 </div></div>
 <script>
 (function(){
   var H='4f00a732a628b0efdb29a102528f7aa5e8accfd2fb06a9f6fe3bea0589eb870e',K='pinGate.ok';
   var g=document.getElementById('pinGate'),i=document.getElementById('pinIn'),b=document.getElementById('pinBtn'),m=document.getElementById('pinMsg');
+  try{ window.LEGAL_ZH=document.getElementById('pinLegalZh').innerHTML; window.LEGAL_EN=document.getElementById('pinLegalEn').innerHTML; }catch(e){}
   function open(){g.remove();}
   try{ if(localStorage.getItem(K)===H){open();return;} }catch(e){}
   function hex(buf){return Array.prototype.map.call(new Uint8Array(buf),function(x){return('0'+x.toString(16)).slice(-2)}).join('');}
@@ -250,7 +271,7 @@ body.taxi #bMenu{top:calc(208px + env(safe-area-inset-top))}body.taxi #bAEB{top:
 
 <div id="hudWrap">
   <div class="top">
-    <div class="card"><div id="lives" class="lives" role="img" aria-label="心心"></div><b id="hTitle">任務</b><span id="hSub"></span><br>距離 <span class="num dist" id="hDist">--</span> · 限時 <span class="num" id="hTime">0:00</span><div id="txPat"><i></i></div></div>
+    <div class="card"><div id="lives" class="lives" role="img" aria-label="生命之星"></div><b id="hTitle">任務</b><span id="hSub"></span><br>距離 <span class="num dist" id="hDist">--</span> · 限時 <span class="num" id="hTime">0:00</span><div id="txPat"><i></i></div></div>
     <canvas id="mini" width="192" height="192" aria-label="小地圖"></canvas>
   </div>
   <div id="stabBox" class="stab" role="img" aria-label="病人穩定度"><span>🛏️ 病人穩定度</span><div class="bar"><i id="stabBar"></i></div></div>
@@ -308,8 +329,8 @@ body.taxi #bMenu{top:calc(208px + env(safe-area-inset-top))}body.taxi #bAEB{top:
 <div class="layer over" id="over">
   <div class="panel">
     <h1>遊戲結束</h1>
-    <div class="stars" style="color:#d5dbe2">♡♡♡♡♡</div>
-    <p style="text-align:center">5 粒心心已經扣晒。<br><span id="oWhy"></span><br>記住：唔好撞人撞車、衝紅燈要開警號。</p>
+    <div class="stars" id="oStars"></div>
+    <p style="text-align:center">5 粒生命之星已經扣晒。<br><span id="oWhy"></span><br>記住：唔好撞人撞車、衝紅燈要開警號。</p>
     <div class="row"><button class="sec" id="oMenu">返回選單</button><button class="pri" id="oAgain">再玩一次</button></div>
   </div>
 </div>

@@ -939,38 +939,46 @@ function drawStar(g,sx,sy,r){
   g.strokeStyle='#ffffff'; g.lineWidth=Math.max(2,r*0.07); g.beginPath(); g.moveTo(sx,sy-r*0.75); g.lineTo(sx,sy+r*0.75); g.stroke();
   g.lineWidth=Math.max(2,r*0.05); g.beginPath(); for(let t=0;t<=1.001;t+=0.05){ const yy=sy-r*0.6+t*r*1.2, xx=sx+Math.sin(t*Math.PI*4)*r*0.14; t?g.lineTo(xx,yy):g.moveTo(xx,yy);} g.stroke();
 }
-function rearTex(body,base='#ffe500'){
-  // 車尾整個面（闊 3.0 × 高 3.1，每單位 200px）。body=true 時門位畫成車廂內部（門打開時見到）
-  const W=600,H=620,c=document.createElement('canvas'); c.width=W; c.height=H; const g=c.getContext('2d');
+const REAR_CACHE={};
+function rearTex(body,base='#ffe500'){ const key=base+CALLSIGN+(body?1:0); if(REAR_CACHE[key]) return REAR_CACHE[key]; return REAR_CACHE[key]=rearTex0(body,base); }
+function rearTex0(body,base){
+  // 車尾整個面（闊 3.0 × 高 3.1）。座標用 600×620，畫喺 2 倍解像度。參考消防處救護車（Design C1）車尾：
+  // 下半紅黃倒 V 人字反光、兩邊車柱亦有人字、中間黃底紅字「救 AMBULANCE 護」、兩扇門酒紅圓角窗、車號、KEEP CLEAR
+  const S2=2, W=600,H=620,c=document.createElement('canvas'); c.width=W*S2; c.height=H*S2; const g=c.getContext('2d'); g.scale(S2,S2);
   g.fillStyle=base; g.fillRect(0,0,W,H);
-  // 下半紅黃人字（倒 V，中間相交）
-  const top=372; g.save(); g.beginPath(); g.rect(0,top,W,H-top); g.clip();
-  const sw=40;
-  for(let i=-20;i<20;i++){ g.fillStyle=(i&1)?'#e8202a':'#ffe500';
-    const o=top+i*sw*1.41;
-    g.beginPath(); g.moveTo(0,o); g.lineTo(W/2,o-W/2); g.lineTo(W/2,o-W/2+sw*1.41); g.lineTo(0,o+sw*1.41); g.closePath(); g.fill();
-    g.beginPath(); g.moveTo(W,o); g.lineTo(W/2,o-W/2); g.lineTo(W/2,o-W/2+sw*1.41); g.lineTo(W,o+sw*1.41); g.closePath(); g.fill(); }
-  g.restore();
-  // 兩邊車身：生命之星、細字「救護車」「勿駛近」
-  drawStar(g,30,42,24); drawStar(g,W-30,42,24);
-  g.fillStyle='#e8202a'; g.font='bold 20px sans-serif'; g.textAlign='center'; g.textBaseline='middle';
-  ['救','護','車'].forEach((ch,i)=>g.fillText(ch,30,92+i*24)); ['勿','駛','近'].forEach((ch,i)=>g.fillText(ch,W-30,92+i*24));
-  // 「救 AMBULANCE 護」
-  g.font='bold 50px sans-serif'; g.fillText('救',30,322); g.fillText('護',W-30,322);
-  g.font='bold 58px sans-serif'; g.fillText('AMBULANCE',W/2,322);
-  // 兩扇門：圓角窗（酒紅色玻璃）、車號、門把、門縫
-  const win=(x)=>{ const w=92,h=176,y=62,r=40; g.fillStyle='#6b2430'; g.beginPath(); g.moveTo(x-w/2+r,y); g.arcTo(x+w/2,y,x+w/2,y+h,r); g.arcTo(x+w/2,y+h,x-w/2,y+h,r); g.arcTo(x-w/2,y+h,x-w/2,y,r); g.arcTo(x-w/2,y,x+w/2,y,r); g.fill();
-    g.fillStyle='rgba(255,255,255,.18)'; g.beginPath(); g.moveTo(x-w/2+14,y+30); g.lineTo(x-w/2+34,y+20); g.lineTo(x-w/2+34,y+h-40); g.lineTo(x-w/2+14,y+h-30); g.fill();
-    g.strokeStyle='#2b2d33'; g.lineWidth=5; g.beginPath(); g.moveTo(x-w/2+r,y); g.arcTo(x+w/2,y,x+w/2,y+h,r); g.arcTo(x+w/2,y+h,x-w/2,y+h,r); g.arcTo(x-w/2,y+h,x-w/2,y,r); g.arcTo(x-w/2,y,x+w/2,y,r); g.stroke(); };
+  const RED='#e3141f', YEL=base;
+  const chev=(x0,y0,x1,y1,apexX,sw)=>{ g.save(); g.beginPath(); g.rect(x0,y0,x1-x0,y1-y0); g.clip(); g.fillStyle=RED;
+    for(let o=y0-(x1-x0)-sw*4;o<y1+sw*2;o+=sw*2){ // 由頂點向兩邊斜落嘅紅帶（45°）
+      g.beginPath(); g.moveTo(x0,o+(apexX-x0)); g.lineTo(apexX,o); g.lineTo(apexX,o+sw*1.414); g.lineTo(x0,o+(apexX-x0)+sw*1.414); g.closePath(); g.fill();
+      g.beginPath(); g.moveTo(x1,o+(x1-apexX)); g.lineTo(apexX,o); g.lineTo(apexX,o+sw*1.414); g.lineTo(x1,o+(x1-apexX)+sw*1.414); g.closePath(); g.fill(); }
+    g.restore(); };
+  // 下半人字（窗以下成個車尾）＋兩邊車柱人字（由頂到底）
+  chev(0,352,W,H,W/2,24); chev(0,150,60,352,0,20); chev(W-60,150,W,352,W,20);
+  // 「救 AMBULANCE 護」黃底橫帶
+  g.fillStyle=YEL; g.fillRect(0,288,W,64); g.fillStyle=RED; g.fillRect(0,286,W,3); g.fillRect(0,351,W,3);
+  g.textAlign='center'; g.textBaseline='middle'; g.fillStyle=RED;
+  g.font='900 46px sans-serif'; g.fillText('救',34,321); g.fillText('護',W-34,321);
+  g.font='900 56px "Arial Black",Arial,sans-serif'; g.fillText('AMBULANCE',W/2,322);
+  // 兩邊車柱頂：生命之星同直排細字
+  drawStar(g,30,36,22); drawStar(g,W-30,36,22);
+  g.font='bold 19px sans-serif'; ['救','護','車'].forEach((ch,i)=>g.fillText(ch,30,76+i*22)); ['勿','駛','近'].forEach((ch,i)=>g.fillText(ch,W-30,76+i*22));
+  // 兩扇門：酒紅色圓角長窗、反光、黑色膠邊
+  const rr=(x,y,w,h,r)=>{ g.beginPath(); g.moveTo(x+r,y); g.arcTo(x+w,y,x+w,y+h,r); g.arcTo(x+w,y+h,x,y+h,r); g.arcTo(x,y+h,x,y,r); g.arcTo(x,y,x+w,y,r); g.closePath(); };
+  const win=(x)=>{ const w=96,h=190,y=58,r=46; rr(x-w/2-5,y-5,w+10,h+10,r+5); g.fillStyle='#1d1f24'; g.fill();
+    const gr=g.createLinearGradient(0,y,0,y+h); gr.addColorStop(0,'#8a3a48'); gr.addColorStop(1,'#4a1720'); rr(x-w/2,y,w,h,r); g.fillStyle=gr; g.fill();
+    g.fillStyle='rgba(255,255,255,.16)'; g.beginPath(); g.moveTo(x-w/2+12,y+40); g.lineTo(x-w/2+36,y+24); g.lineTo(x-w/2+36,y+h-50); g.lineTo(x-w/2+12,y+h-34); g.fill(); };
   win(180); win(420);
-  g.fillStyle='#e8202a'; g.font='bold 24px sans-serif'; g.fillText(CALLSIGN,180,266); g.fillText(CALLSIGN,420,266);
-  // KEEP CLEAR
-  g.fillStyle='#ffe500'; g.fillRect(112,436,376,66); g.strokeStyle='#e8202a'; g.lineWidth=3; g.strokeRect(112,436,376,66);
-  g.fillStyle='#e8202a'; g.font='bold 54px sans-serif'; g.fillText('KEEP CLEAR',W/2,471);
-  // 門縫同門把
-  g.strokeStyle='#8a7d00'; g.lineWidth=3; g.strokeRect(60,40,480,540); g.beginPath(); g.moveTo(W/2,40); g.lineTo(W/2,580); g.stroke();
-  g.fillStyle='#7a7f87'; g.fillRect(W/2-34,370,20,46); g.fillRect(W/2+14,370,20,46);
-  if(body){ g.fillStyle='#4a5260'; g.fillRect(60,40,480,540); g.fillStyle='#d9dde3'; g.fillRect(80,470,440,90); g.fillStyle='#6f7884'; g.fillRect(80,60,440,30); }
+  g.fillStyle=RED; g.font='bold 24px sans-serif'; g.fillText(CALLSIGN,180,272); g.fillText(CALLSIGN,420,272);
+  // KEEP CLEAR 黃底框
+  g.fillStyle=YEL; g.fillRect(118,430,364,70); g.strokeStyle=RED; g.lineWidth=4; g.strokeRect(118,430,364,70);
+  g.fillStyle=RED; g.font='900 52px "Arial Black",Arial,sans-serif'; g.fillText('KEEP CLEAR',W/2,467);
+  // 門縫、鉸、門把、底部踏板
+  g.strokeStyle='rgba(60,50,0,.55)'; g.lineWidth=3; g.strokeRect(60,40,480,540); g.beginPath(); g.moveTo(W/2,40); g.lineTo(W/2,580); g.stroke();
+  g.fillStyle='#3a3d44'; [[62,90],[62,290],[62,500],[W-70,90],[W-70,290],[W-70,500]].forEach(([x,y])=>g.fillRect(x,y,8,34));
+  g.fillStyle='#8d939c'; g.fillRect(W/2-36,374,22,48); g.fillRect(W/2+14,374,22,48); g.fillStyle='#5d636c'; g.fillRect(W/2-33,380,16,6); g.fillRect(W/2+17,380,16,6);
+  g.fillStyle='#24262b'; g.fillRect(0,586,W,34); g.fillStyle='#3a3d44'; for(let x=10;x<W;x+=24) g.fillRect(x,590,14,4);
+  if(body){ g.fillStyle='#4a5260'; g.fillRect(60,40,480,540); g.fillStyle='#d9dde3'; g.fillRect(80,470,440,90); g.fillStyle='#6f7884'; g.fillRect(80,60,440,30);
+    g.fillStyle='#c94a4a'; g.fillRect(260,300,80,150); g.fillStyle='#e6e9ee'; g.fillRect(110,120,120,300); g.fillRect(370,120,120,300); }
   return c;
 }
 function roofTex(base='#ffe500'){
@@ -2143,19 +2151,19 @@ const CASES=[
   steps:['救護員評估清醒程度、呼吸同脈搏','量血壓、檢查血糖','用車床將病人送上救護車'],
   quiz:[{q:'見到有人暈倒，第一步應該點做？',o:['確認環境安全，拍膊頭大聲叫佢，睇吓有冇反應','即刻餵佢飲水','搖醒佢，扶佢企起身'],why:'先確保自己安全，再檢查反應同呼吸。冇反應就即刻打 999。'},
         {q:'病人有呼吸但冇反應，等救護車期間應該點擺？',o:['擺復原臥式（側臥）','扶佢坐起身','俾佢俯伏瞓'],why:'側臥可以保持氣道暢通，防止嘔吐物阻塞。'}],
-  equip:{q:'男子暈倒但有呼吸，救護員要即刻排除邊個常見原因？揀啱裝備：',o:['🩸 血糖機','🦴 夾板','🩹 燒傷敷料','💨 霧化器'],why:'暈倒可能係低血糖引起，用血糖機一驗就知，可以即刻處理。'},
+  equip:{q:'男子暈倒但有呼吸，救護員要檢查血糖，用什麼裝備？',o:['🩸 血糖機','🦴 夾板','🩹 燒傷敷料','💨 霧化器'],why:'暈倒可能係低血糖引起，用血糖機一驗就知，可以即刻處理。'},
   tips:['見到有人暈倒，即刻打 999','講清楚地點、病人狀況同聯絡電話','病人有呼吸就擺側臥，保持氣道暢通']},
  {id:'park',place:'屯門公園',poi:'park',title:'長者跌倒',call:'屯門公園內，一位婆婆跌倒，話腳好痛企唔起身。',
   steps:['救護員檢查受傷位置同感覺','用夾板固定懷疑骨折嘅腳','小心抬婆婆上車床'],
   quiz:[{q:'婆婆跌倒後話腳好痛、企唔起身，應該點做？',o:['唔好郁佢，陪住佢等救護員','即刻扶佢企起身試吓行','用力搓痛嘅位置'],why:'可能有骨折，亂郁會令傷勢加重。保持佢舒服、保暖，等救護員處理。'},
         {q:'救護員用夾板固定懷疑骨折嘅腳，係為咗？',o:['減少郁動，減輕痛楚同避免傷勢加重','令骨頭即刻癒合','代替止痛藥'],why:'固定傷處可以減少移動時嘅痛楚，避免進一步受傷。'}],
-  equip:{q:'婆婆懷疑腳骨折，救護員應該用咩裝備？',o:['🦴 夾板','💨 霧化器','🩸 血糖機','🩹 燒傷敷料'],why:'用夾板固定懷疑骨折嘅位置，搬動時會少啲痛，亦避免傷勢加重。'},
+  equip:{q:'婆婆懷疑腳骨折，救護員應該用咩裝備？',o:['🦴 真空夾板','💨 霧化器','🩸 血糖機','🩹 燒傷敷料'],why:'用夾板固定懷疑骨折嘅位置，搬動時會少啲痛，亦避免傷勢加重。'},
   tips:['長者跌倒後唔好急住扶佢企起身','懷疑骨折就唔好隨便移動傷處','陪住長者，等救護員到場']},
  {id:'townhall',place:'屯門大會堂',poi:'townhall',title:'女士胸口痛',call:'屯門大會堂，一位女士胸口翳痛、出冷汗。',
   steps:['救護員問病歷：幾時開始痛、痛去邊','俾氧氣、做心電圖','安排病人半坐臥送院'],
   quiz:[{q:'女士胸口翳痛、出冷汗，最需要擔心係咩？',o:['可能係心臟病發','可能只係肚餓','可能係扭傷'],why:'胸口翳痛加出冷汗係心臟病發嘅警號，要盡快召救護車。'},
         {q:'等救護車期間，應該點樣幫佢？',o:['讓佢坐低或半坐臥休息，唔好走動','叫佢自己行去醫院','叫佢做運動舒緩下'],why:'休息可以減少心臟負擔。如果佢暈低冇反應，就要做心肺復甦。'}],
-  equip:{q:'女士胸口痛，救護員要即刻檢查心臟，應該用咩裝備？',o:['💓 心電圖機','🦴 夾板','🩹 燒傷敷料','💨 霧化器'],why:'心電圖可以睇到心臟有冇出問題，資料仲可以預先通知醫院。'},
+  equip:{q:'女士胸口痛，救護員要即刻檢查心臟，應該用咩裝備？',o:['💓 DM機（心電圖功能）','🦴 夾板','🩹 燒傷敷料','💨 霧化器'],why:'心電圖可以睇到心臟有冇出問題，資料仲可以預先通知醫院。'},
   tips:['胸口痛、出冷汗可能係心臟病發，即刻打 999','等候時讓病人坐低休息，唔好走動','如果病人暈低冇反應，盡快做心肺復甦']},
  {id:'station',place:'屯門站',poi:'station',title:'少年哮喘發作',call:'屯門站外，一名少年哮喘發作，透唔到氣。',
   steps:['救護員評估呼吸同血含氧量','用霧化器俾藥舒緩氣管','讓病人坐直送院'],
@@ -2165,23 +2173,23 @@ const CASES=[
  {id:'market',place:'屯門街市',poi:'market',title:'檔主燙傷',call:'屯門街市，一位檔主俾滾水燙傷手臂。',
   steps:['救護員檢查燒傷範圍同深度','用清水降溫，再用燒傷敷料包紮','安撫病人，送院'],
   quiz:[{q:'俾滾水燙傷，第一時間應該點處理？',o:['用清涼嘅流動水沖洗傷處 10 至 20 分鐘','塗牙膏或者豉油','用冰塊直接敷'],why:'清涼流動水可以降溫止痛；唔好用冰或者偏方，會令傷勢更差。'}],
-  equip:{q:'檔主手臂燙傷，救護員降溫之後應該用咩包紮？',o:['🩹 燒傷敷料','🦴 夾板','💓 心電圖機','💨 霧化器'],why:'燒傷敷料可以保護傷口、減少感染同痛楚。'},
+  equip:{q:'檔主手臂燙傷，救護員降溫之後應該用咩包紮？',o:['🩹 燒傷敷料','🦴 夾板','💓 DM機（心電圖功能）','💨 霧化器'],why:'燒傷敷料可以保護傷口、減少感染同痛楚。'},
   tips:['燙傷即刻用清涼流動水沖 10 至 20 分鐘','除去傷處附近嘅首飾，但唔好撕黐住嘅衫','唔好塗牙膏、豉油或者用冰']},
  {id:'crash',place:'青山公路',poi:'crash',title:'巴士小巴相撞',call:'青山公路一架雙層巴士同一架綠色小巴相撞，有乘客受傷，話頸痛。',
-  steps:['救護員確保現場安全，評估傷者清醒程度','用頸托同脊椎板固定頸椎','小心將傷者抬上車床'],
+  steps:['救護員確保現場安全，評估傷者清醒程度','用頸套同脊椎板固定頸椎','小心將傷者抬上車床'],
   quiz:[{q:'你目擊交通意外，第一步應該點做？',o:['留意自身安全，喺安全位置打 999，唔好隨便移動傷者','即刻將傷者拉出車外','企喺馬路中間影相'],why:'先保障自己同其他人嘅安全；除非有即時危險（例如起火），唔好移動傷者，以免加重頸椎或脊椎受傷。'}],
-  equip:{q:'傷者撞車後頸痛，懷疑頸椎受傷，救護員應該用咩裝備？',o:['🦺 頸托同脊椎板','💨 霧化器','🩸 血糖機','🩹 燒傷敷料'],why:'頸托同脊椎板可以固定頸椎同脊椎，搬動時減少進一步受傷。'},
+  equip:{q:'傷者撞車後頸痛，懷疑頸椎受傷，救護員應該用咩裝備？',o:['🦺 頸套同長脊椎板','💨 霧化器','🩸 血糖機','🩹 燒傷敷料'],why:'頸套同脊椎板可以固定頸椎同脊椎，搬動時減少進一步受傷。'},
   tips:['發生交通意外，先留意自身安全，再打 999','除非有即時危險，唔好移動傷者','講清楚意外地點、涉及車輛同傷者數目']},
  {id:'yltrauma',place:'元朗劇院',poi:'yltheatre',title:'工人高處墮下',call:'元朗劇院外牆翻新，一名男工人由約 9 米高嘅棚架墮下。GCS 14、血壓 118/76、呼吸每分鐘 20。最就近係博愛醫院。',
-  steps:['救護員評估氣道、呼吸、清醒程度同生命表徵','用頸托同脊椎板固定','按創傷分流準則決定送邊間醫院'],
+  steps:['救護員評估氣道、呼吸、清醒程度同生命表徵','用頸套同脊椎板固定','按創傷分流準則決定送邊間醫院'],
   quiz:[{q:'以下邊個情況，符合「創傷分流」要送去創傷中心？',o:['成人由 6 米（20 呎）以上高處墮下','成人由 1 米高樓梯跌落，手腕擦傷','GCS 15、血壓正常、冇特別致傷過程'],why:'資料庫創傷分流準則：成人（≥12 歲）由 6 米以上高處墮下，要送創傷中心；其他準則包括 GCS 3–13、收縮壓 <90、呼吸 <10 或 ≥30 等。'}],
-  equip:{q:'工人由高處墮下，懷疑脊椎受傷，救護員應該用咩裝備？',o:['🦺 頸托同脊椎板','💨 霧化器','🩸 血糖機','🩹 燒傷敷料'],why:'高處墮下有機會傷及頸椎同脊椎，要先固定再搬動。'},
+  equip:{q:'工人由高處墮下，懷疑脊椎受傷，救護員應該用咩裝備？',o:['🦺 頸套同脊椎板','💨 霧化器','🩸 血糖機','🩹 燒傷敷料'],why:'高處墮下有機會傷及頸椎同脊椎，要先固定再搬動。'},
   triage:{q:'工人由約 9 米墮下，最就近係博愛醫院（非創傷中心）。應該送邊間？',o:['🏥 屯門醫院（創傷中心）','🏥 博愛醫院（最就近）'],dest:['tmh','poh'],why:'成人由 6 米以上墮下符合創傷分流準則，要送創傷中心；新界西嘅創傷中心係屯門醫院。例外：病人心臟驟停，或者用 BVM 後仍未能有效處理氣道／呼吸，就要送最就近醫院。'},
   tips:['見到有人由高處墮下，唔好隨便郁佢，即刻打 999','講清楚墮下高度同傷者情況','留意自身安全，遠離仍有危險嘅位置']},
  {id:'ylstroke',place:'元朗公園',poi:'ylpark',title:'伯伯懷疑中風',call:'元朗公園，一位 72 歲伯伯 40 分鐘前突然右邊手腳無力、講嘢唔清。血壓 168/92、GCS 15。屬區醫院係博愛醫院。',
   steps:['救護員驗血糖，排除血糖過低','做 FAST-ED 評分','預先通報醫院，按中風分流送院'],
   quiz:[{q:'伯伯單側嘴角下垂（1 分）、一邊手完全抬唔起（2 分）、只講到 1 樣動物（1 分），其餘正常。FAST-ED 總分係？',o:['4 分','2 分','9 分'],why:'F 1 分＋A 2 分＋S 1 分＝4 分。適用：突發單邊無力或語言障礙、4 小時內、18 歲或以上、SBP > 100、GCS ≥ 8，並已排除血糖過低（H\'stix > 4.0）。'}],
-  equip:{q:'進行中風評估之前，救護員一定要先排除咩？揀啱裝備：',o:['🩸 血糖機','🦴 夾板','🩹 燒傷敷料','💨 霧化器'],why:'血糖過低可以引起類似中風嘅症狀，要先驗血糖（H\'stix > 4.0 mmol/L）先做中風評估。'},
+  equip:{q:'進行中風評估之前，救護員一定要先排除咩問題？揀啱裝備：',o:['🩸 血糖機','🦴 夾板','🩹 燒傷敷料','💨 霧化器'],why:'血糖過低可以引起類似中風嘅症狀，要先驗血糖（H\'stix > 4.0 mmol/L）先做中風評估。'},
   triage:{q:'FAST-ED 4 分，病發 40 分鐘，屬區係博愛醫院。應該點樣送院？',o:['🏥 通報後分流去屯門醫院','🏥 送屬區博愛醫院'],dest:['tmh','poh'],why:'院前中風通報及分流：博愛醫院屬區嘅病人 FAST-ED ≥ 4 分，分流至屯門醫院，並要預先通報醫院，方便盡快做溶栓治療。'},
   tips:['記住 FAST：面、手、講嘢、時間','發現懷疑中風，記低病發或者最後正常嘅時間，即刻打 999','唔好俾病人飲嘢食嘢，以免哽親']},
  {id:'ylarrest',place:'元朗站',poi:'ylstation',title:'墮下後心臟驟停',call:'元朗站外，一名男子由約 8 米高嘅行人天橋墮下。救護員到場時佢冇反應、冇正常呼吸，心臟驟停。最就近係博愛醫院。',
@@ -2191,9 +2199,9 @@ const CASES=[
   triage:{q:'傷者由 8 米墮下，本身符合創傷分流準則，但已經心臟驟停。應該送邊間？',o:['🏥 博愛醫院（最就近）','🏥 屯門醫院（創傷中心）'],dest:['poh','tmh'],why:'創傷分流第一步：病人心臟驟停，就要送最就近醫院，唔再按其他準則分流去創傷中心。另一個例外係用 BVM 後仍然未能有效處理氣道或呼吸。'},
   tips:['見到有人冇反應、冇正常呼吸，即刻打 999 並開始心肺復甦','附近有自動心臟除顫器就盡快攞嚟用，跟住機器語音指示','用力、快速按壓胸口中央，每分鐘 100 至 120 下']},
  {id:'tswtrauma',place:'天水圍站',poi:'tswstation',title:'單車手被撞',call:'天水圍站外天瑞路，一名男單車手俾私家車撞倒。佢醒，GCS 14，但面色蒼白、手腳凍，血壓 84/52、脈搏每分鐘 124。最就近係天水圍醫院。',
-  steps:['救護員評估氣道、呼吸、循環同清醒程度','止血、保暖，用頸托同脊椎板固定','按創傷分流準則決定送邊間醫院'],
+  steps:['救護員評估氣道、呼吸、循環同清醒程度','止血、保暖，用頸套同脊椎板固定','按創傷分流準則決定送邊間醫院'],
   quiz:[{q:'創傷病人以下邊個生命表徵，符合「創傷分流」要送創傷中心？',o:['收縮壓低過 90 mmHg','收縮壓 128 mmHg、呼吸每分鐘 18','脈搏每分鐘 88'],why:'資料庫創傷分流準則：≥12 歲病人收縮壓 < 90 mmHg（或者毛細管回流多過 2 秒）要送創傷中心；其他準則包括 GCS 3–13、呼吸 < 10 或 ≥ 30、成人由 6 米以上墮下等。'}],
-  equip:{q:'單車手俾車撞倒，懷疑頸椎受傷，救護員應該用咩裝備？',o:['🦺 頸托同脊椎板','💨 霧化器','🩸 血糖機','🩹 燒傷敷料'],why:'撞車有機會傷及頸椎同脊椎，要先固定再搬動。'},
+  equip:{q:'單車手俾車撞倒，懷疑頸椎受傷，救護員應該用咩裝備？',o:['🦺 頸套同脊椎板','💨 霧化器','🩸 血糖機','🩹 燒傷敷料'],why:'撞車有機會傷及頸椎同脊椎，要先固定再搬動。'},
   triage:{q:'單車手血壓 84/52，最就近係天水圍醫院（非創傷中心）。應該送邊間？',o:['🏥 屯門醫院（創傷中心）','🏥 天水圍醫院（最就近）'],dest:['tmh','tsh'],why:'收縮壓 < 90 mmHg 符合創傷分流準則，要送創傷中心；新界西嘅創傷中心係屯門醫院。例外：病人心臟驟停，或者用 BVM 後仍未能有效處理氣道／呼吸，就送最就近醫院。'},
   tips:['見到交通意外，先留意自身安全，喺安全位置打 999','唔好隨便移動傷者，除非有即時危險','用乾淨布料按住流血位置，替傷者保暖']},
  {id:'tswstroke',place:'香港濕地公園',poi:'tswwet',title:'遊客懷疑中風',call:'香港濕地公園，一位 66 歲女士 1 個鐘前突然左邊手腳無力、講嘢含糊。血壓 172/96、GCS 15、H\'stix 6.8。屬區醫院係天水圍醫院。',
@@ -2234,35 +2242,35 @@ CASES.push(
  {id:'sttrauma',place:'沙田公園單車徑',poi:'stpark',title:'單車相撞',call:'沙田公園城門河單車徑，兩架單車相撞，一名男子跌落地。佢醒，但講嘢斷斷續續，呼吸每分鐘 34 次、急速，血壓 118/76。',
   steps:['救護員評估氣道、呼吸、循環同清醒程度','固定頸椎，處理傷口，給予氧氣','按創傷分流準則決定送院，並預先通報'],
   quiz:[{q:'以下邊個生命表徵，符合「創傷分流」準則？',o:['呼吸每分鐘 ≥ 30 次','血壓 118/76','脈搏每分鐘 88'],why:'資料庫創傷分流準則：呼吸每分鐘 < 10 或 ≥ 30、收縮壓 < 90 mmHg、GCS 3–13、成人由 6 米以上墮下等，都要送創傷中心。'}],
-  equip:{q:'單車相撞、跌落地，懷疑頸椎受傷，救護員應該用咩裝備？',o:['🦺 頸托同脊椎板','🩸 血糖機','💨 Ventolin 噴劑','📈 12 導程心電圖'],why:'撞車同跌倒有機會傷及頸椎同脊椎，要先固定再搬動。'},
+  equip:{q:'單車相撞、跌落地，懷疑頸椎受傷，救護員應該用咩裝備？',o:['🦺 頸套同脊椎板','🩸 血糖機','💨 Ventolin 噴劑','📈 12 導程心電圖'],why:'撞車同跌倒有機會傷及頸椎同脊椎，要先固定再搬動。'},
   triage:{q:'傷者呼吸每分鐘 34 次，符合創傷分流準則。應該送邊間？',o:['🏥 威爾斯親王醫院（創傷中心，預先通報）','🏥 沙田醫院'],dest:['pwh','pwh'],why:'威爾斯親王醫院本身係新界東嘅創傷中心，沙田區傷者直接送去，並預先通報醫院準備。沙田醫院唔提供急症室服務，唔可以送去。'},
   tips:['喺單車徑見到意外，先留意自身安全，提醒其他單車停低','唔好隨便移動傷者，即刻打 999','用乾淨布料按住流血位置']},
  {id:'ststroke',place:'車公廟',poi:'stck',title:'婆婆懷疑中風',call:'車公廟，一位 72 歲婆婆 1 個鐘前突然右邊手腳無力、口角歪斜。血壓 168/92、GCS 15、H\'stix 7.2。屬區醫院係威爾斯親王醫院。',
   steps:['救護員驗血糖，排除血糖過低','做 FAST-ED 評分','按屬區通報，送院'],
   quiz:[{q:'院前中風通報要符合咩時間條件？',o:['病發或最後正常時間喺 4 小時內','病發喺 24 小時內','冇時間限制'],why:'院前中風通報要病發或最後正常時間喺 4 小時內，18 歲或以上、SBP > 100 mmHg 及 GCS ≥ 8，並已排除血糖過低。'}],
-  equip:{q:'婆婆突然一邊手腳無力，做中風評估之前要先排除咩？揀啱裝備：',o:['🩸 血糖機','🦺 頸托同脊椎板','💨 Ventolin 噴劑','📈 12 導程心電圖'],why:'血糖過低可以引起類似中風嘅症狀，要先驗血糖（H\'stix > 4.0 mmol/L）。'},
+  equip:{q:'婆婆突然一邊手腳無力，做中風評估之前要先排除咩？揀啱裝備：',o:['🩸 血糖機','🦺 頸套同脊椎板','💨 Ventolin 噴劑','📈 12 導程心電圖'],why:'血糖過低可以引起類似中風嘅症狀，要先驗血糖（H\'stix > 4.0 mmol/L）。'},
   triage:{q:'FAST-ED 5 分，病發 1 個鐘，屬區係威爾斯親王醫院。應該點樣送院？',o:['🏥 按屬區通報，直接送威爾斯親王醫院','🏥 分流去那打素醫院'],dest:['pwh','pwh'],why:'資料庫：如原本之屬區醫院為 PWH 或 TMH，不屬於分流，按屬區通報送院。反而係那打素醫院、北區醫院屬區嘅病人 FAST-ED ≥ 4 分，先要分流到威爾斯親王醫院。'},
   tips:['記住 FAST：面、手、講嘢、時間','記低病發或者最後正常嘅時間','唔好俾病人飲嘢食嘢']},
  {id:'starrest',place:'新城市廣場',poi:'stntp',title:'商場有人暈低',call:'新城市廣場，一位 55 歲男子行街時突然暈低，冇反應、冇正常呼吸。保安已經開始做心肺復甦，同埋攞咗商場嘅 AED。',
   steps:['救護員確認心臟驟停，接手做心肺復甦','用除顫器分析心律，需要時電擊','繼續心肺復甦，盡快送最就近醫院'],
   quiz:[{q:'救護員到場，AED 已經貼咗電極片。分析心律期間應該點？',o:['停止按壓，所有人唔好接觸病人','繼續按壓，唔使理','郁動病人方便上擔架'],why:'分析心律期間任何接觸或者郁動都會影響分析，要停手、唔好接觸病人，跟住 AED 語音指示。'}],
-  equip:{q:'男子心臟驟停，救護員最需要即刻用咩裝備？',o:['⚡ 自動心臟除顫器（AED）','🩸 血糖機','💨 Ventolin 噴劑','🦺 頸托同脊椎板'],why:'心臟驟停要盡快做心肺復甦同電擊，越早除顫存活機會越高。'},
+  equip:{q:'男子心臟驟停，救護員最需要即刻用咩裝備？',o:['⚡ 自動心臟除顫器（AED）','🩸 血糖機','💨 Ventolin 噴劑','🦺 頸套同脊椎板'],why:'心臟驟停要盡快做心肺復甦同電擊，越早除顫存活機會越高。'},
   triage:{q:'男子心臟驟停，持續心肺復甦中。應該送邊間？',o:['🏥 威爾斯親王醫院（最就近急症室）','🏥 沙田醫院'],dest:['pwh','pwh'],why:'心臟驟停要以最快時間送到最就近有急症室嘅醫院，即係威爾斯親王醫院，途中持續做高質素心肺復甦。'},
   tips:['見到有人冇反應、冇正常呼吸，即刻打 999 同開始 CPR','商場通常有 AED，叫人攞嚟','用力、快速按壓胸口中央']},
  {id:'sthypo',place:'沙田第一城',poi:'stcity',title:'糖尿伯伯神志不清',call:'沙田第一城，一位 68 歲伯伯有糖尿病，早上打完胰島素冇食早餐，而家冒冷汗、手震、講嘢含糊。佢仲識吞嚥。',
   steps:['救護員評估清醒程度，驗血糖：H\'stix 2.8 mmol/L','問 MIAMIA：食嘢、胰島素、活動、藥物、病、酒','按 Glycemia protocol 處理'],
   quiz:[{q:'伯伯第一次 H\'stix 2.8 mmol/L，清醒、識吞嚥。按資料庫應該點處理？',o:['口服 D10W 糖水 200 ml','即刻打 IV 鹽水','唔使處理，送院先算'],why:'Glycemia：第一次 H\'stix ≦ 4 而病人識吞嚥，可以口服 D10W 每次 200 ml（口服唔需要 Thiamine），之後再驗血糖。'}],
-  equip:{q:'糖尿病人冒冷汗、手震、講嘢含糊，救護員要即刻用咩裝備？',o:['🩸 血糖機','📈 12 導程心電圖','💨 Ventolin 噴劑','🦺 頸托同脊椎板'],why:'清醒程度下降或神經功能急性變化，要即刻驗血糖，≦ 4 mmol/L 或 > 20 mmol/L 就要按 Glycemia protocol 處理。'},
+  equip:{q:'糖尿病人冒冷汗、手震、講嘢含糊，救護員要即刻用咩裝備？',o:['🩸 血糖機','📈 12 導程心電圖','💨 Ventolin 噴劑','🦺 頸套同脊椎板'],why:'清醒程度下降或神經功能急性變化，要即刻驗血糖，≦ 4 mmol/L 或 > 20 mmol/L 就要按 Glycemia protocol 處理。'},
   tips:['糖尿病人冒冷汗、手震、神志不清，可能係血糖過低','如果病人清醒、識吞嚥，可以俾佢食啲糖','神志唔清嘅病人唔好餵嘢食，以免哽親']},
  {id:'stasthma',place:'沙田馬場',poi:'strace',title:'哮喘發作',call:'沙田馬場，一位 30 歲女士有哮喘病歷，睇馬期間突然氣促、有喘鳴聲，講嘢一句斷一句，SpO2 92%。佢冇帶自己嘅噴劑。',
   steps:['救護員檢查 SpO2，給予氧氣','聽肺，量維生指數','確認適用症、排除禁忌症，給予 Ventolin'],
-  quiz:[{q:'女士 30 歲，按資料庫 Respiratory protocol，Ventolin 每次劑量係幾多？',o:['400 mcg（4 下）','200 mcg（2 下）','300 mcg（3 下）'],why:'Salbutamol（Ventolin）：12 歲或以上 400 mcg（4 puffs）；5 至 < 12 歲 300 mcg；2 至 < 5 歲 200 mcg。仍然氣促，相隔 5 分鐘可以再俾下一劑。'}],
-  equip:{q:'哮喘病人氣促、有喘鳴聲，救護員應該用咩藥物裝備？',o:['💨 Ventolin 噴劑（配儲霧器）','🩸 血糖機','📈 12 導程心電圖','🦺 頸托同脊椎板'],why:'主要不適為氣促，而病人有哮喘病歷，符合 Ventolin 適用症（要先排除對 Ventolin 敏感）。'},
+  quiz:[{q:'女士 30 歲，按 Respiratory protocol，Ventolin 每次劑量係幾多？',o:['400 mcg（4 下）','200 mcg（2 下）','300 mcg（3 下）'],why:'Salbutamol（Ventolin）：12 歲或以上 400 mcg（4 puffs）；5 至 < 12 歲 300 mcg；2 至 < 5 歲 200 mcg。仍然氣促，相隔 5 分鐘可以再俾下一劑。'}],
+  equip:{q:'哮喘病人氣促、有喘鳴聲，救護員應該用咩藥物裝備？',o:['💨 Ventolin 噴劑（配儲霧器）','🩸 血糖機','📈 12 導程心電圖','🦺 頸套同脊椎板'],why:'主要不適為氣促，而病人有哮喘病歷，符合 Ventolin 適用症（要先排除對 Ventolin 敏感）。'},
   tips:['哮喘病人應該隨身帶備自己嘅噴劑','幫病人坐直身，保持冷靜','如果氣促加劇、嘴唇發紫，即刻打 999']},
  {id:'stcardiac',place:'萬佛寺',poi:'stbuddha',title:'行山後胸口痛',call:'萬佛寺山腳，一位 58 歲男士行完樓梯後胸口好似俾大石壓住，痛到左手，冒冷汗，已經 20 分鐘。血壓 146/88、脈搏 96、GCS 15。冇藥物過敏。',
   steps:['救護員問 OPQRST，評估懷疑心源性胸痛','排除禁忌症，給予 ASA','做 12 導程心電圖，盡快送院'],
   quiz:[{q:'以下邊個情況，唔可以俾病人服用 ASA（阿士匹靈）？',o:['病人對 ASA 或 NSAIDs 過敏','病人 58 歲','血壓 146/88'],why:'ASA 禁忌症（SAPHBUS）：唔識吞嚥、< 12 歲、懷孕、對 ASA 或 NSAIDs 過敏、不能控制嘅出血、24 小時內已因今次不適服用、一星期內做過手術；裝有 LVAD 亦唔可以。劑量係 200 mg，只俾一次。'}],
-  equip:{q:'懷疑心源性胸痛，救護員應該用咩裝備評估心臟？',o:['📈 12 導程心電圖','🩸 血糖機','💨 Ventolin 噴劑','🦺 頸托同脊椎板'],why:'12 歲或以上有心源性胸痛或不適，可以做 12-Lead ECG；如情況許可，盡量喺給予相應治療後喺現場做。'},
+  equip:{q:'懷疑心源性胸痛，救護員應該用咩裝備評估心臟？',o:['📈 12 導程心電圖','🩸 血糖機','💨 Ventolin 噴劑','🦺 頸套同脊椎板'],why:'12 歲或以上有心源性胸痛或不適，可以做 12-Lead ECG；如情況許可，盡量喺給予相應治療後喺現場做。'},
   tips:['胸口好似俾大石壓住、痛到手臂或下巴，可能係心臟病','即刻停低休息，打 999','唔好自己揸車去醫院']}
 );
 const LEVELS_ST=[
@@ -2486,7 +2494,7 @@ function pedDodge(p,c,lat){ const rx=Math.cos(c.a), rz=-Math.sin(c.a); let side=
   p.mode='jump'; p.jmp={t:0,x0:p.pos[0],z0:p.pos[1],x1,z1,side,ry:Math.atan2(rx*side,rz*side)}; }
 function placePed(p,nearX,nearZ){
   for(let tries=0;tries<50;tries++){
-    if(Math.random()<0.4){ const c=MAP.crossings[Math.random()*MAP.crossings.length|0]; const d=Math.hypot(c.p[0]-nearX,c.p[1]-nearZ); if(d<60||d>280) continue; if(!spawnOK(c.p[0],c.p[1],4)) continue;
+    if(!S.noCross&&Math.random()<0.4){ const c=MAP.crossings[Math.random()*MAP.crossings.length|0]; const d=Math.hypot(c.p[0]-nearX,c.p[1]-nearZ); if(d<60||d>280) continue; if(!spawnOK(c.p[0],c.p[1],4)) continue;
       Object.assign(p,{mode:'cross',cx:c.p[0],cz:c.p[1],nx:c.n[0],nz:c.n[1],half:c.half,s:-c.half,dir:1,wait:Math.random()*4,node:SIGNAL[c.node]?c.node:null,ang:c.ang}); return true; }
     const r=MAP.roads[Math.random()*MAP.roads.length|0]; if(r.bridge) continue;
     const A=NODES[r.n[0]],B=NODES[r.n[1]]; const d=Math.hypot((A[0]+B[0])/2-nearX,(A[1]+B[1])/2-nearZ); if(d<50||d>280) continue;
@@ -2532,15 +2540,20 @@ function tramTick(dt){ const c=S.car, tt=clock.elapsedTime, SV=window.__SV||[];
 /* ---------- 狀態 ---------- */
 const S={mode:'menu',kase:null,step:0,car:{x:0,z:0,a:0,v:0},t0:0,tScene:0,tHosp:0,collided:false,collisions:0,
   target:null,route:null,routeT:0,seq:0,hold:{L:false,R:false,G:false,B:false},siren:false,camYaw:0,stars:0,ideal:0,lastHit:-9};
-const routeMat=new THREE.MeshBasicMaterial({color:0xffc48a,transparent:true,opacity:0.55,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-4,polygonOffsetUnits:-4});
+const routeMat=new THREE.MeshBasicMaterial({color:0xffe4c6,transparent:true,opacity:0.46,depthWrite:false,side:THREE.DoubleSide,polygonOffset:true,polygonOffsetFactor:-6,polygonOffsetUnits:-6});
 let routeMesh=null;
-function drawRoute(pts){
-  if(routeMesh){scene.remove(routeMesh);routeMesh.geometry.dispose();}
-  const pos=[];
-  for(let i=1;i<pts.length;i++){ const a=pts[i-1],b=pts[i]; const dx=b[0]-a[0],dz=b[1]-a[1],L=Math.hypot(dx,dz)||1; const nx=-dz/L*1.3,nz=dx/L*1.3;
-    const ya=0.24+ELEV(a[0],a[1]), yb=0.24+ELEV(b[0],b[1]); pos.push(a[0]+nx,ya,a[1]+nz, b[0]+nx,yb,b[1]+nz, b[0]-nx,yb,b[1]-nz, a[0]+nx,ya,a[1]+nz, b[0]-nx,yb,b[1]-nz, a[0]-nx,ya,a[1]-nz); }
-  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); routeMesh=new THREE.Mesh(g,routeMat); routeMesh.renderOrder=2; scene.add(routeMesh);
+function drawRoute(pts0){   // 連續嘅地面提示線：每 1.5 米一點，轉角用斜接，唔會斷開
+  if(routeMesh){scene.remove(routeMesh);routeMesh.geometry.dispose();routeMesh=null;}
+  const pts=[]; for(let i=0;i<pts0.length;i++){ const a=pts0[i]; if(i===0){ pts.push(a); continue; } const p=pts0[i-1], L=Math.hypot(a[0]-p[0],a[1]-p[1]); if(L<0.3) continue; const n=Math.max(1,Math.ceil(L/1.5)); for(let k=1;k<=n;k++) pts.push([p[0]+(a[0]-p[0])*k/n,p[1]+(a[1]-p[1])*k/n]); }
+  if(pts.length<2) return; const hw=1.25, pos=[], idx=[];
+  for(let i=0;i<pts.length;i++){ const a=pts[Math.max(0,i-1)], b=pts[Math.min(pts.length-1,i+1)]; let dx=b[0]-a[0], dz=b[1]-a[1], L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
+    let m=1; if(i>0&&i<pts.length-1){ const p=pts[i-1],q=pts[i]; let ux=q[0]-p[0],uz=q[1]-p[1]; const ul=Math.hypot(ux,uz)||1; ux/=ul; uz/=ul; const cosv=ux*dx+uz*dz; m=Math.min(2,1/Math.max(0.5,cosv)); }
+    const nx=-dz*hw*m, nz=dx*hw*m, p=pts[i], y=0.3+ELEV(p[0],p[1]); pos.push(p[0]+nx,y,p[1]+nz, p[0]-nx,y,p[1]-nz);
+    if(i>0){ const k=i*2; idx.push(k-2,k-1,k, k-1,k+1,k); } }
+  const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(pos,3)); g.setIndex(idx); routeMesh=new THREE.Mesh(g,routeMat); routeMesh.renderOrder=3; scene.add(routeMesh);
 }
+function routeAhead(){ const R=S.route; if(!R) return null; const pr=routeProj(); const c=S.car; if(!pr) return R.pts; const A=R.pts[pr.i-1],B=R.pts[pr.i]; const P=[A[0]+(B[0]-A[0])*pr.t,A[1]+(B[1]-A[1])*pr.t];
+  return [[c.x,c.z],P,...R.pts.slice(pr.i)]; }   // 由車而家位置開始、已行過嘅部分唔畫
 const ring=add(new THREE.TorusGeometry(5,0.45,12,48),M(0xff7a1a,{e:0x662200}),scene,0,0.5,0,false); ring.rotation.x=Math.PI/2; ring.visible=false;
 const beacon=add(new THREE.CylinderGeometry(1.2,1.2,40,16,1,true),new THREE.MeshBasicMaterial({color:0xff7a1a,transparent:true,opacity:0.22,depthWrite:false,side:THREE.DoubleSide}),scene,0,20,0,false); beacon.visible=false;
 const arrow=new THREE.Group(); scene.add(arrow); arrow.visible=false;
@@ -2565,9 +2578,11 @@ function refreshRoute(force){
   for(const n of starts) for(const m of ends){ const r=route(n,m,ban); if(!r) continue;
     const N=NODES[n], E=NODES[m]; const dx=N[0]-sx, dz=N[1]-sz;
     const ex=T[0]-E[0], ez=T[1]-E[1], el=Math.hypot(ex,ez)||1; let side=1; { const o=ends.find(q=>q!==m); if(o!=null){ const O=NODES[o]; const [ux,uz]=dirn(E,O); side=ex*uz-ez*ux; } } // 正數 = 喺左手邊
-    let cost=r.len+Math.hypot(dx,dz)+el+(dx*fx+dz*fz<-4?250:0)+(side<0?600:0);
+    let cost=r.len+Math.hypot(dx,dz)+el+(dx*fx+dz*fz<-4?120:0)+(side<0?30:0);   // 救護車可以過對面線，唔使為咗靠左停而兜圈
     if(n===m&&starts.length>1&&ends.length>1&&starts.includes(ends[0])&&starts.includes(ends[1])) cost=Math.hypot(T[0]-c.x,T[1]-c.z)+((T[0]-c.x)*fx+(T[1]-c.z)*fz<0?400:0); // 同一段路
     if(!best||cost<best.cost) best={r,cost}; }
+  { const dd=Math.hypot(T[0]-c.x,T[1]-c.z); let clear=dd<55; for(let k=0.05;clear&&k<1;k+=0.05) if(cellAt(c.x+(T[0]-c.x)*k,c.z+(T[1]-c.z)*k)&6) clear=false;   // 就到目的地：直接畫過去，唔再兜路
+    if(clear&&(S.step!==1||S.leftDepot)){ const pts=[[c.x,c.z],T]; S.route={path:[],pts,len:dd,cum:[0,dd],idx:0}; drawRoute(pts); return; } }
   if(!best) return; const r=best.r; let path=r.path.slice();
   if(path.length>1&&onSeg(sx,sz,NODES[path[0]],NODES[path[1]])) path.shift();
   if(path.length>1&&onSeg(T[0],T[1],NODES[path[path.length-2]],NODES[path[path.length-1]])) path.pop();
@@ -2614,13 +2629,14 @@ function resetActors(){ clearScene();
 }
 function startCase(i){
   ensureAudio(); chModeExit(); S.gm='ems'; sirenSet(false);
-  const lv=LEVELS[i]; S.lvl=i; S.level=lv; const k=caseOf(lv); S.kase=k; S.kase.loc=LMK[k.poi]; { const Lc=S.kase.loc; if(NEON&&Lc&&Lc.stop&&Lc.patient) NEON.rail.cutPath([Lc.stop,Lc.patient],3); } DEPOT=DEPOTS[lv.depot||(REGION==='st'?'st':'tm')]; AE=HOSPS[DEF_H]; S.dest=DEF_H;
+  const lv=LEVELS[i]; S.lvl=i; S.level=lv; const k=caseOf(lv); S.kase=k; S.kase.loc=LMK[k.poi]; { const Lc=S.kase.loc; if(NEON&&Lc&&Lc.stop&&Lc.patient) NEON.rail.cutPath([Lc.stop,Lc.patient],3); } DEPOT=DEPOTS[lv.depot||(REGION==='st'?'st':'tm')]; AE=HOSPS[DEF_H]; S.dest=DEF_H; { const fx=Math.sin(DEPOT.a), fz=Math.cos(DEPOT.a); cam.position.set(DEPOT.pos[0]+fx*34,12,DEPOT.pos[1]+fz*34); camLook.set(DEPOT.pos[0],2,DEPOT.pos[1]); }   // 鏡頭即刻去返今關救護站，唔好由另一區飛過嚟
   resetActors(); setTOD(lv.tod); clearEvents();
   const d=DEPOT.pos;
   Object.assign(S.car,{x:d[0],z:d[1],a:DEPOT.a,v:0}); S.camYaw=S.car.a;
   Object.assign(S,{yieldPass:0,mode:'drive',step:1,leftDepot:false,depotCam:false,sirenMuted:false,swingT:0,wasBay:false,sirenUsed:false,equipOk:false,quizOk:false,lives:5,onTime:0,overT:false,stab:100,stabLow:100,dashLeft:lv.dash,dashT:14+Math.random()*10,newAch:[],log:[],pedLast:-9,collided:false,redRun:false,inX:-1,quizOpen:false,qDone:[false,false,!k.triage],qScore:0,qPending:0,collisions:0,t0:performance.now()/1000,tScene:0,tHosp:0,lastHit:-9});
+  S.noCross=!!(lv.support||lv.escort); const carN=S.noCross?Math.round(lv.cars*0.6):lv.cars;   // 有其他車一齊出動：冇行人過馬路、路面車少啲，提升效能
   S.spawnFree=true; // 開局一次過擺好（之後先避開鏡頭）
-  for(let n=0;n<lv.cars;n++){ const c={m:carModel(['taxi','car','bus','car','minibus','taxi','car'][n%7])}; if(placeCar(c,d[0],d[1])) cars.push(c); else dropModel(c.m); }
+  for(let n=0;n<carN;n++){ const c={m:carModel(['taxi','car','bus','car','minibus','taxi','car'][n%7])}; if(placeCar(c,d[0],d[1])) cars.push(c); else dropModel(c.m); }
   for(let n=0;n<PED_N;n++){ const p={m:pedModel()}; if(placePed(p,d[0],d[1])) peds.push(p); else scene.remove(p.m); }
   S.spawnFree=false; setupScene(k,lv);
   const L=k.loc; patient.visible=true; patient.position.set(L.patient[0],0.3,L.patient[1]); patient.rotation.set(0,Math.random()*6,0);
@@ -2654,14 +2670,14 @@ function finish(){
   if(!FUN.on){ ach('first'); if(S.lives===5) ach('perfect'); if(S.onTime>=2) ach('ontime'); if(S.stabLow>=85) ach('steady'); if(S.qScore>=2) ach('quiz');
   if(lv.tod==='night'||lv.tod==='rain') ach('night'); if(LEVELS.every(l=>isDone(l.id))) ach('all'); if(!S.redRun&&S.sirenUsed) ach('siren'); }
   $('rTitle').textContent=FUN.on?'🎉 歡樂模式完成（唔計成績）':'任務完成';
-  $('rStars').textContent='♥'.repeat(S.stars)+'♡'.repeat(5-S.stars);
+  $('rStars').innerHTML=[0,1,2,3,4].map(i=>'<span class="'+(i<S.stars?'on':'off')+'">'+lifeStar(34)+'</span>').join('');
   $('rTime').textContent='到場 '+fmt(S.tScene)+' · 送院完成 '+fmt(S.tHosp);
   const ex=[];
   ex.push((S.onTime>=2?'⏱️ 兩段都準時':'⏱️ 準時 '+S.onTime+' / 2 段'));
   ex.push('🛏️ 病人穩定度最低 '+Math.round(S.stabLow)+'%');
   ex.push('🧰 裝備 '+(S.equipOk?'揀啱':'揀錯')+' · 小測 '+(S.quizOk?'答啱':'答錯'));
   if(FUN.on) ex.push('🎉 歡樂分 '+FUN.score.toLocaleString());
-  if(REAL.on) ex.push('💼 今更完成 '+REAL.jobs+' 單 · 收入 $'+REAL.shift.toLocaleString()+' · 總收入 $'+REAL.cash.toLocaleString());
+  if(REAL.on) ex.push('🏅 今更完成 '+REAL.jobs+' 單 · 得分 '+REAL.shift.toLocaleString()+' · 累積總分 '+REAL.cash.toLocaleString());
   if(S.yieldPass) ex.push('🚑 順利越過讓路車 '+S.yieldPass+' 架'); if((S.yieldPass||0)>=5) ach('yield');
   $('rNote').innerHTML=(S.lives===5?'完美！全程冇犯錯。':'扣咗 '+(5-S.lives)+' 粒：'+S.log.join('、'))+'<br><small>'+ex.join(' · ')+'</small>';
   $('rAch').innerHTML=S.newAch.length?'<b>🏆 新成就：</b>'+S.newAch.map(a=>ACH[a].name).join('、'):'';
@@ -2670,7 +2686,7 @@ function finish(){
   $('rName').value=getName(); $('rSave').disabled=false; $('rSave').textContent='儲存到排行榜';
   show('result',true); show('hudWrap',false); checkLiveryUnlock(); fireworks(S.stars);
 }
-/* ---------- 任務完成：按剩低幾多粒心心放煙花（5 粒最多，0 粒冇） ---------- */
+/* ---------- 任務完成：按剩低幾多粒生命之星放煙花（5 粒最多，0 粒冇） ---------- */
 let FW=null;
 function fireworks(n){ const cv=$('fw'); if(FW){ cancelAnimationFrame(FW.raf); FW=null; } const g=cv.getContext('2d'); const W=cv.width=innerWidth*Math.min(2,devicePixelRatio||1), H=cv.height=innerHeight*Math.min(2,devicePixelRatio||1);
   g.clearRect(0,0,W,H); if(!n||n<1||matchMedia('(prefers-reduced-motion: reduce)').matches) return;
@@ -2683,17 +2699,18 @@ function fireworks(n){ const cv=$('fw'); if(FW){ cancelAnimationFrame(FW.raf); F
       for(let i=0;i<k;i++){ const a=i/k*Math.PI*2+Math.random()*0.1, v=sp*(0.6+Math.random()*0.5); parts.push({x:s.x,y:s.y,vx:Math.cos(a)*v,vy:Math.sin(a)*v,life:1,c:Math.random()<0.2?'#ffffff':s.c,heart:s.big&&i%6===0}); } } });
     g.globalCompositeOperation='lighter';
     for(let i=parts.length-1;i>=0;i--){ const p=parts[i]; p.x+=p.vx; p.y+=p.vy; p.vy+=0.06*(W/800+0.6); p.vx*=0.985; p.vy*=0.985; p.life-=0.012; if(p.life<=0){ parts.splice(i,1); continue; }
-      g.globalAlpha=Math.max(0,p.life); g.fillStyle=p.c; if(p.heart){ g.font=(14*(W/800+0.6))+'px sans-serif'; g.fillText('♥',p.x,p.y); } else { g.beginPath(); g.arc(p.x,p.y,2.2*(W/800+0.6),0,7); g.fill(); } }
+      g.globalAlpha=Math.max(0,p.life); g.fillStyle=p.c; if(p.heart){ g.font=(14*(W/800+0.6))+'px sans-serif'; g.fillText('✱',p.x,p.y); } else { g.beginPath(); g.arc(p.x,p.y,2.2*(W/800+0.6),0,7); g.fill(); } }
     g.globalAlpha=1; if(t<dur+3||parts.length) FW.raf=requestAnimationFrame(step); else g.clearRect(0,0,W,H); };
   FW.raf=requestAnimationFrame(step); }
 function stopFireworks(){ if(FW){ cancelAnimationFrame(FW.raf); FW=null; } const cv=$('fw'); cv.getContext('2d').clearRect(0,0,cv.width,cv.height); }
-/* ---------- 心心：做錯一樣扣一粒，扣晒就遊戲結束 ---------- */
-function drawLives(lost){ $('lives').innerHTML=[0,1,2,3,4].map(i=>'<span class="'+(i<S.lives?'on':'off')+(i===lost?' lost':'')+'" style="animation-delay:'+(i*0.12)+'s">♥</span>').join(''); $('lives').setAttribute('aria-label','心心 '+S.lives+' / 5'); }
-function loseLife(why,msg){ if(FUN.on) return; if(S.gm&&S.gm!=='ems') return; if(S.lives<=0) return; S.lives--; S.log.push(why); drawLives(S.lives); toast(msg+'  −1 ❤');
+/* ---------- 生命之星：做錯一樣扣一粒，扣晒就遊戲結束 ---------- */
+function lifeStar(sz){ return '<svg class="lstar" viewBox="-12 -12 24 24" width="'+sz+'" height="'+sz+'" aria-hidden="true"><g fill="currentColor" stroke="#fff" stroke-width="1.3"><rect x="-3.2" y="-11" width="6.4" height="22" rx="1"/><rect x="-3.2" y="-11" width="6.4" height="22" rx="1" transform="rotate(60)"/><rect x="-3.2" y="-11" width="6.4" height="22" rx="1" transform="rotate(-60)"/></g><path d="M0-7V7" stroke="#fff" stroke-width="1.5"/><path d="M-1.6-4.5q3.2 1.3 0 2.6t0 2.6t0 2.6" fill="none" stroke="#fff" stroke-width="1"/></svg>'; }
+function drawLives(lost){ $('lives').innerHTML=[0,1,2,3,4].map(i=>'<span class="'+(i<S.lives?'on':'off')+(i===lost?' lost':'')+'" style="animation-delay:'+(i*0.12)+'s">'+lifeStar(18)+'</span>').join(''); $('lives').setAttribute('aria-label','生命之星 '+S.lives+' / 5'); }
+function loseLife(why,msg){ if(FUN.on) return; if(S.gm&&S.gm!=='ems') return; if(S.lives<=0) return; S.lives--; S.log.push(why); drawLives(S.lives); toast(msg+'  −1 生命之星');
   const el=$('lives'); el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit');
   if(S.lives<=0) setTimeout(()=>gameOver(why),700); }
 function gameOver(why){ if(S.mode==='result') return; S.mode='over'; S.car.v=0; sirenSet(false); show('quiz',false); S.quizOpen=false; S.sirenMuted=false;
-  $('oWhy').textContent='最後一次犯錯：'+why+'。'; show('over',true); show('hudWrap',false); }
+  $('oWhy').textContent='最後一次犯錯：'+why+'。'; $('oStars').innerHTML=[0,1,2,3,4].map(()=>'<span class="off">'+lifeStar(34)+'</span>').join(''); show('over',true); show('hudWrap',false); }
 const fmt=s=>{s=Math.max(0,Math.round(s)); return Math.floor(s/60)+':'+String(s%60).padStart(2,'0');};
 
 /* ---------- 輸入 ---------- */
@@ -2765,7 +2782,7 @@ function drawMini(){
   mg.beginPath(); mg.arc(W/2,Hh/2,W/2-2,0,Math.PI*2); mg.clip(); mg.fillStyle='#eef2e8'; mg.fillRect(0,0,W,Hh);
   mg.translate(W/2,Hh/2); mg.rotate(Math.PI+c.a); mg.scale(sc,sc);
   mg.drawImage(MM,-(c.x-BX0+60)*MMS,-(c.z-BZ0+60)*MMS);
-  if(S.route&&S.mode==='drive'){ mg.strokeStyle='#ff7a1a'; mg.lineWidth=3/sc; mg.beginPath(); mg.moveTo(0,0); S.route.pts.forEach((n,k)=>{ if(k) mg.lineTo((n[0]-c.x)*MMS,(n[1]-c.z)*MMS)}); mg.stroke(); }
+  if(S.route&&S.mode==='drive'){ const RP=routeAhead()||[]; mg.strokeStyle='#ff7a1a'; mg.lineWidth=3/sc; mg.lineJoin=mg.lineCap='round'; mg.beginPath(); mg.moveTo(0,0); RP.forEach((n,k)=>{ if(k) mg.lineTo((n[0]-c.x)*MMS,(n[1]-c.z)*MMS)}); mg.stroke(); }
   if(S.gm==='chase') CH.cops.forEach(p=>{ mg.fillStyle=(Math.floor(performance.now()/250)%2)?'#1f4fbf':'#e8323c'; mg.beginPath(); mg.arc((p.x-c.x)*MMS,(p.z-c.z)*MMS,5/sc,0,Math.PI*2); mg.fill(); });
   if(S.gm==='taxi') TX.wait.forEach(w=>{ mg.fillStyle=TX.cls[w.k].css; mg.beginPath(); mg.arc((w.s.p[0]-c.x)*MMS,(w.s.p[1]-c.z)*MMS,5/sc,0,Math.PI*2); mg.fill(); });
   if(S.target){ mg.fillStyle='#e8323c'; mg.beginPath(); mg.arc((S.target[0]-c.x)*MMS,(S.target[1]-c.z)*MMS,4/sc,0,Math.PI*2); mg.fill(); }
@@ -2830,7 +2847,7 @@ function tick(){
       S.inX=inX; }
     // 導航
     // 偏離路線先重新計（唔會每秒都重畫）
-    S.routeT+=dt; if(S.gm!=='chase'&&S.gm!=='free'){ const pr=S.route&&routeProj(); if((pr&&pr.d>11&&S.routeT>0.4)||S.routeT>8){ S.routeT=0; refreshRoute(); } }
+    S.routeT+=dt; S.routeDrawT=(S.routeDrawT||0)+dt; if(S.route&&S.routeDrawT>0.3&&routeMesh&&routeMesh.visible){ S.routeDrawT=0; drawRoute(routeAhead()); } if(S.gm!=='chase'&&S.gm!=='free'){ const pr=S.route&&routeProj(); if((pr&&pr.d>11&&S.routeT>0.4)||S.routeT>8||(S.routeT>1.2&&S.target&&S.route&&S.route.pts.length>2&&Math.hypot(S.target[0]-S.car.x,S.target[1]-S.car.z)<55)){ S.routeT=0; refreshRoute(); } }
     const d=Math.hypot(c.x-S.target[0],c.z-S.target[1]);
     $('hDist').textContent=d>1000?(d/1000).toFixed(1)+' 公里':Math.round(d)+' 米';
     if(S.gm==='ems'&&S.step!==6){ legTimer(); dashTick(dt); } else if(S.step===6) $('hTime').textContent='—';
@@ -2930,7 +2947,7 @@ function tick(){
     camLook.lerp(new THREE.Vector3(c.x,2,c.z),Math.min(1,dt*6));
     if(!S.hold.G&&c.v<0.5) caption(VSPEC.siren?'按住「油」出車；撳「警號」開閃燈同警號':'按住「油」出車；呢款車冇警號，其他車唔會讓路，要守交通燈'); else caption(null);
   } else if(S.mode==='drive'||S.mode==='over'){
-    if(S.step===1&&S.leftDepot!==true){ S.leftDepot=true; caption(null); if(S.level&&S.level.escort) launchEscorts(S.level.escort); if(S.level&&S.level.support) launchSupport(S.level.support); }
+    if(S.step===1&&S.leftDepot!==true){ S.leftDepot=true; caption(null); if(S.level&&S.level.escort) launchEscorts(S.level.escort); if(S.level&&S.level.support) queueSupport(S.level.support); }
     // 車仲喺車房入面：鏡頭最多繞到車側，留喺門口外面同低位，唔會俾車房屋頂同牆遮住；車尾出咗門先繞埋去車後
     const DP=DEPOT.pos, hx=Math.sin(DEPOT.a), hz=Math.cos(DEPOT.a), sC=(c.x-DP[0])*hx+(c.z-DP[1])*hz, latC=(c.x-DP[0])*hz-(c.z-DP[1])*hx;
     const inBay=S.depotCam&&S.step===1&&sC>-12&&sC<16&&Math.abs(latC)<12, prog=Math.max(0,Math.min(1,sC/16));
@@ -2946,7 +2963,7 @@ function tick(){
     if(inBay){ const R=16+(back-16)*prog, W=new THREE.Vector3(c.x-Math.sin(yaw)*R,5.5+(up-5.5)*prog,c.z-Math.cos(yaw)*R); const sw=(W.x-DP[0])*hx+(W.z-DP[1])*hz;
       if(sw<9.5){ W.x+=hx*(9.5-sw); W.z+=hz*(9.5-sw); W.y=Math.max(W.y,10); }   // 鏡頭唔入車房：最多退到門口上方
       cam.position.lerp(W,Math.min(1,dt*8)); camLook.lerp(new THREE.Vector3(c.x+Math.sin(c.a)*6*prog,1.6,c.z+Math.cos(c.a)*6*prog),Math.min(1,dt*9)); }
-    else { const nearDepot=S.depotCam&&S.step===1&&sC<45&&Math.abs(latC)<30; const CW=new THREE.Vector3(c.x-Math.sin(yaw)*back,up+eh,c.z-Math.cos(yaw)*back); if(nearDepot){ const sw=(CW.x-DP[0])*hx+(CW.z-DP[1])*hz; if(sw<9.5){ CW.x+=hx*(9.5-sw); CW.z+=hz*(9.5-sw); } } cam.position.lerp(nearDepot?CW:clampCam(CW,new THREE.Vector3(c.x,0,c.z)),Math.min(1,dt*(D.on||S.swingT>0?12:6)));
+    else { const nearDepot=S.depotCam&&S.step===1&&sC>-12&&sC<45&&Math.abs(latC)<30; /* 只計救護站門前，唔計站後面條路 */ const CW=new THREE.Vector3(c.x-Math.sin(yaw)*back,up+eh,c.z-Math.cos(yaw)*back); if(nearDepot){ const sw=(CW.x-DP[0])*hx+(CW.z-DP[1])*hz; if(sw<9.5){ CW.x+=hx*(9.5-sw); CW.z+=hz*(9.5-sw); } } cam.position.lerp(nearDepot?CW:clampCam(CW,new THREE.Vector3(c.x,0,c.z)),Math.min(1,dt*(D.on||S.swingT>0?12:6)));
     camLook.lerp(new THREE.Vector3(c.x+Math.sin(yaw)*(6+34*hk+(REAL.on?10:0)),1.5+4*hk+eh+(REAL.on?1.4:0),c.z+Math.cos(yaw)*(6+34*hk+(REAL.on?10:0))),Math.min(1,dt*9)); }
   } else if(S.mode==='seq'||S.mode==='hseq'||S.mode==='result'){
     const P=S.mode==='hseq'?AE.door:(S.kase.loc?S.kase.loc.patient:[c.x+Math.sin(c.a)*8,c.z+Math.cos(c.a)*8]); const rear=[c.x-Math.sin(c.a)*4,c.z-Math.cos(c.a)*4];
@@ -2978,7 +2995,7 @@ function openChoice(kind){ S.quizOpen=true; sirenMute(true); S.qKind=kind; capti
   $('qOpts').querySelectorAll('.qo').forEach(b=>{ b.textContent=Q.o[+b.dataset.i]; b.onclick=()=>{ if($('qNext').style.display!=='none') return; const ok=+b.dataset.i===0;
     if(ok) S.qScore++; else S.qPending=1; if(kind==='equip') S.equipOk=ok; else if(kind==='triage'){ S.triageOk=ok; S.dest=Q.dest[0]; } else S.quizOk=ok;
     $('qOpts').querySelectorAll('.qo').forEach(x=>{ x.disabled=true; if(+x.dataset.i===0) x.classList.add('ok'); else if(x===b) x.classList.add('bad'); });
-    $('qWhy').innerHTML='<b>'+(ok?'答啱！':(kind==='equip'?'揀錯裝備，扣 1 粒心心。':kind==='triage'?'分流揀錯醫院，扣 1 粒心心，改送正確醫院。':'答錯咗，扣 1 粒心心。'))+'</b> '; $('qWhy').append(Q.why); $('qNext').style.display='block'; $('qNext').focus(); }; });
+    $('qWhy').innerHTML='<b>'+(ok?'答啱！':(kind==='equip'?'揀錯裝備，扣 1 粒生命之星。':kind==='triage'?'分流揀錯醫院，扣 1 粒生命之星，改送正確醫院。':'答錯咗，扣 1 粒生命之星。'))+'</b> '; $('qWhy').append(Q.why); $('qNext').style.display='block'; $('qNext').focus(); }; });
   show('quiz',true); }
 $('qNext').onclick=()=>{ show('quiz',false); const k=S.qKind==='equip'?0:S.qKind==='triage'?2:1; S.qDone[k]=true; S.quizOpen=false; sirenMute(false);
   if(S.qPending){ S.qPending=0; const why=['揀錯裝備','急救小測答錯','分流揀錯醫院'][k]; loseLife(why,why); } };
@@ -3041,13 +3058,13 @@ function setTOD(k){ const T=TOD[k]; CARL.night=!!(T.night||k==='rain'); if(typeo
   Object.values(MAT).forEach(m=>{ if(m.map&&m.emissive){ m.emissiveMap=T.night?m.map:null; m.emissive.setHex(T.night?0x2a261c:0); m.needsUpdate=true; } }); // 夜晚：窗口有燈
   headL.intensity=T.night?2.4:0; rain.visible=!!T.wet; S.wet=!!T.wet; }
 
-/* ---------- 限時：每段路程有時限，準時到 +1 ❤，超時 −1 ❤ ---------- */
+/* ---------- 限時：每段路程有時限，準時到 +1 生命之星，超時 −1 生命之星 ---------- */
 function startLeg(){ setupEvents(); const len=S.route?S.route.len:400; S.legLimit=Math.round(len/16*S.level.limit/1.4+15); S.legStart=performance.now()/1000; S.overT=false; }
 function legLeft(){ return S.legLimit-(performance.now()/1000-S.legStart); }
 function legTimer(){ const r=legLeft(), el=$('hTime');
   if(r>=0){ el.textContent=fmt(r); el.classList.toggle('warn',r<15); }
   else { el.textContent='超時 +'+fmt(-r); el.classList.add('warn'); if(!S.overT){ S.overT=true; loseLife('超時','超時！病人等得太耐'); } } }
-function endLeg(){ if(legLeft()>=0){ S.onTime++; if(S.lives<5){ S.lives++; drawLives(); toast('準時到達！獎勵 +1 ❤'); } else toast('準時到達！'); } }
+function endLeg(){ if(legLeft()>=0){ S.onTime++; if(S.lives<5){ S.lives++; drawLives(); toast('準時到達！獎勵 +1 生命之星'); } else toast('準時到達！'); } }
 
 /* ---------- 病人穩定度（送院途中） ---------- */
 function drawStab(){ const v=Math.max(0,S.stab); $('stabBar').style.width=v+'%'; $('stabBar').style.background=v>60?'#21b46b':v>30?'#f5a623':'#e8323c'; $('stabBox').setAttribute('aria-label','病人穩定度 '+Math.round(v)+'%'); }
@@ -3103,7 +3120,7 @@ function dashTick(dt){ if(!(S.dashLeft>0)||!S.leftDepot) return; S.dashT-=dt; co
   S.dashLeft--; S.dashT=18+Math.random()*14; toast('⚠️ 小心！有人衝出馬路！'); }
 
 /* ---------- 成就同車款 ---------- */
-const ACH={first:{ic:'🚑',name:'首次出車',d:'完成任何一關'},perfect:{ic:'💖',name:'完美任務',d:'保住全部 5 粒心心完成一關'},
+const ACH={first:{ic:'🚑',name:'首次出車',d:'完成任何一關'},perfect:{ic:'✳️',name:'完美任務',d:'保住全部 5 粒生命之星完成一關'},
   ontime:{ic:'⏱️',name:'分秒必爭',d:'到場同送院兩段都準時'},steady:{ic:'🛏️',name:'穩如泰山',d:'送院途中病人穩定度保持 85% 以上'},
   quiz:{ic:'🧠',name:'急救達人',d:'一關入面裝備同小測都答啱'},siren:{ic:'🚨',name:'鳴笛開路',d:'有開警號，而且冇衝紅燈'},
   night:{ic:'🌙',name:'夜更英雄',d:'完成夜晚或者落雨嘅關卡'},yield:{ic:'🛣️',name:'有序開路',d:'一關入面響警號順利越過 5 架讓路車'},all:{ic:'🏅',name:'屯門元朗守護者',d:'完成全部關卡'}};
@@ -3236,7 +3253,7 @@ async function onlineBoard(lv,box){ if(!DB){ box.textContent='（網上排行榜
     const rows=q.docs.map(d=>{ const v=d.data()||{}; const r=v.lv&&v.lv[lv]; return r?{n:String(v.n||'無名').slice(0,12),st:+r.st||0,tm:+r.tm||0,me:d.id===UID}:null; }).filter(Boolean).sort(rankSort).slice(0,10);
     box.textContent=''; if(!rows.length){ box.textContent='暫時未有人上榜，做第一個！'; return; } box.append(boardTable(rows)); }catch(e){ done=true; clearTimeout(tmo); box.textContent='暫時連唔到網上排行榜'; } }
 function boardTable(rows){ const t=document.createElement('table'); t.className='board'; rows.forEach((r,i)=>{ const tr=t.insertRow(); const c0=tr.insertCell(); c0.textContent=(i+1)+'.';
-  const c1=tr.insertCell(); c1.className='n'; c1.textContent=r.n+(r.me?'（你）':''); const c2=tr.insertCell(); const isT=S.boardLv==='TAXI'&&S.mode==='menu'; c2.textContent=isT?'$'+r.st:'♥'.repeat(r.st); c2.style.color=isT?'#1f8f3a':'#ff3b5c';
+  const c1=tr.insertCell(); c1.className='n'; c1.textContent=r.n+(r.me?'（你）':''); const c2=tr.insertCell(); const isT=S.boardLv==='TAXI'&&S.mode==='menu'; if(isT) c2.textContent='$'+r.st; else c2.innerHTML=[...Array(r.st)].map(()=>'<i class="on">'+lifeStar(13)+'</i>').join(''); c2.style.color=isT?'#1f8f3a':'#ff3b5c';
   const isC=S.boardLv==='CHASE'&&S.mode==='menu'; if(isC&&!r.st){ c2.textContent='💔'; }
   const c3=tr.insertCell(); c3.className='r'; c3.textContent=isT?'':isC?'撐 '+(60-r.tm)+' 秒':fmt(r.tm); }); return t; }
 
@@ -3265,18 +3282,18 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
       const go=el('button','go','🚶 開始探索'); go.style.background='#7b4fd6'; go.onclick=()=>startFree(); B.append(go); return; }
     if(S.menuMode==='chase'){ const L=LIVERY.find(l=>l.id===store.get('livery','yellow'))||LIVERY[0];
       B.append(el('p',null,'警車開住警號追你！喺隨機地點開始，撐夠 60 秒就成功逃脫。'));
-      const ul=el('ul','chlist'); ['有 5 粒心心：撞到警車或者路障扣 1 粒，扣晒就被捕','每 12 秒多一架警車，最多 6 架；路障越嚟越多','路障留咗一條窄位，可以鑽過去','撞到人唔扣分，佢哋會彈開再起身','開警號，路上啲車會讓路'].forEach(x=>ul.append(el('li',null,x))); B.append(ul);
+      const ul=el('ul','chlist'); ['有 5 粒生命之星：撞到警車或者路障扣 1 粒，扣晒就被捕','每 12 秒多一架警車，最多 6 架；路障越嚟越多','路障留咗一條窄位，可以鑽過去','撞到人唔扣分，佢哋會彈開再起身','開警號，路上啲車會讓路'].forEach(x=>ul.append(el('li',null,x))); B.append(ul);
       B.append(el('p',null,'使用車款：'+L.name+'（喺「車款」分頁可以換）'));
-      const cb=store.get('chaseBest',{st:0,s:0}); B.append(el('p','txbest','最佳紀錄：'+(cb.st?cb.st+' 粒心心逃脫':cb.s?'撐 '+cb.s+' 秒':'未有')));
+      const cb=store.get('chaseBest',{st:0,s:0}); B.append(el('p','txbest','最佳紀錄：'+(cb.st?cb.st+' 粒生命之星逃脫':cb.s?'撐 '+cb.s+' 秒':'未有')));
       const go=el('button','go','🚓 開始追逐'); go.style.background='#1f4fbf'; go.onclick=()=>startChase(); B.append(go); return; }
-    if(S.menuMode==='real') B.append(el('p','realIntro','🎬 寫實模式：電影感黃昏光影、光暈同調色、低鏡頭跟車，加上派遣接 Call（RES 接受／REJ 拒絕）、圓形小地圖、狀態條、收入同時鐘。用嘅係'+(REGION==='st'?'沙田':'屯門')+'嘅關卡（要較新嘅手機）。'));
+    if(S.menuMode==='real') B.append(el('p','realIntro','🎬 寫實模式：電影感黃昏光影、光暈同調色、低鏡頭跟車，加上派遣接 Call（RES 接受／REJ 拒絕）、圓形小地圖、狀態條、分數同時鐘。用嘅係'+(REGION==='st'?'沙田':'屯門')+'嘅關卡（要較新嘅手機）。'));
     B.append(el('p',null,REGION==='st'?'沙田區：由沙田或者田心救護站出車，到場處理，再送去威爾斯親王醫院急症室。完成一關解鎖下一關：':'由屯門救護站出車，到場處理，再送去屯門醫院急症室。完成一關解鎖下一關：'));
     const box=el('div'); box.id='cases'; LEVELS.forEach((lv,i)=>{ const k=caseOf(lv), lock=!unlockedAll()&&i>0&&!isDone(LEVELS[i-1].id), st=best[lv.id]||0;
       const b=el('button','case'+(lock?' locked':'')); b.disabled=lock;
-      b.append(el('span','pl','第 '+(i+1)+' 關 · '+lv.todName+(lv.works?' · 修路':'')+(lv.jam?' · 塞車':'')), el('b',null,(lock?'🔒 ':'')+k.place+'：'+k.title), el('span','st','♥'.repeat(st)+'♡'.repeat(5-st)));
+      b.append(el('span','pl','第 '+(i+1)+' 關 · '+lv.todName+(lv.works?' · 修路':'')+(lv.jam?' · 塞車':'')), el('b',null,(lock?'🔒 ':'')+k.place+'：'+k.title), (()=>{ const x=el('span','st'); x.innerHTML=[0,1,2,3,4].map(i=>'<i class="'+(i<st?'on':'off')+'">'+lifeStar(14)+'</i>').join(''); return x; })());
       if(lv.support&&lv.support.length) b.append(el('span','sup',supTags(lv).join(' · ')));
       b.onclick=()=>{ S.realPick=S.menuMode==='real'; startCase(i); }; box.append(b); }); B.append(box);
-    const r=el('div','rules'); r.innerHTML='<b>點玩：</b>◀ ▶ 轉彎，按住「油」前進，「倒」倒車；撳「警號」開閃燈同警號，其他車會讓路，可以安全過紅燈。<br><b>限時：</b>準時到 +1 ❤，超時 −1 ❤。<br><b>心心：</b>5 粒；撞車、撞樓、撞人、冇警號衝紅燈、揀錯裝備、答錯小測、病人穩定度跌晒，每次 −1 ❤，扣晒遊戲結束。<br><b>送院：</b>轉彎同煞車要慢慢嚟，保持病人穩定。'; B.append(r); }
+    const r=el('div','rules'); r.innerHTML='<b>點玩：</b>◀ ▶ 轉彎，按住「油」前進，「倒」倒車；撳「警號」開閃燈同警號，其他車會讓路，可以安全過紅燈。<br><b>限時：</b>準時到 +1 生命之星，超時 −1 生命之星。<br><b>生命之星：</b>5 粒；撞車、撞樓、撞人、冇警號衝紅燈、揀錯裝備、答錯小測、病人穩定度跌晒，每次 −1 生命之星，扣晒遊戲結束。<br><b>送院：</b>轉彎同煞車要慢慢嚟，保持病人穩定。'; B.append(r); }
   if(tab==='cards'){ B.append(el('p',null,'完成關卡就收集到嗰個個案嘅急救知識卡：'));
     LEVELS.forEach((lv,i)=>{ const k=caseOf(lv), d=el('div','kcard'+(isDone(lv.id)||unlockedAll()?'':' lock'));
       if(isDone(lv.id)||unlockedAll()){ d.append(el('b',null,'📗 '+k.title+'（'+k.place+'）')); const ul=el('ul'); k.tips.forEach(t=>ul.append(el('li',null,t))); d.append(ul); }
@@ -3294,10 +3311,10 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
     const step=(v,mn,mx,fn,label)=>{ const w=el('div','set-step'); const m=el('button',null,'－'), p=el('button',null,'＋'), n=el('span',null,String(v));
       m.setAttribute('aria-label',label+'減少'); p.setAttribute('aria-label',label+'增加'); m.disabled=v<=mn||!C.on; p.disabled=v>=mx||!C.on; m.onclick=()=>{ fn(v-1); save(); }; p.onclick=()=>{ fn(v+1); save(); }; w.append(m,n,p); return w; };
     if(FUN.unlocked){ sec('🎉 歡樂模式');
-      row('歡樂模式',sw(FUN.on,v=>{ funSet(v); },'歡樂模式'),'全車解放、撞人噴血、撞車爆炸、🚀 氮氣、唔扣心（唔計正式成績）');
+      row('歡樂模式',sw(FUN.on,v=>{ funSet(v); },'歡樂模式'),'全車解放、撞人噴血、撞車爆炸、🚀 氮氣、唔扣生命之星（唔計正式成績）');
       if(FUN.on) B.append(el('p','set-warn','🎉 開咗：所有車款可以揀；揸車時右邊有 🚀 掣（鍵盤 Shift）。歡樂分 '+FUN.score.toLocaleString())); }
     sec('🚶 行人');
-    row('行人自動避開',sw(DODGE.on,v=>{ DODGE.on=v; store.set('dodge',v); },'行人自動避開'),DODGE.on?'開：撞埋去之前行人會自己跳開，唔會受傷，亦唔扣心':'關：撞到行人會瞓喺地下，一陣後消失（會扣心）');
+    row('行人自動避開',sw(DODGE.on,v=>{ DODGE.on=v; store.set('dodge',v); },'行人自動避開'),DODGE.on?'開：撞埋去之前行人會自己跳開，唔會受傷，亦唔扣生命之星':'關：撞到行人會瞓喺地下，一陣後消失（會扣生命之星）');
     sec('🖼️ 畫面質素');
     { const cur=store.get('gfx',2), segs=el('div','set-seg'); [['標準','最順，舊手機都得'],['精細','欄杆、街道設施、霓虹招牌'],['超精細','再多招牌同細節，新手機用']].forEach(([t,d],v)=>{ const b=el('button','set-segb'+(cur===v?' on':'')); b.append(el('b',null,t),el('small',null,d)); b.setAttribute('aria-pressed',cur===v);
         b.onclick=()=>{ if(cur===v) return; store.set('gfx',v); store.set('openTab','set'); B.innerHTML='<p style="text-align:center;padding:30px 0">🖼️ 轉做「'+t+'」，重新載入地圖中……</p>'; setTimeout(()=>location.reload(),60); }; segs.append(b); });
@@ -3313,11 +3330,15 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
     row('麻鷹／遊隼',sw(C.kite&&C.on,v=>C.kite=v,'麻鷹'),'日間晴天喺天上打圈、俯衝');
     if(C.ground>8) B.append(el('p','set-warn','⚠️ 數量好多時，舊款手機可能會慢少少。'));
     const rs=el('button','sec wide','還原預設'); rs.onclick=()=>{ ANI.setCfg(JSON.parse(JSON.stringify(ANI.def))); renderMenu('set'); }; B.append(rs);
+    sec('🔐 PIN 及聲明');
+    { const lg=el('button','sec wide','📜 顯示免責聲明'); lg.onclick=showLegal; B.append(lg);
+      const pb=el('button','sec wide','🔒 返回 PIN 畫面'); let armed=false; pb.onclick=()=>{ if(!armed){ armed=true; pb.textContent='再撳一次確認（之後要重新輸入 PIN）'; setTimeout(()=>{ armed=false; pb.textContent='🔒 返回 PIN 畫面'; },4000); return; }
+        try{ localStorage.removeItem('pinGate.ok'); }catch(e){} store.set('openTab','levels'); location.reload(); }; B.append(pb); }
     B.querySelectorAll('.set-row').forEach((r,i)=>{ if(i>1&&!C.on) r.classList.add('dim'); }); }
-  if(tab==='livery'){ const tot=totalStars(), cur=(LIVERY.find(l=>l.id===store.get('livery','yellow'))||LIVERY[0]).id; B.append(el('p',null,'累積最佳心心數：'+tot+' 粒。儲夠星數就解鎖新車款，每款性能唔同：'));
+  if(tab==='livery'){ const tot=totalStars(), cur=(LIVERY.find(l=>l.id===store.get('livery','yellow'))||LIVERY[0]).id; B.append(el('p',null,'累積最佳生命之星數：'+tot+' 粒。儲夠星數就解鎖新車款，每款性能唔同：'));
     LIVERY.filter(l=>!l.hidden).forEach(L=>{ const lock=tot<L.need&&!unlockedAll()&&!FUN.on; const b=el('button','liv'+(L.id===cur?' on':'')); b.disabled=lock; const sw=el('span','sw'); sw.style.background=L.sw;
       const bar=n=>'●'.repeat(n)+'○'.repeat(5-n), sp=Math.max(1,Math.min(5,Math.round((L.vmax-20)/3.6))), ag=Math.max(1,Math.min(5,Math.round((L.steer-1.3)/0.29)));
-      const t=el('div'); t.append(el('b',null,L.name+(L.id===cur?'（使用中）':'')),el('small',null,lock?' 🔒 需要 '+L.need+' 粒心心':' 已解鎖'),el('br'),el('small',null,'速度 '+bar(sp)+'　靈活 '+bar(ag)+'　'+(L.siren?'有警號':'冇警號')),el('br'),el('small',null,L.d)); b.append(sw,t); b.onclick=()=>{ applyLivery(L.id); renderMenu('livery'); }; B.append(b); }); }
+      const t=el('div'); t.append(el('b',null,L.name+(L.id===cur?'（使用中）':'')),el('small',null,lock?' 🔒 需要 '+L.need+' 粒生命之星':' 已解鎖'),el('br'),el('small',null,'速度 '+bar(sp)+'　靈活 '+bar(ag)+'　'+(L.siren?'有警號':'冇警號')),el('br'),el('small',null,L.d)); b.append(sw,t); b.onclick=()=>{ applyLivery(L.id); renderMenu('livery'); }; B.append(b); }); }
 }
 
 /* ---------- 交通意外現場：青山公路（巴士同小巴相撞） ---------- */
@@ -3342,7 +3363,7 @@ function clearScene(){ SCN.meshes.forEach(m=>scene.remove(m)); SCN.meshes.length
 
 /* ---------- 大量傷者：其他救護車由救護站一齊出發 ---------- */
 const ESC=[];
-function clearEscorts(){ ESC.forEach(e=>{ if(e.parked){ const h=e.parked.home; e.m.position.set(h[0],0.34,h[1]); e.m.rotation.y=h[2]; e.m.visible=true; e.m.userData.blues.forEach(b=>b.material.emissive.setHex(0)); } else scene.remove(e.m); }); ESC.length=0; }
+function clearEscorts(){ S.supQ=null; ESC.forEach(e=>{ if(e.parked){ const h=e.parked.home; e.m.position.set(h[0],0.34,h[1]); e.m.rotation.y=h[2]; e.m.visible=true; e.m.userData.blues.forEach(b=>b.material.emissive.setHex(0)); } else scene.remove(e.m); }); ESC.length=0; }
 const ESC_NO=['A319','A167','A203','A256'];
 function launchEscorts(n){ const R=S.escRoute; if(!R) return;
   // 車隊：先係門口兩架（A245、A272），再由車房出其他救護車；行靠近中線嗰邊，方便其他車靠邊讓路
@@ -3356,34 +3377,40 @@ function launchEscorts(n){ const R=S.escRoute; if(!R) return;
   toast('🚑 救護車隊跟住你出發！'); }
 /* 支援單位：交通意外 → 警車；危及生命 → 救護電單車；部分關卡 → 消防車（先遣急救員）。救護車出咗車房先喺後面出現，一齊去現場 */
 const SUP={police:{nm:'👮 警車',tag:'👮 警車協助',arr:'👮 警察到場協助',sp:15,mk:()=>SKB.police(),len:6},
-  moto:{nm:'🏍️ 救護電單車',tag:'🏍️ 救護電單車協助',arr:'🏍️ 救護電單車到場',sp:17,mk:()=>SKB.moto(),len:2.4},
-  fire:{nm:'🚒 消防車',tag:'🚒 先遣急救員（消防）',arr:'🚒 先遣急救員到場',sp:12.5,mk:()=>SKB.fire(),len:6.8}};
+  moto:{nm:'🏍️ 救護電單車',tag:'🏍️ 救護電單車協助',arr:'🏍️ 救護電單車到場',sp:36,fast:true,mk:()=>SKB.moto(),len:2.4},
+  fire:{nm:'🚒 消防車',tag:'🚒 先遣急救員（消防）',arr:'🚒 先遣急救員到場',sp:33,fast:true,mk:()=>SKB.fire(),len:6.8}};
 function supTags(lv){ return (lv.support||[]).map(k=>SUP[k].tag); }
 function launchSupport(list){ const R=S.route; if(!R||!list||!list.length) return; const c=S.car, fx=Math.sin(c.a), fz=Math.cos(c.a);
+  let j0=1, bd=1e9; for(let j=1;j<R.pts.length;j++){ const A=R.pts[j-1],B=R.pts[j],dx=B[0]-A[0],dz=B[1]-A[1],L2=dx*dx+dz*dz||1; const k=Math.max(0,Math.min(1,((c.x-A[0])*dx+(c.z-A[1])*dz)/L2)); const d=(A[0]+dx*k-c.x)**2+(A[1]+dz*k-c.z)**2; if(d<bd){ bd=d; j0=j; } }   // 由救護車而家喺路線上嘅位置開始跟，唔會倒返轉頭
   list.forEach((k,i)=>{ const U=SUP[k]; let back=16+i*13; while(back>6&&!(cellAt(c.x-fx*back,c.z-fz*back)&1)) back-=2;
     const start=[c.x-fx*back,c.z-fz*back], stopAt=Math.max(15,R.len-13-i*10), pts=[start], cum=[0];
-    for(let j=1;j<R.pts.length;j++){ if(R.cum[j]<=stopAt) pts.push(R.pts[j].slice()); else { const A=R.pts[j-1],B=R.pts[j],q=(stopAt-R.cum[j-1])/((R.cum[j]-R.cum[j-1])||1); pts.push([A[0]+(B[0]-A[0])*q,A[1]+(B[1]-A[1])*q]); break; } }
+    for(let j=j0;j<R.pts.length;j++){ if(R.cum[j]<=stopAt) pts.push(R.pts[j].slice()); else { const A=R.pts[j-1],B=R.pts[j],q=(stopAt-R.cum[j-1])/((R.cum[j]-R.cum[j-1])||1); pts.push([A[0]+(B[0]-A[0])*q,A[1]+(B[1]-A[1])*q]); break; } }
     for(let j=1;j<pts.length;j++) cum.push(cum[j-1]+Math.hypot(pts[j][0]-pts[j-1][0],pts[j][1]-pts[j-1][1]));
-    const m=U.mk(); m.userData.len=U.len; m.visible=false; m.position.set(start[0],0,start[1]); scene.add(m);
-    ESC.push({m,pts,cum,s:0,delay:0.6+i*1.4,v:0,pose:null,done:false,vmax:U.sp,arrive:U.arr}); });
+    const m=U.mk(); m.userData.len=U.len; m.visible=i===0; m.position.set(start[0],0,start[1]); scene.add(m);
+    ESC.push({m,pts,cum,s:0,delay:i*0.8,v:Math.max(0,S.car.v),pose:null,done:false,vmax:U.sp,arrive:U.arr,follow:!U.fast,idx:i}); });   // 警車跟救護車同速；消防車、救護電單車快過救護車，會爬頭先到
   toast(list.map(k=>SUP[k].nm).join('、')+' 同你一齊出發！'); }
+function queueSupport(list,armed){ S.supQ=list&&list.length?{list,armed:!!armed,t:1}:null; }   // 救護車離開救護站大約 1 秒後，支援單位喺後面出現
 function escortTick(dt,t){ const on=Math.floor(t*5)%2===0;
+  if(S.supQ&&S.mode==='drive'){ const q=S.supQ; if(!q.armed&&Math.hypot(S.car.x-DEPOT.pos[0],S.car.z-DEPOT.pos[1])>16) q.armed=true; if(q.armed&&(q.t-=dt)<=0){ S.supQ=null; launchSupport(q.list); } }
   for(const e of ESC){ if(e.static) continue; e.m.userData.blues.forEach((b,i)=>b.material.emissive.setHex((i%2===0)===on?(b.userData.on||0x1550ff):0));
     if(e.delay>0){ e.delay-=dt; if(e.delay<=0){ e.m.visible=true; } else continue; }
     if(e.done){ (e.m.userData.wheels||[]).forEach(()=>{}); }
-    const L=e.cum[e.cum.length-1]; let target=e.done?0:(e.vmax||14); if(L-e.s<12) target=Math.min(target,(L-e.s)*1.2);
+    const L=e.cum[e.cum.length-1]; let target=e.done?0:(e.vmax||14);
+    if(e.follow&&!e.done&&S.step===1&&e.pose){ const c=S.car, dx=c.x-e.pose.x, dz=c.z-e.pose.z, ah=dx*Math.sin(e.pose.a)+dz*Math.cos(e.pose.a), gap=Math.hypot(dx,dz), want=11+e.idx*10;   // 跟救護車同樣速度，保持車距
+      target=ah>0?Math.max(0,Math.min(34,Math.abs(c.v)+(gap-want)*0.9)):Math.min(target,Math.abs(c.v)*0.6); }
+    if(L-e.s<12) target=Math.min(target,(L-e.s)*1.2);
     // 行車線：e.lat 係向對面線偏移幾多米（0＝自己線）。前面有慢車就睇對面線清唔清，清就過對面線超車；唔清就停，唔會穿過其他車
     const at=s=>{ let q=1; while(q<e.cum.length-1&&e.cum[q]<s) q++; const A=e.pts[q-1],B=e.pts[q],k=(s-e.cum[q-1])/((e.cum[q]-e.cum[q-1])||1); return [A[0]+(B[0]-A[0])*k,A[1]+(B[1]-A[1])*k,Math.atan2(B[0]-A[0],B[1]-A[1])]; };
     const [bx,bz,ba]=at(e.s), ux=Math.sin(ba), uz=Math.cos(ba), ox=-uz, oz=ux;   // 自己線中心、前進方向、對面線方向
     if(!e.oo||(e.ooT=(e.ooT||0)-dt)<0){ e.ooT=0.5; let best=null,bd=1e9; for(const r of MAP.roads){ const P=NODES[r.n[0]],Q=NODES[r.n[1]],dx=Q[0]-P[0],dz=Q[1]-P[1],L2=dx*dx+dz*dz||1; let k=((bx-P[0])*dx+(bz-P[1])*dz)/L2; k=Math.max(0,Math.min(1,k)); const d=(P[0]+dx*k-bx)**2+(P[1]+dz*k-bz)**2; if(d<bd){ bd=d; best=r; } } e.oo=best?Math.max(5,laneOff(best)*2-1.6):6; }
-    e.lat=e.lat||0; e.latT=e.latT||0; let block=99, oppAhead=99, ownBack=false, oppBusy=false;
+    e.lat=e.lat||0; e.latT=e.latT||0; let block=99, oppAhead=99, ownBack=false, oppBusy=false, blockEsc=false;
     if(!e.done) for(const o of [...cars,...trams,{pose:{x:S.car.x,z:S.car.z},me:1},...ESC]){ if(o===e||!o.pose||(o.m&&!o.m.visible&&!o.me)) continue; const qx=o.pose.x-bx, qz=o.pose.z-bz, ah=qx*ux+qz*uz, lo=qx*ox+qz*oz; if(ah<-12||ah>45) continue;
       const half=((o.m&&o.m.userData.len)||4.4)/2+((e.m.userData.len||6)/2);
-      if(Math.abs(lo-e.lat)<2.4&&ah>0) block=Math.min(block,ah-half);                       // 前面同一條線
+      if(Math.abs(lo-e.lat)<2.4&&ah>0&&ah-half<block){ block=ah-half; blockEsc=!!(o.follow||o.me); }                       // 前面同一條線
       if(Math.abs(lo)<2.4&&ah>-half-3&&ah<half+6) ownBack=true;                               // 自己線（返嚟用）有車
       if(Math.abs(lo-e.oo)<2.8){ if(ah>-half-4&&ah<half+30) oppBusy=true; if(ah>0) oppAhead=Math.min(oppAhead,ah-half); } }
     const left=L-e.s;
-    if(e.latT===0&&block<30&&left>34&&!oppBusy) e.latT=e.oo;                                     // 出去對面線超車
+    if(e.latT===0&&block<30&&left>34&&!oppBusy&&!(e.follow&&blockEsc)) e.latT=e.oo;   // 車隊唔會超前面嘅救護車／支援車                                     // 出去對面線超車
     else if(e.latT>0&&(!ownBack||left<20)&&block>6) e.latT=0;                                     // 超咗車：返自己線
     else if(e.latT>0&&oppAhead<16&&!ownBack) e.latT=0;                                            // 對面有車嚟：避返入去
     if(block<16) target=Math.min(target,Math.max(0,(block-3)*1.2)); if(block<4) e.v=0;            // 太近就即刻停，唔會撞埋去
@@ -3394,6 +3421,15 @@ function escortTick(dt,t){ const on=Math.floor(t*5)%2===0;
     const want=a-steer, prevA=e.pose?e.pose.a:want; const na=prevA+(((want-prevA)%(Math.PI*2)+Math.PI*3)%(Math.PI*2)-Math.PI)*Math.min(1,dt*5);
     e.pose={x,z,a:na}; groundPose(e.m,x,0.12,z,na,e.m.userData.len||6); (e.m.userData.wheels||[]).forEach(w=>w.rotation.x+=e.v*dt/0.6); } }
 
+/* ---------- 免責聲明（PIN 畫面嗰份，喺設定都睇得返） ---------- */
+function showLegal(){ let d=document.getElementById('legalBox'); if(!d){ d=document.createElement('div'); d.id='legalBox';
+    d.style.cssText='position:fixed;inset:0;z-index:100;background:#0b0f16e8;display:flex;align-items:center;justify-content:center;padding:16px';
+    d.innerHTML='<div style="width:min(520px,94vw);max-height:88vh;overflow:auto;background:#16212c;color:#c9d3de;border:1px solid #2c3a49;border-radius:14px;padding:14px 16px;font-size:13px;line-height:1.6;text-align:left"><div style="display:flex;align-items:center;gap:8px;margin-bottom:8px"><b style="font-size:16px;color:#fff">免責聲明 Disclaimer</b><span style="margin-left:auto;display:flex;gap:4px"><button data-l="zh" class="lgt">中文</button><button data-l="en" class="lgt">English</button><button id="lgX" aria-label="關閉">✕</button></span></div><div id="lgZh">'+(window.LEGAL_ZH||'')+'</div><div id="lgEn" style="display:none">'+(window.LEGAL_EN||'')+'</div></div><style>#legalBox p{margin:0 0 10px}#legalBox a{color:#8fc3ff}#legalBox button{font:inherit;font-size:12px;padding:4px 10px;border-radius:8px;border:1px solid #3a4756;background:transparent;color:#fff}#legalBox .lgt.on{background:#e23b3b}</style>';
+    document.body.append(d);
+    const pick=l=>{ d.querySelector('#lgZh').style.display=l==='zh'?'':'none'; d.querySelector('#lgEn').style.display=l==='en'?'':'none'; d.querySelectorAll('.lgt').forEach(b=>b.classList.toggle('on',b.dataset.l===l)); };
+    d.querySelectorAll('.lgt').forEach(b=>b.onclick=()=>pick(b.dataset.l)); pick('zh');
+    d.querySelector('#lgX').onclick=()=>d.style.display='none'; d.addEventListener('click',e=>{ if(e.target===d) d.style.display='none'; }); }
+  d.style.display='flex'; }
 /* ---------- 隱藏解鎖：撳左上角 A188 五下 ---------- */
 let badgeN=0, badgeT=0;
 document.querySelector('#menu .badge').addEventListener('click',()=>{ const now=Date.now(); if(now-badgeT>4000) badgeN=0; badgeT=now; badgeN++;
@@ -3539,7 +3575,7 @@ window.__TX=TX;
 
 /* ================= 模式 ②：追逐模式（逃避警車） =================
    用「車款」揀咗嘅車，喺隨機地點開始。警車開住警號追你，時間越耐警車同路障越多。
-   撞到警車或者路障扣一粒心心，扣晒就被捕；撐夠 60 秒就成功逃脫。撞到人唔扣分（卡通彈開）。 */
+   撞到警車或者路障扣一粒生命之星，扣晒就被捕；撐夠 60 秒就成功逃脫。撞到人唔扣分（卡通彈開）。 */
 const CH={ cops:[], blocks:[], tLeft:60, t:0, hitT:-9, sir:null, nextBlock:6 };
 function chModeExit(){ if(typeof taxiExit==='function'&&S.gm==='taxi') taxiExit(); if(S.gm==='chase') chaseExit(); if(S.gm==='free') freeExit(); if(S.gm==='cpr') cprExit(); }
 function chSpot(minD,maxD,ahead){ const c=S.car, fx=Math.sin(c.a), fz=Math.cos(c.a);
@@ -3578,7 +3614,7 @@ function startChase(){ ensureAudio(); chModeExit(); sirenSet(false); stopFirewor
   $('txBig').style.display='block'; $('txBig').textContent='60'; document.body.classList.add('taxi');
   hud('🚓 追逐模式','警車 2 架 · 撐 60 秒'); caption('🚓 警車嚟緊！撐夠 60 秒就贏，撞到警車或者路障扣一粒心'); setTimeout(()=>{ if(S.gm==='chase'&&S.mode==='drive') caption(null); },3500);
   chSiren(true); }
-function chHit(msg){ const now=performance.now()/1000; if(now-CH.hitT<1.5||S.mode!=='drive') return false; CH.hitT=now; S.lives--; drawLives(S.lives); toast(msg+'  −1 ❤'); S.shake=0.6; vib(120);
+function chHit(msg){ const now=performance.now()/1000; if(now-CH.hitT<1.5||S.mode!=='drive') return false; CH.hitT=now; S.lives--; drawLives(S.lives); toast(msg+'  −1 生命之星'); S.shake=0.6; vib(120);
   const lv=$('lives'); lv.classList.remove('hit'); void lv.offsetWidth; lv.classList.add('hit'); if(S.lives<=0) chaseEnd(false); return true; }
 function chaseTick(dt){ const c=S.car, now=performance.now()/1000; CH.t+=dt; CH.tLeft-=dt; pedFlyTick(dt);
   const bc=$('txBig'), sec=Math.max(0,Math.ceil(CH.tLeft)); if(bc.textContent!==String(sec)){ bc.textContent=sec; bc.classList.toggle('warn',CH.tLeft<10); if(CH.tLeft<10){ bc.classList.remove('tick'); void bc.offsetWidth; bc.classList.add('tick'); } }
@@ -3613,8 +3649,8 @@ function chaseTick(dt){ const c=S.car, now=performance.now()/1000; CH.t+=dt; CH.
 function chaseEnd(win){ chSiren(false); S.mode='result'; caption(null); $('txBig').style.display='none'; document.body.classList.remove('taxi');
   const surv=Math.min(60,Math.round(CH.t)); S.stars=win?S.lives:0; S.tHosp=60-surv;
   const best=store.get('chaseBest',{st:0,s:0}), nb=(S.stars>best.st)||(S.stars===best.st&&surv>best.s); if(nb) store.set('chaseBest',{st:S.stars,s:surv});
-  $('rTitle').textContent=win?'🏁 成功逃脫！':'🚓 被捕！'; $('rStars').textContent=win?'♥'.repeat(S.lives)+'♡'.repeat(5-S.lives):'💔';
-  $('rTime').textContent=win?'撐足 60 秒，剩低 '+S.lives+' 粒心心':'撐咗 '+surv+' 秒'; $('rNote').innerHTML=nb?'🎉 新紀錄！':'最佳：'+(best.st?best.st+' 粒心心逃脫':'撐 '+best.s+' 秒');
+  $('rTitle').textContent=win?'🏁 成功逃脫！':'🚓 被捕！'; $('rStars').innerHTML=win?[0,1,2,3,4].map(i=>'<span class="'+(i<S.lives?'on':'off')+'">'+lifeStar(34)+'</span>').join(''):'🚓';
+  $('rTime').textContent=win?'撐足 60 秒，剩低 '+S.lives+' 粒生命之星':'撐咗 '+surv+' 秒'; $('rNote').innerHTML=nb?'🎉 新紀錄！':'最佳：'+(best.st?best.st+' 粒生命之星逃脫':'撐 '+best.s+' 秒');
   $('rAch').innerHTML=''; $('rTips').innerHTML='<small>警車會跟路網追你；路障留咗一條窄位可以鑽過去。開警號，路上啲車會讓路俾你。</small>'; $('rNext').style.display='none';
   $('rName').value=getName(); $('rSave').disabled=false; $('rSave').textContent='儲存到排行榜';
   show('result',true); show('hudWrap',false); if(win) fireworks(S.lives); }
@@ -4447,7 +4483,7 @@ const RH=(()=>{ const d=document.createElement('div'); d.id='rHud'; d.innerHTML=
   return d; })();
 const rq_=id=>document.getElementById(id);
 function realStars(){ rq_('rlStars').innerHTML=[0,1,2,3,4].map(i=>'<span class="'+(i<S.lives?'':'off')+'"><svg viewBox="-12 -12 24 24" width="22" height="22"><g fill="currentColor" stroke="#fff" stroke-width="1.2"><rect x="-3" y="-11" width="6" height="22" rx="1"/><rect x="-3" y="-11" width="6" height="22" rx="1" transform="rotate(60)"/><rect x="-3" y="-11" width="6" height="22" rx="1" transform="rotate(-60)"/></g><path d="M0-7V7" stroke="#fff" stroke-width="1.4"/></svg></span>').join(''); }
-function realCash(){ rq_('rCash').textContent='$'+REAL.cash.toLocaleString(); }
+function realCash(){ rq_('rCash').textContent=REAL.cash.toLocaleString()+' 分'; }
 /* ----- 開／關 ----- */
 function realBegin(on){ REAL.on=!!on; document.body.classList.toggle('real',REAL.on); realSky.visible=false; REAL.fx=false;
   if(!REAL.on){ REAL.dispatch=false; REAL.avm=false; REAL.pend=null; rq_('rDisp').classList.remove('on'); cam.fov=FOV0; cam.updateProjectionMatrix(); return; }
@@ -4467,13 +4503,17 @@ const DEPOT_NAME=()=>{ const k=REAL.dep; return REGION==='st'?(k==='ts'?'田心�
 /* ----- 送院後：AVM（可供調派）返站，途中 30% 機會再接單 ----- */
 function depotGate(){ const d=DEPOT.pos, fx=Math.sin(DEPOT.a), fz=Math.cos(DEPOT.a); for(let k=4;k<70;k+=2){ const px=d[0]+fx*k, pz=d[1]+fz*k; if(cellAt(px,pz)&1) return [px+fx*4,pz+fz*4]; } return d.slice(); }
 function realAVMHud(){ hud('AVM · 返'+DEPOT_NAME(),'⑥ 可供調派 · 跟住橙色路線返站'); rq_('rmS').textContent='AVM · 可供調派'; rq_('rmT').textContent='返回'+DEPOT_NAME(); rq_('rMis').classList.add('avm'); }
+function realFaceRoute(){   // AVM 一刻：車頭自動轉向路線方向
+  const R=S.route; if(!R||R.pts.length<2) return; const c=S.car; let k=1; while(k<R.pts.length-1&&Math.hypot(R.pts[k][0]-c.x,R.pts[k][1]-c.z)<6) k++;
+  const P=R.pts[k]; c.a=Math.atan2(P[0]-c.x,P[1]-c.z); c.v=0; S.camYaw=c.a; }
 function realAVM(){   // 由 finish() 截住：交接完成 → AVM
   S.stars=S.lives; const pay=realPay(); REAL.jobs++; REAL.shift+=pay; REAL.avm=true; REAL.avmT=0;
   REAL.jobAt=Math.random()<0.9?6+Math.random()*22:null;   // 90%：返站途中再有新任務
   sirenSet(false); caption(null); clearEvents(); show('stabBox',false); patient.visible=false; bystander.visible=false;
   S.mode='drive'; S.step=6; S.leftDepot=true; S.depotCam=true; S.legLimit=1e6; S.legStart=performance.now()/1000;
   setTarget(depotGate()); refreshRoute(true); if(routeMesh) routeMesh.visible=true;
-  realAVMHud(); toast('交接完成 +$'+pay.toLocaleString()+' · AVM 返站');
+  realFaceRoute();
+  realAVMHud(); toast('交接完成 +'+pay.toLocaleString()+' 分 · AVM 返站');
 }
 function realAtDepot(){ S.car.v=0; REAL.avm=false; REAL.ending=true; rq_('rMis').classList.remove('avm'); ring.visible=beacon.visible=arrow.visible=false; if(routeMesh) routeMesh.visible=false; finish(); REAL.ending=false; }
 function realOffer(){   // 控制中心派新單
@@ -4491,7 +4531,8 @@ function realNewJob(i){
   patient.userData.blanket.visible=false; patient.userData.p.position.set(0,0.5,1.2); patient.userData.p.rotation.set(-Math.PI/2,0,0);
   bystander.visible=true; bystander.position.set(L.patient[0]+2,0.2,L.patient[1]+1.5);
   setTarget(L.stop); refreshRoute(true); if(routeMesh) routeMesh.visible=true; startLeg(); S.escRoute=null;
-  if(lv.support) launchSupport(lv.support);
+  S.noCross=!!(lv.support||lv.escort); peds.forEach(p=>{ if(S.noCross&&p.mode==='cross') placePed(p,S.car.x,S.car.z); });
+  if(lv.support) queueSupport(lv.support,true);
   hud('任務：'+k.place,'① 出車 · '+k.title); sirenSet(true); S.sirenUsed=true; toast('控制中心：'+k.call); }
 /* ----- 每格 ----- */
 function realTick(dt){ if(!REAL.on) return;
@@ -4525,7 +4566,7 @@ const BIGMAP=(()=>{ const d=document.createElement('div'); d.id='bigMap'; d.inne
     const T=(x,z)=>[W/2+(x-cx)*s,H/2+(z-cz)*s];
     g.fillStyle='#eef2e8'; g.fillRect(0,0,W,H); g.imageSmoothingEnabled=true;
     const [ox,oz]=T(BX0-60,BZ0-60); g.drawImage(MM,ox,oz,MM.width/MMS*s,MM.height/MMS*s);
-    if(S.route&&S.mode!=='seq'){ g.strokeStyle='#ff7a1a'; g.lineWidth=5; g.lineJoin=g.lineCap='round'; g.beginPath(); g.moveTo(...T(c.x,c.z)); S.route.pts.forEach((p,k)=>{ if(k) g.lineTo(...T(p[0],p[1])); }); g.stroke(); }
+    if(S.route&&S.mode!=='seq'){ g.strokeStyle='#ff7a1a'; g.lineWidth=5; g.lineJoin=g.lineCap='round'; g.beginPath(); g.moveTo(...T(c.x,c.z)); (routeAhead()||[]).forEach((p,k)=>{ if(k) g.lineTo(...T(p[0],p[1])); }); g.stroke(); }
     g.font='20px sans-serif'; g.textAlign='center'; g.textBaseline='middle';
     Object.values(HOSPS).forEach(h=>{ const [a,b]=T(h.door[0],h.door[1]); g.fillText('🏥',a,b); g.font='bold 12px sans-serif'; g.fillStyle='#111'; g.fillText(h.name,a,b+18); g.font='20px sans-serif'; });
     { const [a,b]=T(DEPOT.pos[0],DEPOT.pos[1]); g.fillText('🚑',a,b); g.font='bold 12px sans-serif'; g.fillStyle='#111'; g.fillText(DEPOT_NAME(),a,b+18); }
@@ -4542,6 +4583,6 @@ const BIGMAP=(()=>{ const d=document.createElement('div'); d.id='bigMap'; d.inne
 window.__ESC=ESC;
 
 renderMenu(); show('menu',true); tick();
-window.__S=S; window.__finish=()=>finish(); window.__REAL=REAL; window.__gate=()=>depotGate(); window.__hit=hitBuilding; window.__cell=cellAt; window.__NEON=NEON; window.__MAP=MAP; window.__NODES=NODES; window.__setTarget=setTarget; window.__refreshRoute=refreshRoute; window.__AE=()=>AE; window.__DEPOT=()=>DEPOT; window.__setTOD=setTOD; window.__cars=cars; window.__sg=()=>gain&&gain.gain.value; window.__oc=openChoice; window.__veh=applyLivery; window.__LMK=LMK; window.__fwTest=fireworks; window.__R=R; window.__person=person; window.__peds=peds; window.__store=store; window.__scene=scene; window.__cam=cam; window.__startCase=startCase; window.__peds=peds;
+window.__S=S; window.__ELEV=ELEV; window.__finish=()=>finish(); window.__REAL=REAL; window.__gate=()=>depotGate(); window.__hit=hitBuilding; window.__cell=cellAt; window.__NEON=NEON; window.__MAP=MAP; window.__NODES=NODES; window.__setTarget=setTarget; window.__refreshRoute=refreshRoute; window.__AE=()=>AE; window.__DEPOT=()=>DEPOT; window.__setTOD=setTOD; window.__cars=cars; window.__sg=()=>gain&&gain.gain.value; window.__oc=openChoice; window.__veh=applyLivery; window.__LMK=LMK; window.__fwTest=fireworks; window.__R=R; window.__person=person; window.__peds=peds; window.__store=store; window.__scene=scene; window.__cam=cam; window.__startCase=startCase; window.__peds=peds;
 
 })();
