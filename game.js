@@ -3464,6 +3464,9 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
     if(FUN.unlocked){ sec('🎉 歡樂模式');
       row('歡樂模式',sw(FUN.on,v=>{ funSet(v); },'歡樂模式'),'全車解放、撞人噴血、撞車爆炸、🚀 氮氣、唔扣生命之星（唔計正式成績）');
       if(FUN.on) B.append(el('p','set-warn','🎉 開咗：所有車款可以揀；揸車時右邊有 🚀 掣（鍵盤 Shift）。歡樂分 '+FUN.score.toLocaleString())); }
+    sec('🔤 提示字體大小');
+    { const cur=store.get('fontSz',0), segs=el('div','set-seg'); [['小','預設'],['中','大少少'],['大','最易睇']].forEach(([t,d],v)=>{ const b=el('button','set-segb'+(cur===v?' on':'')); b.append(el('b',null,t),el('small',null,d)); b.setAttribute('aria-pressed',cur===v);
+        b.onclick=()=>{ store.set('fontSz',v); applyFontSz(); renderMenu('set'); }; segs.append(b); }); B.append(segs); }
     sec('🚶 行人');
     row('行人自動避開',sw(DODGE.on,v=>{ DODGE.on=v; store.set('dodge',v); },'行人自動避開'),DODGE.on?'開：撞埋去之前行人會自己跳開，唔會受傷，亦唔扣生命之星':'關：撞到行人會瞓喺地下，一陣後消失（會扣生命之星）');
     sec('🖼️ 畫面質素');
@@ -3572,6 +3575,10 @@ function escortTick(dt,t){ const on=Math.floor(t*5)%2===0;
     const want=a-steer, prevA=e.pose?e.pose.a:want; const na=prevA+(((want-prevA)%(Math.PI*2)+Math.PI*3)%(Math.PI*2)-Math.PI)*Math.min(1,dt*5);
     e.pose={x,z,a:na}; groundPose(e.m,x,0.12,z,na,e.m.userData.len||6); (e.m.userData.wheels||[]).forEach(w=>w.rotation.x+=e.v*dt/0.6); } }
 
+/* ---------- 提示字體大小（小／中／大）：放大字幕、提示、派單、無線電、教學、任務卡同答題 ---------- */
+{ const st=document.createElement('style'); st.textContent='#cap,#toast,#callBox,#radio,#coach,#hudWrap .top .card,#rMis,#rDisp,#quiz .panel,#stabBox{zoom:var(--fz,1)}'; document.head.append(st); }
+function applyFontSz(){ const v=store.get('fontSz',0); document.documentElement.style.setProperty('--fz',[1,1.2,1.4][v]||1); }
+applyFontSz();
 /* ---------- 免責聲明（PIN 畫面嗰份，喺設定都睇得返） ---------- */
 function showLegal(){ let d=document.getElementById('legalBox'); if(!d){ d=document.createElement('div'); d.id='legalBox';
     d.style.cssText='position:fixed;inset:0;z-index:100;background:#0b0f16e8;display:flex;align-items:center;justify-content:center;padding:16px';
