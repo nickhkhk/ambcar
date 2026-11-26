@@ -1193,7 +1193,7 @@ const walkTex=canvasTex(64,64,(g,w,h)=>{ g.fillStyle='#c9c0b0'; g.fillRect(0,0,w
 const walkMat=new THREE.MeshStandardMaterial({map:walkTex,roughness:0.9}), lotMat=M(0xcfc3ab,{r:0.95}), grassMat=M(0x78c255,{r:0.95}), podMat=M(0x82c766,{r:0.95}), alleyMat=M(0xbcb6a8,{r:0.95});
 
 /* ---------- 畫面質素（0 標準、1 精細、2 超精細）：要重新載入地圖先生效 ---------- */
-const GFX=(()=>{ try{ const v=+JSON.parse(localStorage.getItem('a188.gfx')||'2'); return v>=2?2:v>=1?1:0; }catch(e){ return 0; } })();
+const GFX=(()=>{ try{ const v=+JSON.parse(localStorage.getItem('a188.gfx')||'2'); return v>=3?3:v>=2?2:v>=1?1:0; }catch(e){ return 0; } })();
 // 細節專用亂數（唔郁到城市本身嘅 rnd，所以三個模式嘅街道同樓宇位置一樣）
 let _ds=7919; const drnd=()=>{ _ds=(_ds*1664525+1013904223)>>>0; return _ds/4294967296; }; const dpick=a=>a[drnd()*a.length|0];
 const DFRONT=[]; window.__DF=DFRONT;   // 沿街樓宇門面：{c,type,h}
@@ -1251,11 +1251,200 @@ if(GFX){
   shopMats.length=0; shopMats.push(...nm);
 }
 
+/* ---------- 🖥️ 電腦畫質（GFX 3）：GTA 式樓宇 ----------
+   同一個佔地、同一套 rnd（原本嘅樓照計一次亂數但唔畫），所以街道同樓宇位置唔變；
+   揀樓款、高度、天台細節全部用獨立亂數 pr()。 */
+const PCB=(()=>{ if(GFX<3) return null;
+  let ps=424243; const pr=()=>(ps=(ps*16807)%2147483647)/2147483647; const pp=a=>a[pr()*a.length|0]; const rng=(a,b)=>a+pr()*(b-a);
+  const ANI=Math.min(8,R.capabilities.getMaxAnisotropy());
+  const ALL=[];   // 所有電腦畫質材質（夜晚開窗燈）
+  const ctex=(w,h,draw)=>{ const t=canvasTex(w,h,draw); t.anisotropy=ANI; return t; };
+  // 每款外牆：map（日間）＋ em（夜晚窗燈），同一個 UV
+  function facade(W,H,bays,floors,wall,win,litP,litCols,opt={}){
+    const bw=W/bays, fh=H/floors, lit=[];
+    for(let f=0;f<floors;f++){ const full=pr()<(opt.fullFloor||0.08), dark=pr()<0.12; for(let b=0;b<bays;b++) lit.push(full?1:dark?0:pr()<litP?1:0); }
+    const map=ctex(W,H,g=>{ wall(g,W,H,bw,fh); for(let f=0;f<floors;f++) for(let b=0;b<bays;b++) win(g,b*bw,f*fh,bw,fh,lit[f*bays+b],f,b); if(opt.after) opt.after(g,W,H,bw,fh); });
+    const em=ctex(W,H,g=>{ g.fillStyle='#000'; g.fillRect(0,0,W,H);
+      for(let f=0;f<floors;f++) for(let b=0;b<bays;b++){ if(!lit[f*bays+b]) continue; const r=opt.winRect?opt.winRect(b*bw,f*fh,bw,fh):[b*bw+bw*0.12,f*fh+fh*0.18,bw*0.76,fh*0.6];
+        const col=pp(litCols); const gr=g.createLinearGradient(0,r[1],0,r[1]+r[3]); gr.addColorStop(0,col); gr.addColorStop(1,'rgba(0,0,0,.55)'); g.fillStyle=col; g.fillRect(r[0],r[1],r[2],r[3]);
+        g.fillStyle='rgba(0,0,0,'+(0.15+pr()*0.35)+')'; g.fillRect(r[0]+r[2]*pr()*0.6,r[1]+r[3]*0.35,r[2]*0.35,r[3]*0.65); }   // 窗後面有啲傢俬遮住
+      if(opt.emAfter) opt.emAfter(g,W,H,bw,fh); });
+    return {map,em}; }
+  function mat(tx,o={}){ const m=new THREE.MeshStandardMaterial({map:tx.map,emissiveMap:tx.em,emissive:0x000000,roughness:o.r??0.82,metalness:o.m??0,envMapIntensity:o.env??0});
+    m.userData.pc={glass:!!o.glass,emk:o.emk??1,env:o.env??0,us:o.us||12,vs:o.vs||24}; ALL.push(m); return m; }
+  const WARM=['#ffd89a','#ffe2b0','#ffcf88','#fff0cc'], COOL=['#e6f2ff','#cfe6ff','#f4fbff'], MIX=['#ffd89a','#e6f2ff','#ffe2b0','#cfe6ff','#ffeec2'];
+  /* ----- 玻璃幕牆寫字樓：4 格 × 8 層，每層 3.6 米 ----- */
+  const GLASS=[['#2d5f7c','#8fc3dc','#24303a','#1f3b4d'],['#2f6b5a','#9fd3c0','#22302c','#20453b'],['#6b5a43','#d8c2a0','#2c2620','#4a3d2f'],['#4f5d6b','#c6d2dd','#2a3038','#38434f'],['#22344f','#7ea2d6','#1b2230','#1d2a40']].map(([base,hi,frame,spd])=>mat(facade(512,1024,4,8,
+    (g,W,H)=>{ const gr=g.createLinearGradient(0,0,W*0.3,H); gr.addColorStop(0,hi); gr.addColorStop(0.45,base); gr.addColorStop(1,hi); g.fillStyle=gr; g.fillRect(0,0,W,H); },
+    (g,x,y,w,h)=>{ g.fillStyle='rgba(255,255,255,'+(pr()*0.1)+')'; g.fillRect(x,y,w,h); if(pr()<0.25){ g.fillStyle='rgba(0,0,0,.12)'; g.fillRect(x,y,w,h); }
+      g.fillStyle=spd; g.fillRect(x,y+h-16,w,16); g.fillStyle=frame; g.fillRect(x,y,4,h); g.fillRect(x+w/2-1,y,2,h-16); g.fillRect(x,y+h-17,w,3); },
+    0.38,MIX,{fullFloor:0.14,winRect:(x,y,w,h)=>[x+4,y+4,w-6,h-22],after:(g,W,H)=>{ g.fillStyle='rgba(255,255,255,.07)'; g.beginPath(); g.moveTo(0,H*0.75); g.lineTo(W*0.7,0); g.lineTo(W,0); g.lineTo(0,H); g.fill(); }}),
+    {r:0.12,m:0.75,env:1.15,glass:true,emk:1.1,us:12,vs:28.8}));
+  /* ----- 私人住宅高樓：凸窗、冷氣機、窗框 ----- */
+  const RESI=[['#efe9df','#c9bfae'],['#e8d8cf','#bfa79a'],['#dde2e6','#aab3bb'],['#e9dfc4','#c2b38c'],['#d9d4cc','#9e9688']].map(([w1,w2])=>mat(facade(512,1024,4,8,
+    (g,W,H,bw,fh)=>{ g.fillStyle=w1; g.fillRect(0,0,W,H); g.fillStyle=w2; for(let b=0;b<4;b++) g.fillRect(b*bw+bw-10,0,10,H); for(let f=0;f<8;f++) g.fillRect(0,f*fh+fh-6,W,6);
+      for(let i=0;i<260;i++){ g.fillStyle='rgba(60,50,40,'+(pr()*0.05)+')'; g.fillRect(pr()*W,pr()*H,2+pr()*6,8+pr()*40); } },
+    (g,x,y,w,h,l,f,b)=>{ const bay=b%2===0; g.fillStyle='rgba(0,0,0,.16)'; if(bay) g.fillRect(x+w*0.1,y+h*0.12,w*0.8,h*0.72);
+      g.fillStyle=l?'#5d6f80':'#4a5a6a'; g.fillRect(x+w*0.14,y+h*0.16,w*0.72,h*0.56); g.fillStyle='rgba(190,215,235,.35)'; g.fillRect(x+w*0.14,y+h*0.16,w*0.72,h*0.18);
+      g.fillStyle='#f4f4f2'; g.fillRect(x+w*0.14,y+h*0.16,w*0.72,5); g.fillRect(x+w*0.49,y+h*0.16,5,h*0.56); g.fillRect(x+w*0.14,y+h*0.72-4,w*0.72,6);
+      if(pr()<0.5){ g.fillStyle='#e9ecee'; g.fillRect(x+w*0.62,y+h*0.76,w*0.26,h*0.16); g.fillStyle='#9aa1a9'; g.fillRect(x+w*0.64,y+h*0.79,w*0.2,3); } },
+    0.46,WARM,{winRect:(x,y,w,h)=>[x+w*0.16,y+h*0.18,w*0.68,h*0.52]}),{r:0.8,emk:1}));
+  /* ----- 舊式工廈：橫向條窗、水漬 ----- */
+  const IND=[['#b8b1a3','#8c8577'],['#a9b2b8','#7f8890'],['#c4b59a','#94866c']].map(([w1,w2])=>mat(facade(512,512,4,4,
+    (g,W,H)=>{ g.fillStyle=w1; g.fillRect(0,0,W,H); for(let i=0;i<120;i++){ g.fillStyle='rgba(40,35,30,'+(pr()*0.08)+')'; g.fillRect(pr()*W,pr()*H*0.3,3+pr()*5,40+pr()*160); } },
+    (g,x,y,w,h)=>{ g.fillStyle=w2; g.fillRect(x,y+h*0.25,w,h*0.5); g.fillStyle='#3c4650'; g.fillRect(x+3,y+h*0.28,w-6,h*0.44); g.fillStyle='rgba(170,200,215,.25)'; g.fillRect(x+3,y+h*0.28,w-6,h*0.12);
+      g.fillStyle='#5c6670'; for(let k=1;k<4;k++) g.fillRect(x+k*w/4-1,y+h*0.28,3,h*0.44); },
+    0.3,COOL,{winRect:(x,y,w,h)=>[x+3,y+h*0.28,w-6,h*0.44]}),{r:0.9,emk:0.85,us:16,vs:16}));
+  /* ----- 酒店：石材直條＋窄窗 ----- */
+  const HOTEL=[['#d8ccb6','#b7a688','#2b3440'],['#c9cfd6','#9ea8b3','#2a3a4c'],['#d6c3b4','#ae9481','#33302e']].map(([w1,w2,gl])=>mat(facade(512,1024,4,8,
+    (g,W,H,bw)=>{ g.fillStyle=w1; g.fillRect(0,0,W,H); g.fillStyle=w2; for(let b=0;b<4;b++) g.fillRect(b*bw,0,14,H); },
+    (g,x,y,w,h)=>{ g.fillStyle=gl; g.fillRect(x+w*0.25,y+h*0.12,w*0.6,h*0.74); g.fillStyle='rgba(180,205,230,.3)'; g.fillRect(x+w*0.25,y+h*0.12,w*0.6,h*0.2); g.fillStyle=w2; g.fillRect(x+w*0.22,y+h*0.86,w*0.66,5); },
+    0.55,WARM,{winRect:(x,y,w,h)=>[x+w*0.25,y+h*0.12,w*0.6,h*0.74]}),{r:0.7,emk:1}));
+  /* ----- 多層停車場 ----- */
+  const PARK=mat(facade(512,512,2,4,(g,W,H)=>{ g.fillStyle='#b9b6ae'; g.fillRect(0,0,W,H); },
+    (g,x,y,w,h)=>{ g.fillStyle='#1d2126'; g.fillRect(x,y+h*0.3,w,h*0.55); g.fillStyle='#8b8f94'; g.fillRect(x+w-10,y+h*0.3,10,h*0.55); g.fillStyle='#e0ddd4'; g.fillRect(x,y+h*0.85,w,h*0.15);
+      if(pr()<0.7){ g.fillStyle=pp(['#c0392b','#ecf0f1','#2c3e50','#2980b9','#7f8c8d']); g.fillRect(x+w*(0.1+pr()*0.5),y+h*0.62,w*0.3,h*0.18); } },
+    1,['#ffcf7a'],{winRect:(x,y,w,h)=>[x,y+h*0.32,w,h*0.12]}),{r:0.92,emk:0.7,us:12,vs:12});
+  /* ----- 商場平台：大塊玻璃＋石材，頂部燈帶 ----- */
+  const MALL=[['#e6e1d8','#2c3946'],['#d5dbe0','#1f2c3a'],['#3a3f46','#1a222c']].map(([st,gl])=>mat(facade(512,256,4,1,
+    (g,W,H)=>{ g.fillStyle=st; g.fillRect(0,0,W,H); g.fillStyle='rgba(0,0,0,.12)'; g.fillRect(0,0,W,14); },
+    (g,x,y,w,h)=>{ g.fillStyle=gl; g.fillRect(x+8,y+40,w-16,h-56); g.fillStyle='rgba(200,225,245,.25)'; g.fillRect(x+8,y+40,w-16,30); g.fillStyle='#8b949e'; g.fillRect(x+w/2-2,y+40,4,h-56); },
+    1,WARM,{winRect:(x,y,w,h)=>[x+8,y+40,w-16,h-56],emAfter:(g,W)=>{ g.fillStyle='#7fd8ff'; g.fillRect(0,18,W,8); }}),{r:0.55,m:0.2,env:0.5,emk:0.55,us:24,vs:6}));
+  /* ----- 公屋（高清）：粉色外牆＋窗格 ----- */
+  const EST=[['#f3d7d0','#d99c8e'],['#d8e8d0','#97b98a'],['#d6e2f0','#8aa6c8'],['#f2e6c4','#d1b46e'],['#e4d9ef','#a993c8'],['#f5efe6','#e0a96d']].map(([w1,w2])=>mat(facade(512,1024,4,8,
+    (g,W,H,bw,fh)=>{ g.fillStyle=w1; g.fillRect(0,0,W,H); g.fillStyle=w2; g.fillRect(0,0,22,H); g.fillRect(W-22,0,22,H); for(let f=0;f<8;f++) g.fillRect(0,f*fh+fh-5,W,5); },
+    (g,x,y,w,h)=>{ g.fillStyle='#41586d'; g.fillRect(x+w*0.2,y+h*0.2,w*0.6,h*0.5); g.fillStyle='rgba(200,225,240,.4)'; g.fillRect(x+w*0.2,y+h*0.2,w*0.6,h*0.14); g.fillStyle='#fafafa'; g.fillRect(x+w*0.49,y+h*0.2,4,h*0.5);
+      if(pr()<0.35){ g.fillStyle=pp(['#ffffff','#4cc9f0','#f72585','#ffd166','#90be6d']); g.fillRect(x+w*0.25,y+h*0.72,w*0.5,6); } },
+    0.5,WARM,{winRect:(x,y,w,h)=>[x+w*0.2,y+h*0.2,w*0.6,h*0.5]}),{r:0.85,emk:0.95,us:16,vs:24}));
+  /* ----- 天台、石材、金屬 ----- */
+  const roofT=ctex(256,256,(g,W,H)=>{ g.fillStyle='#7d7f80'; g.fillRect(0,0,W,H); for(let i=0;i<900;i++){ const v=100+pr()*60|0; g.fillStyle='rgba('+v+','+v+','+(v+4)+',.35)'; g.fillRect(pr()*W,pr()*H,2+pr()*10,2+pr()*10); }
+    g.strokeStyle='rgba(40,40,40,.35)'; g.lineWidth=2; for(let k=0;k<=4;k++){ g.beginPath(); g.moveTo(k*64,0); g.lineTo(k*64,H); g.moveTo(0,k*64); g.lineTo(W,k*64); g.stroke(); } });
+  const ROOF=new THREE.MeshStandardMaterial({map:roofT,roughness:0.95});
+  const solid=c=>{ const m=new THREE.MeshStandardMaterial({color:c,roughness:0.6,metalness:0.3}); return m; };
+  const STEEL=solid(0x4a5058), TANK=solid(0xd9dfe4), PLANT=solid(0x9aa2aa), CROWN=solid(0x2a313a);
+  const CROWNL=new THREE.MeshStandardMaterial({color:0xdfe8f0,emissive:0x000000,roughness:0.4}); CROWNL.userData.pc={glow:0x7fd0ff}; ALL.push(CROWNL);
+  /* ----- LED 廣告牌（自創品牌） ----- */
+  const ADS=[['星河電訊','5G 極速上網','#1b1f6b','#5ee7ff'],['富豪地產','海景新盤 現正發售','#3a0a0a','#ffd166'],['飛躍運動','JUST RUN','#0b0b0b','#ff3b3b'],['綠洲飲品','清涼一夏','#0d3b2e','#7dff9a'],
+    ['金滿樓','點心 · 海鮮','#5a0d0d','#ffcf5a'],['Q-MART','24 小時營業','#0a2a5a','#ffffff'],['夜光錶行','LUMINA','#1a0d2e','#e08cff'],['港燈旅遊','東京 $1888 起','#0a3d62','#ffeaa7']]
+    .map(([a,b,bg,fg])=>{ const t=ctex(512,256,(g,W,H)=>{ const gr=g.createLinearGradient(0,0,W,H); gr.addColorStop(0,bg); gr.addColorStop(1,'#000'); g.fillStyle=gr; g.fillRect(0,0,W,H);
+        g.fillStyle=fg; g.globalAlpha=0.18; for(let i=0;i<6;i++){ g.beginPath(); g.arc(pr()*W,pr()*H,30+pr()*90,0,7); g.fill(); } g.globalAlpha=1;
+        g.font='900 92px "PingFang HK","Noto Sans TC","Microsoft JhengHei",sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillStyle=fg; g.fillText(a,W/2,H*0.42,W-40);
+        g.font='700 40px "PingFang HK","Noto Sans TC","Microsoft JhengHei",sans-serif'; g.fillStyle='#fff'; g.fillText(b,W/2,H*0.78,W-40);
+        g.strokeStyle=fg; g.lineWidth=8; g.strokeRect(6,6,W-12,H-12); },false);
+      const m=new THREE.MeshStandardMaterial({map:t,emissiveMap:t,emissive:0xffffff,emissiveIntensity:0.55,roughness:0.5}); m.userData.pc={ad:true}; ALL.push(m); return m; });
+  const HOTELN=['海景酒店','星光酒店','HARBOUR HOTEL','皇庭酒店','GRAND VIEW'];
+  const HSIGN=HOTELN.map(n=>{ const t=ctex(512,128,(g,W,H)=>{ g.clearRect(0,0,W,H); g.font='900 80px "PingFang HK","Noto Sans TC",sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillStyle='#ffe9b8'; g.fillText(n,W/2,H/2,W-20); },false);
+    const m=new THREE.MeshStandardMaterial({map:t,transparent:true,emissiveMap:t,emissive:0xffffff,emissiveIntensity:0.3,depthWrite:false,side:THREE.DoubleSide}); m.userData.pc={ad:true}; ALL.push(m); return m; });
+  /* ----- 佔地坐標：x 沿街（0…bw），z 入深（0…bd，0 係街邊） ----- */
+  function frame(c){ const ex=c[1][0]-c[0][0], ez=c[1][1]-c[0][1], bw=Math.hypot(ex,ez), dx=c[3][0]-c[0][0], dz=c[3][1]-c[0][1], bd=Math.hypot(dx,dz);
+    const ux=ex/bw, uz=ez/bw, vx=dx/bd, vz=dz/bd; const P=(x,z)=>[c[0][0]+ux*x+vx*z, c[0][1]+uz*x+vz*z];
+    return {bw,bd,P,ux,uz,vx,vz,Q:(x0,z0,x1,z1)=>[P(x0,z0),P(x1,z0),P(x1,z1),P(x0,z1)],yaw:Math.atan2(-vx,-vz)}; }
+  const AV=[], PADS=[], SIGNS=[];   // 航空警示燈、直升機坪、酒店招牌
+  const avi=(F,x,z,y)=>{ const p=F.P(x,z); AV.push([p[0],y,p[1]]); };
+  function roofKit(F,x0,z0,x1,z1,y,big){   // 天台：水缸、樓梯屋、機房、天線
+    const w=x1-x0, d=z1-z0; if(w<4||d<4) return y;
+    const n=big?2+(pr()*3|0):1+(pr()*2|0);
+    for(let k=0;k<n;k++){ const sw=Math.min(w*0.4,rng(2.2,5)), sd=Math.min(d*0.4,rng(2.2,5)), sx=x0+0.8+pr()*(w-sw-1.6), sz=z0+0.8+pr()*(d-sd-1.6), sh=rng(1.6,3.6);
+      boxQ(F.Q(sx,sz,sx+sw,sz+sd),y,y+sh,pp([PLANT,TANK,ROOF]),ROOF,4,3); }
+    if(pr()<0.6){ const ax=x0+w*rng(0.2,0.8), az=z0+d*rng(0.2,0.8), ah=rng(4,10); boxQ(F.Q(ax,az,ax+0.18,az+0.18),y,y+ah,STEEL,STEEL,1,1); if(y+ah>55) avi(F,ax,az,y+ah+0.2); }
+    return y; }
+  function parapet(F,x0,z0,x1,z1,y,m){ const t=0.35, h=1.1; [[x0,z0,x1,z0+t],[x0,z1-t,x1,z1],[x0,z0,x0+t,z1],[x1-t,z0,x1,z1]].forEach(([a,b,c2,d])=>boxQ(F.Q(a,b,c2,d),y,y+h,m||ROOF,ROOF,...(m?UV(m):[4,3]))); }
+  function billboard(F,y,w,h){   // 天台廣告牌：向街，腳架
+    const x0=(F.bw-w)/2; const z=1.2; const m=pp(ADS);
+    for(let k=0;k<=2;k++){ const px=x0+k*w/2-0.1; boxQ(F.Q(px,z+0.3,px+0.2,z+0.5),y,y+2,STEEL,STEEL,1,1); }
+    boxQ(F.Q(x0,z,x0+w,z+0.3),y+2,y+2+h,m,STEEL,w,h); return y+2+h; }
+  const UV=m=>m.userData.pc&&m.userData.pc.us?[m.userData.pc.us,m.userData.pc.vs]:[8,3];
+  const tower=(F,x0,z0,x1,z1,y0,y1,m,u)=>{ const [a,b]=UV(m); boxQ(F.Q(x0,z0,x1,z1),y0,y1,m,ROOF,a,b,u||0); };
+  const uo=()=>(pr()*4|0)*0.25;
+  /* ----- 樓款 ----- */
+  const K={
+    office(F,big){ const pod=big?rng(9,13):rng(5,7); const pm=pp(MALL); tower(F,0,0,F.bw,F.bd,0.3,pod,pm); boxQ(F.Q(0,0,F.bw,F.bd),pod,pod+0.4,STEEL,ROOF,8,1);
+      const g=pp(GLASS); let ix=big?3:1.2, iz=big?3:1.2, y=pod, H=big?rng(70,135):rng(45,95); let x0=ix, z0=iz, x1=F.bw-ix, z1=F.bd-iz; const tiers=pr()<0.6?2:pr()<0.5?3:1; const u=uo();
+      for(let t=0;t<tiers;t++){ const top=t===tiers-1?pod+H:y+(pod+H-y)*rng(0.55,0.75); tower(F,x0,z0,x1,z1,y,top,g,u); y=top; if(t<tiers-1){ const s=Math.min((x1-x0)*0.12,(z1-z0)*0.12,rng(1.5,3)); boxQ(F.Q(x0,z0,x1,z1),y,y+0.5,CROWN,ROOF,8,1); x0+=s; z0+=s; x1-=s; z1-=s; } }
+      // 樓頂：玻璃冠／發光框／直升機坪
+      const w=x1-x0, d=z1-z0, r=pr();
+      if(r<0.4&&w>9&&d>9){ boxQ(F.Q(x0,z0,x1,z1),y,y+1.2,CROWN,ROOF,8,1); const pz=PADS.length; const c=F.P((x0+x1)/2,(z0+z1)/2); PADS.push([c[0],y+1.25,c[1],Math.min(w,d)*0.8,F.yaw]); y+=1.2; }
+      else if(r<0.75){ const fh=rng(4,9); [[x0,z0,x1,z0+0.4],[x0,z1-0.4,x1,z1],[x0,z0,x0+0.4,z1],[x1-0.4,z0,x1,z1]].forEach(([a,b,c2,d2])=>boxQ(F.Q(a,b,c2,d2),y,y+fh,g,ROOF,...UV(g),u)); boxQ(F.Q(x0,z0,x1,z1),y+fh-0.5,y+fh,CROWNL,CROWNL,8,1); roofKit(F,x0,z0,x1,z1,y,true); y+=fh; }
+      else { boxQ(F.Q(x0+w*0.3,z0+d*0.3,x1-w*0.3,z1-d*0.3),y,y+rng(3,6),CROWN,CROWNL,4,3); roofKit(F,x0,z0,x1,z1,y,true); }
+      [[x0,z0],[x1,z0],[x1,z1],[x0,z1]].forEach(([a,b])=>avi(F,a,b,y+0.3)); return y; },
+    resi(F){ boxQ(F.Q(0,0,F.bw,F.bd),0.3,4.8,pp(shopMats),ROOF,24,4.5,pr()*4|0); const m=pp(RESI); const H=rng(40,88); const y=4.8+H;
+      tower(F,0.5,0,F.bw-0.5,F.bd-1,4.8,y,m,uo()); parapet(F,0.5,0,F.bw-0.5,F.bd-1,y,m);
+      boxQ(F.Q(F.bw*0.3,F.bd*0.35,F.bw*0.7,F.bd*0.75),y,y+3.2,m,ROOF,...UV(m)); boxQ(F.Q(F.bw*0.35,F.bd*0.4,F.bw*0.65,F.bd*0.7),y+3.2,y+5,TANK,TANK,4,3);
+      if(y>60) avi(F,F.bw/2,F.bd*0.55,y+5.2); return y+5; },
+    industrial(F){ const m=pp(IND); const H=rng(18,34); tower(F,0,0,F.bw,F.bd,0.3,H,m,uo()); parapet(F,0,0,F.bw,F.bd,H,m);
+      let y=H; if(pr()<0.55&&F.bw>9) y=billboard(F,H,Math.min(F.bw-1.5,14),rng(3.5,5)); else roofKit(F,0.5,0.5,F.bw-0.5,F.bd-0.5,H,true); return Math.max(H,y); },
+    hotel(F){ const pod=rng(6,9); tower(F,0,0,F.bw,F.bd,0.3,pod,pp(MALL)); boxQ(F.Q(-0.2,-0.2,F.bw+0.2,F.bd+0.2),pod,pod+0.5,CROWN,ROOF,8,1);
+      const m=pp(HOTEL); const H=rng(30,72), y=pod+H; tower(F,0.8,0.8,F.bw-0.8,F.bd-0.8,pod,y,m,uo());
+      boxQ(F.Q(0.4,0.4,F.bw-0.4,F.bd-0.4),y,y+1.4,CROWN,ROOF,8,1); boxQ(F.Q(1.2,1.2,F.bw-1.2,F.bd-1.2),y+1.4,y+1.9,CROWNL,CROWNL,8,1);
+      const p=F.P(F.bw/2,0.3); SIGNS.push([p[0],y+3.2,p[1],Math.min(F.bw*0.9,16),F.yaw,pp(HSIGN)]); if(y>55) avi(F,F.bw/2,F.bd/2,y+2); return y+2; },
+    carpark(F){ const H=rng(12,19); tower(F,0,0,F.bw,F.bd,0.3,H,PARK,0); parapet(F,0,0,F.bw,F.bd,H,PARK); boxQ(F.Q(F.bw-5,F.bd-5,F.bw-1,F.bd-1),H,H+3,PARK,ROOF,...UV(PARK));
+      const p=F.P(1.2,-0.1); SIGNS.push([p[0],H-1.4,p[1],2.2,F.yaw,null]); return H+3; },
+    mall(F){ const m=pp(MALL), H=rng(14,24); let y=0.3; while(y<H-1){ const t=Math.min(H,y+6); tower(F,0,0,F.bw,F.bd,y,t,m); y=t; }
+      parapet(F,0,0,F.bw,F.bd,H,CROWN);
+      const w=Math.min(F.bw*0.7,14), h=Math.min(H-8,rng(6,9)), x0=(F.bw-w)/2; boxQ(F.Q(x0,-0.45,x0+w,-0.1),H-h-1.5,H-1.5,pp(ADS),STEEL,w,h);   // 外牆 LED 大電視
+      let top=H; if(pr()<0.5) top=billboard(F,H,Math.min(F.bw-2,13),rng(3.5,5)); else roofKit(F,0.5,0.5,F.bw-0.5,F.bd-0.5,H,true); return Math.max(H,top); },
+    cross(F){   // 十字型公屋
+      boxQ(F.Q(0,0,F.bw,F.bd),0.3,4.8,pp(shopMats),podMat,24,4.5); const m=pp(EST), n=F.bw>38?2:1; let top=4.8;
+      for(let k=0;k<n;k++){ const cx=n===1?F.bw/2:(k?F.bw*0.74:F.bw*0.26), cz=F.bd/2, a=n===1?Math.min(13,F.bw/2-2):Math.min(9,F.bw/4-1), b=Math.min(12,F.bd/2-1.2), t=n===1?4.6:3.6, H=4.8+rng(55,95);
+        boxQ(F.Q(cx-a,cz-t,cx+a,cz+t),4.8,H,m,ROOF,...UV(m),uo()); boxQ(F.Q(cx-t,cz-b,cx+t,cz+b),4.8,H,m,ROOF,...UV(m),uo());
+        boxQ(F.Q(cx-t*0.8,cz-t*0.8,cx+t*0.8,cz+t*0.8),H,H+4,m,ROOF,...UV(m)); boxQ(F.Q(cx-a,cz-t,cx+a,cz+t),H,H+1,m,ROOF,...UV(m)); boxQ(F.Q(cx-t,cz-b,cx+t,cz+b),H,H+1,m,ROOF,...UV(m));
+        if(H>60) avi(F,cx,cz,H+4.2); top=Math.max(top,H+4); }
+      return top; },
+    twins(F){   // 私人屋苑：平台＋兩座高樓
+      const pod=rng(8,11); tower(F,0,0,F.bw,F.bd,0.3,pod,pp(MALL)); boxQ(F.Q(0,0,F.bw,F.bd),pod,pod+0.3,podMat,podMat,8,1);
+      const m=pp(pr()<0.5?RESI:GLASS), tw=Math.min(15,(F.bw-6)/2), td=Math.min(16,F.bd-6); let top=pod; const u=uo();
+      [0,1].forEach(k=>{ const x0=k?F.bw-3-tw:3, z0=(F.bd-td)/2, H=pod+rng(70,125); tower(F,x0,z0,x0+tw,z0+td,pod,H,m,u);
+        boxQ(F.Q(x0+1,z0+1,x0+tw-1,z0+td-1),H,H+5,CROWN,ROOF,8,3); boxQ(F.Q(x0+0.6,z0+0.6,x0+tw-0.6,z0+td-0.6),H+5,H+5.6,CROWNL,CROWNL,8,1);
+        [[x0,z0],[x0+tw,z0],[x0+tw,z0+td],[x0,z0+td]].forEach(([a,b])=>avi(F,a,b,H+5.8)); top=Math.max(top,H+5.6); });
+      return top; } };
+  const ZK={   // 每種原本嘅佔地 → 可以換成嘅樓款（'orig' = 保留原本港式樓）
+    tong:{old:['orig','orig','resi','industrial','industrial','hotel'],centre:['orig','resi','resi','hotel','office'],res:['orig','resi','resi','hotel','carpark']},
+    shops:{old:['industrial','carpark','mall','hotel','office'],centre:['office','office','mall','hotel','carpark'],res:['mall','carpark','office','hotel','industrial']},
+    estate:{old:['orig','cross','office','twins'],centre:['office','twins','twins','cross','office'],res:['cross','cross','twins','orig','office']} };
+  let SKIP=false;
+  return {
+    get skip(){ return SKIP; }, last:'orig', ALL,
+    // 沿街：type＝原本樓款；run(origFn)＝原本建樓（照計 rnd）
+    street(type,zone,c,orig){ const k=pp((ZK[type]||ZK.tong)[zone]||ZK[type].res); this.last=k; if(k==='orig'){ orig(); return; }
+      SKIP=true; try{ orig(); } finally{ SKIP=false; }
+      const F=frame(c); const h=k==='office'?K.office(F,type==='estate'):K[k](F); MAP.blds[MAP.blds.length-1].h=h; },
+    // 內街高樓（16×14）
+    inner(c,h){ const F=frame(c), r=pr(); this.last='inner';
+      if(r<0.45){ const m=pp(EST), H=h*rng(1.2,1.8); tower(F,0,0,F.bw,F.bd,0,H,m,uo()); parapet(F,0,0,F.bw,F.bd,H,m); boxQ(F.Q(F.bw*0.3,F.bd*0.3,F.bw*0.7,F.bd*0.7),H,H+4,m,ROOF,...UV(m)); return H+4; }
+      if(r<0.8){ const m=pp(RESI), H=h*rng(1.3,2); tower(F,0,0,F.bw,F.bd,0,H,m,uo()); parapet(F,0,0,F.bw,F.bd,H,m); roofKit(F,1,1,F.bw-1,F.bd-1,H,false); if(H>60) avi(F,F.bw/2,F.bd/2,H+1.4); return H; }
+      const H=h*rng(1.4,2.4); tower(F,0,0,F.bw,F.bd,0,H,pp(GLASS),uo()); boxQ(F.Q(1,1,F.bw-1,F.bd-1),H,H+3,CROWN,CROWNL,4,3); [[0,0],[F.bw,0],[F.bw,F.bd],[0,F.bd]].forEach(([a,b])=>avi(F,a,b,H+0.3)); return H+3; },
+    finish(){   // 航空燈、直升機坪、酒店招牌
+      const avm=new THREE.MeshBasicMaterial({color:0xff2a2a,toneMapped:false,fog:false}); const im=new THREE.InstancedMesh(new THREE.SphereGeometry(0.42,8,6),avm,Math.max(1,AV.length)); const o=new THREE.Object3D();
+      AV.forEach(([x,y,z],i)=>{ o.position.set(x,y,z); o.updateMatrix(); im.setMatrixAt(i,o.matrix); }); im.count=AV.length; scene.add(im); this.av=im; this.avm=avm;
+      const padT=ctex(256,256,(g,W,H)=>{ g.fillStyle='#3d4247'; g.fillRect(0,0,W,H); g.strokeStyle='#f4f4f4'; g.lineWidth=10; g.beginPath(); g.arc(128,128,100,0,7); g.stroke(); g.strokeStyle='#ffd23f'; g.lineWidth=6; g.strokeRect(10,10,W-20,H-20);
+        g.font='900 140px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillStyle='#f4f4f4'; g.fillText('H',128,136); },false);
+      const pm=new THREE.MeshStandardMaterial({map:padT,roughness:0.9}); const pim=new THREE.InstancedMesh(new THREE.PlaneGeometry(1,1),pm,Math.max(1,PADS.length));
+      PADS.forEach(([x,y,z,s,a],i)=>{ o.position.set(x,y,z); o.rotation.set(-Math.PI/2,0,a); o.scale.set(s,s,1); o.updateMatrix(); pim.setMatrixAt(i,o.matrix); }); pim.count=PADS.length; pim.receiveShadow=true; scene.add(pim);
+      o.scale.set(1,1,1);
+      const pk=ctex(128,128,(g)=>{ g.fillStyle='#1e5bd8'; g.fillRect(0,0,128,128); g.font='900 110px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillStyle='#fff'; g.fillText('P',64,70); },false);
+      const pkm=new THREE.MeshStandardMaterial({map:pk,emissiveMap:pk,emissive:0xffffff,emissiveIntensity:0.4}); pkm.userData.pc={ad:true}; ALL.push(pkm);
+      SIGNS.forEach(([x,y,z,w,a,m])=>{ const g=new THREE.PlaneGeometry(w,m?w/4:w); const s=new THREE.Mesh(g,m||pkm); s.position.set(x,y,z); s.rotation.y=a; s.renderOrder=1; scene.add(s); });
+      console.log('電腦畫質樓宇：航空燈',AV.length,'直升機坪',PADS.length,'招牌',SIGNS.length); },
+    // 日／夜：窗燈、玻璃反光、廣告牌亮度
+    setEnv(env,night,wet){ if(this.road){ const R_=this.road; R_.roughness=wet?0.22:night?0.5:0.88; R_.envMap=env&&(night||wet)?env:null; R_.envMapIntensity=wet?1.1:0.55; R_.needsUpdate=true; }
+      ALL.forEach(m=>{ const u=m.userData.pc; if(u.shop){ m.emissiveIntensity=night?0.6:0.1; return; } if(u.ad){ m.emissiveIntensity=u.lo?(night?0.3:0.06):night?1.25:0.5; return; }
+        if(u.glow){ m.emissive.setHex(night?u.glow:0); m.emissiveIntensity=night?1.6:0; return; }
+        m.emissive.setHex(night?0xffffff:0x000000); m.emissiveIntensity=night?0.78*u.emk:0; if(u.env){ m.envMap=env; m.envMapIntensity=u.env*(night?0.55:1); } m.needsUpdate=true; }); },
+    roadMat(){ const t=ctex(512,512,(g,W,H)=>{ g.fillStyle='#5b6270'; g.fillRect(0,0,W,H); for(let i=0;i<9000;i++){ const v=70+pr()*60|0; g.fillStyle='rgba('+v+','+v+','+(v+6)+','+(0.25+pr()*0.35)+')'; g.fillRect(pr()*W,pr()*H,1+pr()*2.5,1+pr()*2.5); }
+        for(let i=0;i<14;i++){ const rg=g.createRadialGradient(0,0,2,0,0,60); const x=pr()*W, y=pr()*H; g.save(); g.translate(x,y); g.scale(1,0.5+pr()); rg.addColorStop(0,'rgba(30,32,38,.22)'); rg.addColorStop(1,'rgba(30,32,38,0)'); g.fillStyle=rg; g.fillRect(-60,-60,120,120); g.restore(); } });
+      t.repeat.set(0.25,0.25); const m=new THREE.MeshStandardMaterial({map:t,roughness:0.88,color:0xdfe3ea}); this.road=m; return m; },
+    walkMat(){ const t=ctex(512,512,(g,W,H)=>{ const C=['#d9d2c5','#cfc6b6','#c9b9a8','#ddd5c9','#bfb3a2']; for(let y=0;y<H;y+=32) for(let x=0;x<W;x+=64){ const o=(y/32%2)*32; g.fillStyle=pp(C); g.fillRect(x+o-64,y,62,30); g.fillRect(x+o,y,62,30); }
+        for(let i=0;i<2500;i++){ g.fillStyle='rgba(80,70,60,'+(pr()*0.12)+')'; g.fillRect(pr()*W,pr()*H,2,2); } });
+      t.repeat.set(0.75,0.75); return new THREE.MeshStandardMaterial({map:t,roughness:0.9}); },
+    tick(t){ if(this.avm){ const on=(t%1.6)<0.7; this.avm.color.setHex(on?0xff2a2a:0x3a0808); } } };
+})();
+if(PCB) window.__PCB=PCB;
+
 /* ---------- 合併幾何（任意四邊形底） ---------- */
 const buckets=new Map();
 function bucket(mat){ if(!buckets.has(mat)) buckets.set(mat,{p:[],n:[],u:[]}); return buckets.get(mat); }
 // c：四個角 [[x,z]×4]（任何次序順時針／逆時針都得）
-function boxQ(c,y0,y1,sideMat,topMat,us=8,vs=3,uOff=0){
+function boxQ(c,y0,y1,sideMat,topMat,us=8,vs=3,uOff=0){ if(PCB&&PCB.skip) return;
   const cx=(c[0][0]+c[1][0]+c[2][0]+c[3][0])/4, cz=(c[0][1]+c[1][1]+c[2][1]+c[3][1])/4;
   if(!topMat||topMat===roofMat) topMat=roofMats[Math.abs((cx*7+cz*13)|0)%roofMats.length];
   const sb=bucket(sideMat), tb=bucket(topMat);
@@ -1349,9 +1538,13 @@ const X0=BX0-60,Z0=BZ0-60, CELL=2, GW=Math.ceil((BX1+60-X0)/CELL), GH=Math.ceil(
 const grid=new Uint8Array(GW*GH);
 const gi=(x,z)=>{const i=Math.floor((x-X0)/CELL), j=Math.floor((z-Z0)/CELL); return (i<0||j<0||i>=GW||j>=GH)?-1:j*GW+i;};
 const cellAt=(x,z)=>{const k=gi(x,z); return k<0?2:grid[k];};
+// 樓宇碰撞要準：格仔（2 米）只係粗略標記；有樓宇多邊形嘅格，再用多邊形（外擴 0.25 米）判斷，唔會喺牆前一兩米就撞到「空氣牆」
+const BIDX=new Map(), OTH=new Uint8Array(GW*GH);
+function solidAt(x,z){ const k=gi(x,z); if(k<0) return true; if(!(grid[k]&2)) return false; if(OTH[k]) return true; const a=BIDX.get(k); if(!a) return true; for(const c of a) if(inQuad(x,z,c)) return true; return false; }
+const blockedAt=(x,z,mask)=>{ const g=cellAt(x,z); if(g&mask&4) return true; return !!(g&mask&2)&&solidAt(x,z); };
 function markSeg(A,B,w,bit,clear=0){ const r=w/2, minx=Math.min(A[0],B[0])-r, maxx=Math.max(A[0],B[0])+r, minz=Math.min(A[1],B[1])-r, maxz=Math.max(A[1],B[1])+r;
   for(let z=minz;z<=maxz+CELL;z+=CELL) for(let x=minx;x<=maxx+CELL;x+=CELL){ const cx=Math.floor((x-X0)/CELL)*CELL+X0+1, cz=Math.floor((z-Z0)/CELL)*CELL+Z0+1;
-    if(segDist(cx,cz,A,B)<=r){ const k=gi(cx,cz); if(k>=0){ grid[k]&=~clear; grid[k]|=bit; } } } }
+    if(segDist(cx,cz,A,B)<=r){ const k=gi(cx,cz); if(k>=0){ grid[k]&=~clear; grid[k]|=bit; if(bit&2) OTH[k]=1; } } } }
 function inQuad(x,z,c){ let s=0; for(let i=0;i<4;i++){ const A=c[i],B=c[(i+1)%4]; const cr=(B[0]-A[0])*(z-A[1])-(B[1]-A[1])*(x-A[0]); if(cr>0) s|=1; else if(cr<0) s|=2; } return s!==3; }
 function quadCells(c,fn,margin=0){ let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; c.forEach(([x,z])=>{x0=Math.min(x0,x);x1=Math.max(x1,x);z0=Math.min(z0,z);z1=Math.max(z1,z);});
   const cx=(c[0][0]+c[2][0])/2, cz=(c[0][1]+c[2][1])/2; const cc=margin?c.map(([x,z])=>{ const dx=x-cx,dz=z-cz,L=Math.hypot(dx,dz)||1; return [x+dx/L*margin,z+dz/L*margin]; }):c;
@@ -1359,7 +1552,7 @@ function quadCells(c,fn,margin=0){ let x0=1e9,x1=-1e9,z0=1e9,z1=-1e9; c.forEach(
 const quadFree=(c,margin=1)=>quadCells(c,k=>!(k<0||grid[k]),margin);
 const markQuad=(c,bit)=>quadCells(c,k=>{ if(k>=0) grid[k]|=bit; });
 // 邊界外面當障礙
-for(let j=0;j<GH;j++) for(let i=0;i<GW;i++){ const x=X0+i*CELL+1, z=Z0+j*CELL+1; if(x<BX0||x>BX1||z<BZ0||z>BZ1) grid[j*GW+i]|=2; }
+for(let j=0;j<GH;j++) for(let i=0;i<GW;i++){ const x=X0+i*CELL+1, z=Z0+j*CELL+1; if(x<BX0||x>BX1||z<BZ0||z>BZ1){ grid[j*GW+i]|=2; OTH[j*GW+i]=1; } }
 // 河
 for(let i=1;i<RIV.length;i++) markSeg(RIV[i-1],RIV[i],RIVH*2,4);
 // 湖（公園）
@@ -1392,7 +1585,7 @@ function elevPieces(A,B,step,fn){ const dx=B[0]-A[0],dz=B[1]-A[1],L=Math.hypot(d
     const [ux,uz]=dirn(A,B); elevPieces(A,B,4,(P,Q,i,n)=>{ const e0=i===0?0.6:0, e1=i===n-1?0.6:0; const P2=[P[0]-ux*e0,P[1]-uz*e0], Q2=[Q[0]+ux*e1,Q[1]+uz*e1];
       ribbon(walk,P2,Q2,r.w/2+3.6); ribbon(road,P2,Q2,r.w/2); }); });
   NODES.forEach((N,k)=>{ if(!DEG[k]||onRamp(k)) return; disc(walk,N,NW[k]+3.6,20); disc(road,N,NW[k],20); });
-  flat(walk,new THREE.MeshStandardMaterial({map:walkTex,roughness:0.9}),0.10); flat(road,M(C.road,{r:0.85}),0.14); }
+  flat(walk,PCB?PCB.walkMat():new THREE.MeshStandardMaterial({map:walkTex,roughness:0.9}),0.10); flat(road,PCB?PCB.roadMat():M(C.road,{r:0.85}),0.14); }
 // 標線、斑馬線、輕鐵路軌
 const mW=[], mY=[], mR=[];
 MAP.roads.forEach(r=>{ const [a,b]=r.n, A=NODES[a], B=NODES[b]; const [ux,uz,L]=dirn(A,B); const nx=uz, nz=-ux;
@@ -1442,7 +1635,12 @@ MAP.roads.forEach(r=>{ if(!r.bridge) return; const A=NODES[r.n[0]],B=NODES[r.n[1
 const props={tree:[],lamp:[],rail:[],bin:[]}; const signs=[]; const parked=[];
 function labelPlane(text,x,y,z,ry,bg,w=14,parent=scene){ const t=canvasTex(512,128,(g)=>{ g.fillStyle=bg; rr(g,4,4,504,120,24); g.fill(); g.fillStyle='#fff'; g.font='bold 72px sans-serif'; g.textAlign='center'; g.textBaseline='middle'; g.fillText(text,256,68); },false);
   const m=new THREE.Mesh(new THREE.PlaneGeometry(w,w/4),new THREE.MeshBasicMaterial({map:t})); m.position.set(x,y,z); m.rotation.y=ry; parent.add(m); return m; }
-function addBldQ(c,h,lm){ MAP.blds.push({p:c,h,lm}); markQuad(c,2); }
+// 非樓宇但係有實物嘅障礙（泊咗嘅車、輕鐵月台）：一樣用多邊形判斷
+function markPoly(c){ const cx=(c[0][0]+c[2][0])/2, cz=(c[0][1]+c[2][1])/2, cc=c.map(([x,z])=>{ const dx=x-cx,dz=z-cz,L=Math.hypot(dx,dz)||1; return [x+dx/L*0.25,z+dz/L*0.25]; });
+  quadCells(c,k=>{ if(k<0) return; if((grid[k]&2)&&!BIDX.has(k)) OTH[k]=1; grid[k]|=2; let a=BIDX.get(k); if(!a) BIDX.set(k,a=[]); a.push(cc); }); }
+const markRect=(p,a,w,l)=>{ const fx=Math.sin(a),fz=Math.cos(a),rx=fz,rz=-fx, hw=w/2, hl=l/2; markPoly([[p[0]-rx*hw-fx*hl,p[1]-rz*hw-fz*hl],[p[0]+rx*hw-fx*hl,p[1]+rz*hw-fz*hl],[p[0]+rx*hw+fx*hl,p[1]+rz*hw+fz*hl],[p[0]-rx*hw+fx*hl,p[1]-rz*hw+fz*hl]]); };
+function addBldQ(c,h,lm){ MAP.blds.push({p:c,h,lm}); const cx=(c[0][0]+c[2][0])/2, cz=(c[0][1]+c[2][1])/2, cc=c.map(([x,z])=>{ const dx=x-cx,dz=z-cz,L=Math.hypot(dx,dz)||1; return [x+dx/L*0.35,z+dz/L*0.35]; });
+  quadCells(c,k=>{ if(k<0) return; if((grid[k]&2)&&!BIDX.has(k)) OTH[k]=1; grid[k]|=2; let a=BIDX.get(k); if(!a) BIDX.set(k,a=[]); if(!a.includes(cc)) a.push(cc); }); }
 // 搵最近（唔係橋）嘅路段
 function nearestEdge(x,z,filter){ let best=null; MAP.roads.forEach(r=>{ if(r.bridge||(filter&&!filter(r))) return; const A=NODES[r.n[0]],B=NODES[r.n[1]]; const d=segDist(x,z,A,B); if(!best||d<best.d) best={r,d}; });
   const r=best.r, A=NODES[r.n[0]],B=NODES[r.n[1]]; const [ux,uz,L]=dirn(A,B); let t=((x-A[0])*ux+(z-A[1])*uz); t=Math.max(6,Math.min(L-6,t));
@@ -1525,7 +1723,7 @@ function buildDepot(f,zh,en,addr,key){
 if(REGION==='tm'){   // ===== 屯門、元朗、天水圍地標 =====
 { const f=placeLM(...RP(-450,505),56,40,r=>r.name==='震寰路'); const D=buildDepot(f,'屯 門 救 護 站','TUEN MUN AMBULANCE DEPOT','NO. 1 TSUN WEN ROAD','tm'); const face=D.face;
   LMK.parkedAmb=[[f.L(10,7),face],[f.L(21,7),face]];
-  LMK.parkedAmb.forEach(([p])=>markSeg(p,p,6,2));
+  LMK.parkedAmb.forEach(([p,a])=>markRect(p,a,2.6,6.6));
   LMK.depot={pos:D.pos,a:D.a};
   MAP.poi.depot=f.L(0,20);
   // 隔籬消防局
@@ -1675,7 +1873,7 @@ if(REGION==='st'){   // ===== 沙田區：以源禾路（沙田消防局暨救�
 LMK.ae=buildHosp('PWH','威爾斯親王醫院',['#eef1f6','#1f5fa8'],['#e8f0fb','#1f5fa8']); MAP.poi.hospital=LMK.ae.poi;
 // 沙田消防局暨救護站（源禾路26號，城門河邊、划艇中心隔籬）
 { const f=placeLM(...RP(890,-700),56,40,r=>r.name==='源禾路'); const D=buildDepot(f,'沙 田 救 護 站','SHA TIN AMBULANCE DEPOT','26 YUEN WO ROAD','st');
-  LMK.parkedAmb=[[f.L(10,7),D.face],[f.L(21,7),D.face]]; LMK.parkedAmb.forEach(([p])=>markSeg(p,p,6,2)); LMK.depot={pos:D.pos,a:D.a}; MAP.poi.depot=f.L(0,20);
+  LMK.parkedAmb=[[f.L(10,7),D.face],[f.L(21,7),D.face]]; LMK.parkedAmb.forEach(([p,a])=>markRect(p,a,2.6,6.6)); LMK.depot={pos:D.pos,a:D.a}; MAP.poi.depot=f.L(0,20);
   const g=placeLM(...RP(975,-800),44,36,r=>r.name==='源禾路');
   const fm=texMat('fireST',canvasTex(256,96,(g2,w,h)=>{ g2.fillStyle='#ffd9cf'; g2.fillRect(0,0,w,h); g2.fillStyle='#c1121f'; g2.fillRect(0,h-16,w,16); g2.fillStyle='#8fb8d8'; g2.fillRect(30,20,70,40); g2.fillRect(156,20,70,40); }));
   const c2=g.rq(-20,8,20,34); boxQ(c2,0.3,14,fm,M(0xc1121f),8,3); addBldQ(c2,14); for(let k=0;k<3;k++) add(new THREE.BoxGeometry(9,6.4,0.3),M(0xc1121f),g.g,-12+k*12,3.4,7.85,false);
@@ -1800,7 +1998,7 @@ MAP.roads.forEach(r=>{ if(r.bridge||r.elev) return; const [a,b]=r.n, A=NODES[a],
       const c=[L(0,0),L(bw,0),L(bw,bd),L(0,bd)];
       const underHW=[[0,0],[bw/2,0],[bw,0],[0,bd/2],[bw/2,bd/2],[bw,bd/2],[0,bd],[bw/2,bd],[bw,bd],[bw/2,-1.8]].some(([lx,lz])=>{ const p=L(lx,lz); return ELEV(p[0],p[1],8)>0.02; });   // 高架路底／旁邊唔起樓（會變空氣牆）
       const nearJ=[[0,-1.8],[bw,-1.8],[0,bd],[bw,bd]].some(([lx,lz])=>{ const p=L(lx,lz); return J3.some(n=>{ const N=NODES[n]; return Math.hypot(N[0]-p[0],N[1]-p[1])<NW[n]+r.w/2+3; }); });   // 唔好起到路口轉角入面
-      if(!underHW&&!nearJ&&quadFree(c,0.5)){ boxQ([L(0,-1.8),L(bw,-1.8),L(bw,0.2),L(0,0.2)],0,0.11,walkMat,walkMat); if(type==='tong') buildTong(c,L(bw/2,0),nx,nz); else if(type==='shops') buildShops(c); else buildEstate(L,bw,bd); DFRONT.push({c,type,h:MAP.blds[MAP.blds.length-1].h}); s+=bw+0.3; }
+      if(!underHW&&!nearJ&&quadFree(c,0.5)){ boxQ([L(0,-1.8),L(bw,-1.8),L(bw,0.2),L(0,0.2)],0,0.11,walkMat,walkMat); const orig=()=>{ if(type==='tong') buildTong(c,L(bw/2,0),nx,nz); else if(type==='shops') buildShops(c); else buildEstate(L,bw,bd); }; if(PCB) PCB.street(type,zn,c,orig); else orig(); DFRONT.push({c,type,h:MAP.blds[MAP.blds.length-1].h,pc:PCB?PCB.last:null}); s+=bw+0.3; }
       else s+=3; } }); });
 const VCOL=['#fff1d6','#e8f4ff','#ffe3e3','#e9f7df','#f3e8ff'];
 const villageMats=VCOL.map((w,k)=>texMat('v'+k,canvasTex(128,96,(g,W,H)=>{ g.fillStyle=w; g.fillRect(0,0,W,H); g.fillStyle='#8fb8d8'; g.fillRect(20,24,34,30); g.fillRect(74,24,34,30); g.fillStyle='#c9b8a6'; g.fillRect(0,H-6,W,6); g.fillStyle='rgba(0,0,0,.15)'; g.fillRect(20,52,34,4); g.fillRect(74,52,34,4); })));
@@ -1835,10 +2033,10 @@ for(let z=BZ0+20;z<BZ1-20;z+=20) for(let x=BX0+20;x<BX1-20;x+=20){
   if(nearHW(x,z)){ if(rnd()<0.3) props.tree.push([x+(rnd()-0.5)*16,z+(rnd()-0.5)*14,0,0]); continue; }
   if(rur&&q<0.25){ const h=8+rnd()*8; const cc=[L(-9,-7),L(9,-7),L(9,7),L(-9,7)]; boxQ(cc,0,h,pick(villageMats),roofMat,8,3); addBldQ(cc,h); boxQ(c,0,0.25,podMat,podMat); markQuad(c,8); }
   else if(rur&&q>0.6){ boxQ(c,0,0.25,grassMat,grassMat); markQuad(c,8); for(let k=0;k<3;k++) props.tree.push([x+(rnd()-0.5)*18,z+(rnd()-0.5)*14,0,0.25]); }
-  else if(!rur&&rnd()<0.75){ const h=26+rnd()*20; boxQ([L(-8,-7),L(8,-7),L(8,7),L(-8,7)],0,h,pick(housingMats),roofMat,8,3); addBldQ([L(-8,-7),L(8,-7),L(8,7),L(-8,7)],h);
+  else if(!rur&&rnd()<0.75){ const h=26+rnd()*20, iq=[L(-8,-7),L(8,-7),L(8,7),L(-8,7)], hm=pick(housingMats); const hh=PCB?PCB.inner(iq,h):(boxQ(iq,0,h,hm,roofMat,8,3),h); addBldQ(iq,hh);
     boxQ(c,0,0.25,podMat,podMat); markQuad(c,8); }
   else if(rur||rnd()<0.5){ boxQ(c,0,0.25,M(0x8a919c,{r:0.9}),M(0x8a919c,{r:0.9})); markQuad(c,8); // 停車場
-    for(let k=0;k<4;k++) for(const r of [-1,1]){ const p=L(-7.5+k*5,r*4.5); parked.push([p[0],p[1],Math.atan2(nx*r,nz*r)]); markSeg(p,p,4,2); } }
+    for(let k=0;k<4;k++) for(const r of [-1,1]){ const p=L(-7.5+k*5,r*4.5); parked.push([p[0],p[1],Math.atan2(nx*r,nz*r)]); markRect(p,Math.atan2(nx*r,nz*r),2.1,4.8); } }
   else { boxQ(c,0,0.25,grassMat,grassMat); markQuad(c,8); for(let k=0;k<4;k++) props.tree.push([x+(rnd()-0.5)*18,z+(rnd()-0.5)*14,0,0.25]); } }
 // 再細啲嘅空位：村屋／低層樓
 
@@ -1848,7 +2046,17 @@ for(let z=BZ0+10;z<BZ1-10;z+=11) for(let x=BX0+10;x<BX1-10;x+=11){
   if(!quadFree(c,1.5)||nearHW(xx,zz)||northWild(xx,zz)) continue; if(xx>150&&xx<375&&zz<-850&&zz>-1050){ const h=30+(rnd()*5|0)*6; boxQ(c,0,h,pick(housingMats),roofMat,8,3); addBldQ(c,h); continue; } const h=6+(rnd()*3|0)*3; boxQ(c,0,h,pick(villageMats),roofMat,8,3); addBldQ(c,h); }
 // 剩低嘅草地：散樹
 for(let k=0;k<500;k++){ const x=BX0+rnd()*(BX1-BX0), z=BZ0+rnd()*(BZ1-BZ0); if(!cellAt(x,z)&&!cellAt(x+3,z)&&!cellAt(x-3,z)) props.tree.push([x,z,0,0]); }
-flushBuckets();
+// 地圖邊界：出面一直係障礙（以前睇唔到，似空氣牆）→ 沿邊界起一道石屎矮牆；馬路穿過邊界嘅位置改用紅白封路欄
+{ const wallM=M(0xb3b6b9,{r:0.9}), capM=M(0x8b9096,{r:0.8});
+  const barT=canvasTex(128,64,(g,w,h)=>{ g.fillStyle='#fff'; g.fillRect(0,0,w,h); g.fillStyle='#d62828'; for(let x=-h;x<w+h;x+=32){ g.beginPath(); g.moveTo(x,0); g.lineTo(x+16,0); g.lineTo(x+16+h,h); g.lineTo(x+h,h); g.fill(); } });
+  const barM=new THREE.MeshStandardMaterial({map:barT,roughness:0.6});
+  const side=(x0,z0,x1,z1,nx,nz)=>{ const L=Math.hypot(x1-x0,z1-z0), ux=(x1-x0)/L, uz=(z1-z0)/L; for(let s=0;s<L;s+=4){ const e=Math.min(L,s+4), mx=x0+ux*(s+e)/2, mz=z0+uz*(s+e)/2;
+      const ix=mx+nx*1.5, iz=mz+nz*1.5, g=cellAt(ix,iz); if(g&4||ELEV(mx,mz,6)>0.3) continue;   // 河／海唔使牆；高架路底唔起
+      const A=[x0+ux*s,z0+uz*s], B=[x0+ux*e,z0+uz*e], C=[B[0]-nx*0.5,B[1]-nz*0.5], D=[A[0]-nx*0.5,A[1]-nz*0.5];
+      if(g&1){ boxQ([A,B,C,D],0,1.25,barM,barM,4,1.25); }
+      else { boxQ([A,B,C,D],0,1.1,wallM,capM,4,1.1); boxQ([[A[0]+nx*0.05,A[1]+nz*0.05],[B[0]+nx*0.05,B[1]+nz*0.05],[C[0]-nx*0.05,C[1]-nz*0.05],[D[0]-nx*0.05,D[1]-nz*0.05]],1.1,1.25,capM,capM,4,1); } } };
+  side(BX0,BZ0,BX1,BZ0,0,1); side(BX1,BZ1,BX0,BZ1,0,-1); side(BX0,BZ1,BX0,BZ0,1,0); side(BX1,BZ0,BX1,BZ1,-1,0); }
+flushBuckets(); if(PCB) PCB.finish();
 
 /* ---------- 遠景：外圍樓群、海、山 ---------- */
 function farScene(){
@@ -1890,7 +2098,7 @@ const tl=props.tree.filter(([x,z])=>offRoad(x,z,1.6));
 instanced(new THREE.CylinderGeometry(0.25,0.35,2.2,5,1,true),M(C.trunk),tl,(o,[x,z,,y=0.3])=>o.position.set(x,y+1.1,z),false);
 instanced(new THREE.IcosahedronGeometry(1.9,0),M(C.tree,{r:0.9}),tl,(o,[x,z,,y=0.3])=>{o.position.set(x,y+3.2,z);o.scale.setScalar(0.85+((Math.abs(x*13+z*7))%10)/25);});
 instanced(new THREE.CylinderGeometry(0.12,0.16,6,6),M(0x6b7380),props.lamp,(o,[x,z])=>o.position.set(x,3.2,z),false);
-instanced(new THREE.BoxGeometry(0.5,0.3,1.8),M(0xfff6c4,{e:0x555533}),props.lamp,(o,[x,z,a])=>{o.position.set(x+Math.sin(a)*0.8,6.1,z+Math.cos(a)*0.8);o.rotation.y=a;},false);
+const LAMPHEAD=M(0xfff6c4,{e:0x555533}); instanced(new THREE.BoxGeometry(0.5,0.3,1.8),LAMPHEAD,props.lamp,(o,[x,z,a])=>{o.position.set(x+Math.sin(a)*0.8,6.1,z+Math.cos(a)*0.8);o.rotation.y=a;},false);
 /* ---------- 精細／超精細模式：行人路欄杆、街道設施、霓虹招牌、雨篷、冷氣機、天台水缸 ----------
    全部砌入分區合併網格（每 200 米一格），一格只係幾次繪製；鏡頭睇唔到嘅格唔畫，唔投影。 */
 const NEON=(()=>{ if(!GFX) return null;
@@ -2011,9 +2219,9 @@ const NEON=(()=>{ if(!GFX) return null;
     // 地舖門口雜物（超精細）
     if(G2) for(let k=0;k<nU;k++){ if(drnd()<0.5) continue; const [x,z]=at(uw*(k+0.3+drnd()*0.4),0.7); if(drnd()<0.5){ for(let q=0;q<3;q++) box(x+ux*q*0.55,0.28+(q%2)*0.3,z+uz*q*0.55,0.5,0.28,0.4,yaw,dpick([0xe63946,0xffb703,0x2a9d8f,0xf77f00])); }
       else { box(x,0.24,z,0.42,0.48,0.42,yaw,dpick([0xd62828,0x1d4ed8,0x16a34a])); } }
-    const tall=F.type!=='estate'&&F.h>6;
+    const tall=F.type!=='estate'&&F.h>6&&(!F.pc||F.pc==='orig'||F.pc==='resi');
     // 冷氣機、晾衫竹（唐樓／舊樓上面幾層）
-    if(tall){ for(let y=5.8;y<F.h-1.5;y+=3) for(let s=1.2;s<W-1;s+=2.2){ const q=drnd(); if(q<(G2?0.42:0.26)){ const [x,z]=at(s,0.32); box(x,y,z,0.85,0.55,0.45,yaw,q<0.1?0xcfd4da:0xeef0f2); box(x+ox*0.23,y,z+oz*0.23,0.6,0.38,0.02,yaw,0x9aa1a9); }
+    if(tall){ for(let y=5.8;y<Math.min(F.h-1.5,F.pc==='resi'&&GFX<3?32:1e9);y+=3) for(let s=1.2;s<W-1;s+=2.2){ const q=drnd(); if(q<(G2?0.42:0.26)){ const [x,z]=at(s,0.32); box(x,y,z,0.85,0.55,0.45,yaw,q<0.1?0xcfd4da:0xeef0f2); box(x+ox*0.23,y,z+oz*0.23,0.6,0.38,0.02,yaw,0x9aa1a9); }
         else if(G2&&q>0.9){ const [x,z]=at(s,0.2), py=Math.atan2(ox,oz); for(const d of [-0.45,0.45]){ const px=x+ux*d, pz=z+uz*d; box(px+ox*0.75,y+0.95,pz+oz*0.75,0.05,0.05,1.5,py,0x9c7a4f);   // 晾衫竹：由窗口伸出
             for(let c=0;c<3;c++){ if(drnd()<0.25) continue; const cx=px+ox*(0.35+c*0.42), cz=pz+oz*(0.35+c*0.42); box(cx,y+0.6,cz,0.03,0.66,0.34,py,dpick([0xffffff,0x4cc9f0,0xf72585,0xffd166,0x90be6d,0x8d99ae,0xe63946])); } } } }
       // 天台水缸、樓梯屋、天線
@@ -2071,6 +2279,140 @@ const NEON=(()=>{ if(!GFX) return null;
     g.globalCompositeOperation='source-over'; g.fillStyle='rgba(0,0,0,.35)'; for(let y=0;y<h;y+=5) g.fillRect(0,y,w,2); },false);   // 橫向水紋
   RMAT.vertexColors=true; RMAT.needsUpdate=true;
   REFB.forEach(b=>{ const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(b.p,3)); g.setAttribute('uv',new THREE.Float32BufferAttribute(b.u,2)); g.setAttribute('color',new THREE.Float32BufferAttribute(b.c,3)); g.computeBoundingSphere(); const m=new THREE.Mesh(g,RMAT); m.matrixAutoUpdate=false; m.renderOrder=1; scene.add(m); });
+  /* ===== 電腦畫質（GFX 3）加細節：路面、外牆、街道設施 ===== */
+  if(GFX>=3){
+    let pd=99991; const pr=()=>{ pd=(pd*48271)%2147483647; return pd/2147483647; }; const pp=a=>a[pr()*a.length|0];
+    const PV=new Map(); const pbox=(x,y,z,sx,sy,sz,yaw,hex,pitch=0,roll=0)=>{ const k=ck(x,z); let b=PV.get(k); if(!b){ b={p:[],n:[],c:[]}; PV.set(k,b); } putB(b,'box',x,y,z,sx,sy,sz,yaw,hex,pitch,roll); };
+    TPL.cone=new THREE.ConeGeometry(1,1,10).toNonIndexed();
+    const pcone=(x,y,z,r,h,hex)=>{ const k=ck(x,z); let b=PV.get(k); if(!b){ b={p:[],n:[],c:[]}; PV.set(k,b); } putB(b,'cone',x,y,z,r,h,r,0,hex); };
+    const pcyl=(x,y,z,r,h,hex)=>{ const k=ck(x,z); let b=PV.get(k); if(!b){ b={p:[],n:[],c:[]}; PV.set(k,b); } putB(b,'cyl',x,y,z,r,h,r,0,hex); };
+    const ANI=8, FONT='"PingFang HK","Noto Sans TC","Microsoft JhengHei",sans-serif';
+    const tex=(w,h,fn)=>{ const t=canvasTex(w,h,fn,false); t.anisotropy=ANI; return t; };
+    // 地面四邊形：中心 (x,z)，闊 w、長 l（順 fx,fz），貼圖格 cell（cols×rows）
+    function gq(qb,x,z,w,l,fx,fz,y,cell,cols,rows){ const rx=-fz, rz=fx, hw=w/2, hl=l/2; const P=(a,c)=>[x+rx*a+fx*c,y,z+rz*a+fz*c];
+      const u0=(cell%cols)/cols, u1=u0+1/cols, v1=1-Math.floor(cell/cols)/rows, v0=v1-1/rows;
+      const a=P(-hw,-hl), b=P(hw,-hl), c=P(hw,hl), d=P(-hw,hl); qb.add(x,z,[...a,...b,...c,...a,...c,...d],[u0,v0,u1,v0,u1,v1,u0,v0,u1,v1,u0,v1],[0,1,0,0,1,0,0,1,0,0,1,0,0,1,0,0,1,0]); }
+    /* --- 1. 路面貼圖集：4×2 格（補丁、裂紋、油漬、直箭嘴、左轉、右轉、望右、導盲磚） --- */
+    const RD=tex(1024,512,(g,W,H)=>{ g.clearRect(0,0,W,H); const C=(i,fn)=>{ g.save(); g.translate((i%4)*256,Math.floor(i/4)*256); g.beginPath(); g.rect(0,0,256,256); g.clip(); fn(g); g.restore(); };
+      C(0,g=>{ g.fillStyle='rgba(38,40,44,.85)'; g.fillRect(20,30,216,196); for(let i=0;i<500;i++){ const v=50+Math.random()*40|0; g.fillStyle='rgba('+v+','+v+','+(v+3)+',.5)'; g.fillRect(20+Math.random()*214,30+Math.random()*194,2,2); } g.strokeStyle='rgba(20,20,22,.9)'; g.lineWidth=4; g.strokeRect(20,30,216,196); });
+      C(1,g=>{ g.strokeStyle='rgba(25,26,30,.8)'; g.lineWidth=2.5; for(let k=0;k<5;k++){ let x=128+Math.random()*40-20, y=10; g.beginPath(); g.moveTo(x,y); while(y<246){ x+=Math.random()*30-15; y+=10+Math.random()*16; g.lineTo(x,y); } g.stroke(); } });
+      C(2,g=>{ const rg=g.createRadialGradient(128,128,4,128,128,110); rg.addColorStop(0,'rgba(10,10,14,.75)'); rg.addColorStop(0.6,'rgba(20,20,26,.35)'); rg.addColorStop(1,'rgba(0,0,0,0)'); g.fillStyle=rg; g.beginPath(); g.ellipse(128,128,110,70,0.4,0,7); g.fill(); });
+      const arrow=(g,turn)=>{ g.fillStyle='rgba(255,255,255,.93)'; g.beginPath(); g.moveTo(116,250); g.lineTo(140,250); g.lineTo(140,120); if(turn){ g.lineTo(140+0,120); } g.lineTo(166,120); g.lineTo(128,30); g.lineTo(90,120); g.lineTo(116,120); g.closePath(); g.fill();
+        if(turn){ const s=turn; g.beginPath(); g.moveTo(128,180); g.lineTo(128+s*70,130); g.lineTo(128+s*70,110); g.lineTo(128+s*110,150); g.lineTo(128+s*70,190); g.lineTo(128+s*70,170); g.lineTo(128,205); g.closePath(); g.fill(); } };
+      C(3,g=>arrow(g,0)); C(4,g=>arrow(g,-1)); C(5,g=>arrow(g,1));
+      C(6,g=>{ g.fillStyle='rgba(255,255,255,.93)'; g.textAlign='center'; g.textBaseline='middle'; g.font='900 92px '+FONT; g.fillText('望右',128,82); g.font='900 50px Arial'; g.fillText('LOOK RIGHT',128,190,240); });
+      C(7,g=>{ g.fillStyle='#e8b800'; g.fillRect(0,0,256,256); g.fillStyle='#c79c00'; for(let y=16;y<256;y+=32) for(let x=16;x<256;x+=32){ g.beginPath(); g.arc(x,y,9,0,7); g.fill(); } g.fillStyle='rgba(255,240,150,.5)'; for(let y=14;y<256;y+=32) for(let x=14;x<256;x+=32){ g.beginPath(); g.arc(x,y,4,0,7); g.fill(); } }); });
+    const RDM=new THREE.MeshStandardMaterial({map:RD,transparent:true,depthWrite:false,roughness:0.85,polygonOffset:true,polygonOffsetFactor:-3,polygonOffsetUnits:-3});
+    const GQ=QB(); let nDecal=0;
+    MAP.roads.forEach(r=>{ if(r.bridge||r.elev) return; const [a,b]=r.n, A=NODES[a], B=NODES[b]; const [ux,uz,L]=dirn(A,B); const nx=uz, nz=-ux;
+      const s0=DEG[a]>=3?NW[a]+4:2, s1=L-(DEG[b]>=3?NW[b]+4:2); if(s1-s0<6) return;
+      const onRoad=(x,z)=>(cellAt(x,z)&1)&&ELEV(x,z,4)<0.05;
+      for(let s=s0+pr()*20;s<s1-3;s+=14+pr()*26){ const lo=(pr()-0.5)*(r.w-3), x=A[0]+ux*s+nx*lo, z=A[1]+uz*s+nz*lo; if(!onRoad(x,z)) continue;
+        const c=pr(); if(c<0.4) gq(GQ,x,z,1.6+pr()*2.5,2+pr()*4,ux,uz,0.155,0,4,2); else if(c<0.75) gq(GQ,x,z,1.5+pr()*1.5,3+pr()*3,ux,uz,0.156,1,4,2); else gq(GQ,x,z,1.2+pr(),1.6+pr()*1.5,pr()-0.5,1,0.157,2,4,2); nDecal++; }
+      // 路口前行車箭嘴（左上右落：行車線喺 (uz,-ux) 一邊）
+      if(r.w>=10) [[b,1],[a,-1]].forEach(([k,sg])=>{ if(DEG[k]<3||!SIGNAL[k]) return; const fx=ux*sg, fz=uz*sg, d=CLR[k]+9; const s=sg>0?L-d:d; if(s<s0+2||s>s1-2) return;
+        const lanes=r.w>=14?2:1; for(let q=0;q<lanes;q++){ const lo=(lanes===2?(q?r.w*0.36:r.w*0.14):r.w/4)*sg, x=A[0]+ux*s+nx*lo, z=A[1]+uz*s+nz*lo; if(!onRoad(x,z)) continue;
+          gq(GQ,x,z,1.5,5.2,fx,fz,0.175,lanes===2?(q?5:4):pp([3,4,5]),4,2); nDecal++; } }); });
+    MAP.crossings.forEach(c=>{ const N=NODES[c.node]; if(!N) return; let dx=N[0]-c.p[0], dz=N[1]-c.p[1]; const L=Math.hypot(dx,dz)||1; dx/=L; dz/=L; const hw=c.half-2.6;
+      for(const sd of [-1,1]){ const nx=c.n[0]*sd, nz=c.n[1]*sd;
+        const tx=c.p[0]-dx*3.1+nx*(hw-1.2), tz=c.p[1]-dz*3.1+nz*(hw-1.2); if((cellAt(tx,tz)&1)&&ELEV(tx,tz,4)<0.05) gq(GQ,tx,tz,2.6,1.3,-nx,-nz,0.176,6,4,2);   // 望右（企喺路邊嘅人睇得正）
+        const kx=c.p[0]+nx*(hw+0.75), kz=c.p[1]+nz*(hw+0.75); if(ELEV(kx,kz,4)<0.05&&!(cellAt(kx,kz)&2)) gq(GQ,kx,kz,3.2,0.9,dx,dz,0.115,7,4,2); } });   // 導盲磚
+    /* --- 2. 外牆：水喉、竹棚＋防塵網、鐵閘、舖頭內透光、露台 --- */
+    const SH=tex(1024,512,(g,W,H)=>{ const C=(i,fn)=>{ g.save(); g.translate((i%4)*256,Math.floor(i/4)*256); g.beginPath(); g.rect(0,0,256,256); g.clip(); fn(g); g.restore(); };
+      const shutter=(g,graf)=>{ g.fillStyle='#9aa0a6'; g.fillRect(0,0,256,256); for(let y=0;y<256;y+=8){ g.fillStyle='#b9bec3'; g.fillRect(0,y,256,3); g.fillStyle='#7d838a'; g.fillRect(0,y+5,256,2); }
+        g.fillStyle='#5f656c'; g.fillRect(0,0,10,256); g.fillRect(246,0,10,256); g.fillStyle='#555'; g.fillRect(110,232,36,10);
+        if(graf){ g.lineWidth=7; g.lineCap='round'; ['#e63946','#118ab2','#06d6a0','#111'].forEach((c,k)=>{ g.strokeStyle=c; g.beginPath(); let x=30+k*40, y=120+Math.random()*40; g.moveTo(x,y); for(let j=0;j<6;j++){ x+=12+Math.random()*16; y+=Math.random()*40-20; g.lineTo(x,y); } g.stroke(); }); } };
+      C(0,g=>shutter(g,false)); C(1,g=>shutter(g,true));
+      const inside=(g,bg,items)=>{ g.fillStyle=bg; g.fillRect(0,0,256,256); g.fillStyle='rgba(255,255,255,.35)'; g.fillRect(0,0,256,18);
+        for(let y=40;y<230;y+=48){ g.fillStyle='rgba(60,40,30,.55)'; g.fillRect(10,y+34,236,6); for(let x=14;x<240;x+=14+Math.random()*10){ g.fillStyle=pp(items); g.fillRect(x,y+6+Math.random()*12,9+Math.random()*6,28-Math.random()*10); } }
+        g.fillStyle='rgba(30,30,30,.45)'; g.fillRect(150,120,30,110); g.beginPath(); g.arc(165,110,14,0,7); g.fill();
+        g.strokeStyle='rgba(200,220,230,.6)'; g.lineWidth=5; g.strokeRect(2,2,252,252); g.beginPath(); g.moveTo(128,0); g.lineTo(128,256); g.stroke(); };
+      C(2,g=>inside(g,'#f3d9a6',['#d62828','#f77f00','#fcbf49','#eae2b7','#8d5524']));
+      C(3,g=>inside(g,'#e9f5f7',['#0077b6','#00b4d8','#90e0ef','#e63946','#ffffff','#52b788']));
+      C(4,g=>inside(g,'#f6e7e7',['#6a4c93','#1982c4','#8ac926','#ff595e','#ffca3a','#222']));
+      C(5,g=>inside(g,'#fff7d6',['#ef476f','#ffd166','#06d6a0','#118ab2','#073b4c']));
+      const poster=(g,a,b,bg,fg)=>{ const gr=g.createLinearGradient(0,0,0,256); gr.addColorStop(0,bg); gr.addColorStop(1,'#111'); g.fillStyle=gr; g.fillRect(0,0,256,256); g.fillStyle=fg; g.textAlign='center'; g.textBaseline='middle';
+        g.font='900 52px '+FONT; g.fillText(a,128,90,230); g.font='700 26px '+FONT; g.fillStyle='#fff'; g.fillText(b,128,170,230); g.strokeStyle=fg; g.lineWidth=6; g.strokeRect(8,8,240,240); };
+      C(6,g=>poster(g,'星河電訊','5G 無限數據','#162a6b','#5ee7ff')); C(7,g=>poster(g,'綠洲飲品','清涼一夏','#0d4d36','#a7ffb0')); });
+    const SHE=tex(1024,512,(g,W,H)=>{ g.fillStyle='#000'; g.fillRect(0,0,W,H); const C=(i,c)=>{ const gr=g.createLinearGradient(0,Math.floor(i/4)*256,0,Math.floor(i/4)*256+256); gr.addColorStop(0,c); gr.addColorStop(1,'#3a2a10'); g.fillStyle=gr; g.fillRect((i%4)*256+4,Math.floor(i/4)*256+4,248,248); };
+      C(2,'#ffd9a0'); C(3,'#e8fbff'); C(4,'#ffe6e6'); C(5,'#fff4c8'); C(6,'#cfe8ff'); C(7,'#d8ffe0'); });
+    const SHM=new THREE.MeshStandardMaterial({map:SH,emissiveMap:SHE,emissive:0xffffff,emissiveIntensity:0.12,roughness:0.6,side:THREE.DoubleSide}); SHM.userData.pc={shop:true}; if(PCB) PCB.ALL.push(SHM);
+    const SQ=QB(), NQ=QB();
+    const netT=tex(128,128,(g,W,H)=>{ g.clearRect(0,0,W,H); g.fillStyle='rgba(40,140,70,.8)'; g.fillRect(0,0,W,H); g.globalCompositeOperation='destination-out'; for(let y=2;y<H;y+=6) for(let x=2;x<W;x+=6) g.fillRect(x,y,3,3); g.globalCompositeOperation='source-over'; g.fillStyle='rgba(20,90,45,.9)'; g.fillRect(0,0,W,3); g.fillRect(0,0,3,H); });
+    netT.wrapS=netT.wrapT=THREE.RepeatWrapping;
+    const NETM=new THREE.MeshLambertMaterial({map:netT,transparent:true,side:THREE.DoubleSide,depthWrite:false});
+    let nScaf=0, nPipe=0, nShop=0;
+    DFRONT.forEach(F=>{ const [A,B]=[F.c[0],F.c[1]], D=F.c[3]; const ex=B[0]-A[0], ez=B[1]-A[1], W=Math.hypot(ex,ez); if(W<6||off(A[0],A[1])) return; const ux=ex/W, uz=ez/W;
+      let ox=A[0]-D[0], oz=A[1]-D[1]; const ol=Math.hypot(ox,oz)||1; ox/=ol; oz/=ol; const at=(s,o=0)=>[A[0]+ux*s+ox*o,A[1]+uz*s+oz*o], yaw=Math.atan2(ux,uz);
+      const kind=F.pc||'orig', oldish=F.type!=='estate'&&(kind==='orig'||kind==='resi'||kind==='industrial');
+      // 地舖：鐵閘（關咗／半落）、舖頭內透光（夜晚著燈）
+      if(F.type!=='estate'||kind==='orig'){ const nU=Math.max(1,Math.round(W/5)), uw=W/nU;
+        for(let k=0;k<nU;k++){ const q=pr(); if(q>0.55) continue; const s0=uw*k+0.25, s1=uw*(k+1)-0.25, P=at(s0,0.09), Q=at(s1,0.09);
+          const cell=q<0.14?(pr()<0.5?0:1):2+(pr()*4|0); const u0=(cell%4)/4, u1=u0+0.25, vt=1-Math.floor(cell/4)/2, vb=vt-0.5;
+          const top=cell<2&&pr()<0.5?3.1:3.1, bot=cell<2&&pr()<0.4?1.9:0.32;
+          quad(SQ,P,Q,bot,top,u0,cell<2?vb+(vt-vb)*(bot-0.32)/2.78:vb,u1,vt,ox,oz); nShop++; } }
+      // 水喉：外牆直落（舊樓、住宅、工廈）
+      if(oldish&&F.h>8){ const n=1+(pr()*2|0); for(let k=0;k<n;k++){ const s=W*(0.15+pr()*0.7), [x,z]=at(s,0.16); pbox(x,(4.9+F.h)/2,z,0.16,F.h-4.9,0.16,yaw,pp([0x8a9096,0x6f767d,0xb8b2a6]));
+          for(let y=8;y<F.h-1;y+=3*(2+(pr()*3|0))){ const [x2,z2]=at(s+0.35,0.12); pbox(x2,y,z2,0.7,0.1,0.1,yaw,0x6f767d); } nPipe++; } }
+      // 竹棚＋綠色防塵網（裝修中）
+      if(oldish&&F.h>12&&pr()<0.09){ const w0=W*(pr()<0.5?0:0.25), w1=Math.min(W,w0+W*(0.5+pr()*0.5)), y0=4.9, y1=Math.min(F.h+1.2,y0+12+pr()*30), o=0.95;
+        for(let s=w0;s<=w1+0.01;s+=1.8){ const [x,z]=at(Math.min(s,w1),o); pbox(x,(y0+y1)/2,z,0.08,y1-y0,0.08,yaw,0xc9a86a); }
+        for(let y=y0+0.5;y<y1;y+=2){ const [x,z]=at((w0+w1)/2,o+0.06); pbox(x,y,z,w1-w0,0.07,0.07,yaw,0xbf9c5e); }
+        for(let y=y0+1;y<y1;y+=4){ const [x,z]=at((w0+w1)/2,o*0.5); pbox(x,y,z,w1-w0,0.06,o,yaw,0xa88a50); }
+        quad(NQ,at(w0,o+0.15),at(w1,o+0.15),y0+0.3,y1,0,0,(w1-w0)/1.2,(y1-y0-0.3)/1.2,ox,oz); nScaf++; }
+      // 住宅高樓：露台、冷氣機
+      if(kind==='resi'&&F.h>20){ for(let y=10;y<F.h-4;y+=3){ if(pr()<0.35){ const s=W*(0.1+pr()*0.5), w=Math.min(W*0.35,2.6), [x,z]=at(s+w/2,0.45); pbox(x,y,z,w,0.14,0.9,yaw,0xe9e6df); const [x2,z2]=at(s+w/2,0.88); pbox(x2,y+0.55,z2,w,1.0,0.05,yaw,0x9fb8c8); }
+          if(pr()<0.3){ const [x,z]=at(W*(0.2+pr()*0.6),0.3); pbox(x,y+0.4,z,0.85,0.55,0.45,yaw,0xeef0f2); } } } });
+    /* --- 3. 街道設施：綠色路牌龍門架、行人天橋、巴士站燈箱、報攤、電話亭、雪糕筒 --- */
+    const PLACES=REGION==='st'?[['沙田市中心','Sha Tin Centre'],['大圍','Tai Wai'],['馬鞍山','Ma On Shan'],['九龍','Kowloon'],['火炭','Fo Tan'],['大埔','Tai Po']]:[['屯門市中心','Tuen Mun Centre'],['元朗','Yuen Long'],['屯門碼頭','Tuen Mun Ferry Pier'],['九龍','Kowloon'],['天水圍','Tin Shui Wai'],['青山公路','Castle Peak Road']];
+    const GS=tex(1024,512,(g)=>{ for(let i=0;i<4;i++){ const x=(i%2)*512, y=Math.floor(i/2)*256; g.fillStyle='#1b7a3e'; g.fillRect(x,y,512,256); g.strokeStyle='#fff'; g.lineWidth=6; g.strokeRect(x+10,y+10,492,236);
+        const a=PLACES[(i*2)%PLACES.length], b=PLACES[(i*2+1)%PLACES.length]; g.fillStyle='#fff'; g.textBaseline='middle';
+        [[a,-1],[b,1]].forEach(([p,d],k)=>{ const yy=y+70+k*110; g.textAlign='left'; g.font='900 50px '+FONT; g.fillText(p[0],x+110,yy-14,300); g.font='700 26px Arial'; g.fillText(p[1],x+110,yy+28,300);
+          g.save(); g.translate(x+60,yy); g.rotate(k?(i%2?Math.PI/2:-Math.PI/2):0); g.beginPath(); g.moveTo(0,-34); g.lineTo(26,0); g.lineTo(10,0); g.lineTo(10,30); g.lineTo(-10,30); g.lineTo(-10,0); g.lineTo(-26,0); g.closePath(); g.fill(); g.restore(); }); } });
+    const GSM=new THREE.MeshStandardMaterial({map:GS,emissiveMap:GS,emissive:0xffffff,emissiveIntensity:0.06,roughness:0.5,side:THREE.DoubleSide}); GSM.userData.pc={ad:true,lo:true}; if(PCB) PCB.ALL.push(GSM);
+    const GSQ=QB(), BRG=[], GAN=[]; let nGantry=0, nBridge=0, nKiosk=0;
+    const sideOk=(x,z)=>!off(x,z)&&!nearRoad(x,z)&&!(cellAt(x,z)&(2|4))&&!lampNear(x,z,2.2)&&!inGap(x,z);
+    MAP.roads.forEach((r,ri)=>{ if(r.bridge||r.elev||r.t==='street'||r.w<11) return; const [a,b]=r.n, A=NODES[a], B=NODES[b]; const [ux,uz,L]=dirn(A,B); const nx=uz, nz=-ux, yaw=Math.atan2(ux,uz);
+      const lo=DEG[a]>=3?NW[a]+25:0, hi=L-(DEG[b]>=3?NW[b]+25:0);
+      every('gan'+r.name,L,220,s=>{ if(s<lo||s>hi) return; const o=r.w/2+0.9, P=[A[0]+ux*s+nx*o,A[1]+uz*s+nz*o], Q=[A[0]+ux*s-nx*o,A[1]+uz*s-nz*o];
+        if(!sideOk(...P)||!sideOk(...Q)||off(A[0]+ux*s,A[1]+uz*s)) return;
+        for(const p of [P,Q]) pbox(p[0],3.6,p[1],0.35,7.2,0.35,yaw,0x8c949c); pbox(A[0]+ux*s,6.9,A[1]+uz*s,r.w+2,0.45,0.3,yaw,0x8c949c);
+        const cell=pr()*4|0, u0=(cell%2)/2, u1=u0+0.5, v1=1-Math.floor(cell/2)/2, v0=v1-0.5;
+        // 兩邊各一塊（面向各自嘅車流）
+        for(const sd of [1,-1]){ const c=[A[0]+ux*s+nx*(r.w/4)*sd,A[1]+uz*s+nz*(r.w/4)*sd], hw=Math.min(3.6,r.w/4+0.4), off2=0.2*sd;
+          const E=[c[0]+nx*hw-ux*off2,c[1]+nz*hw-uz*off2], Fp=[c[0]-nx*hw-ux*off2,c[1]-nz*hw-uz*off2];
+          quad(GSQ,sd>0?E:Fp,sd>0?Fp:E,5.3,8.9,u0,v0,u1,v1,-ux*sd,-uz*sd); pbox(c[0]+ux*0.02*sd,7.1,c[1]+uz*0.02*sd,hw*2,3.62,0.3,yaw,0x55606b); }
+        GAN.push([A[0]+ux*s,A[1]+uz*s,Math.atan2(ux,uz)]); nGantry++; });
+      // 行人天橋（有上蓋、升降機塔）：大路中段，每條路最多一條
+      const farJ=(x,z)=>!J3.some(k=>Math.hypot(NODES[k][0]-x,NODES[k][1]-z)<45)&&!BRG.some(([bx,bz])=>Math.hypot(bx-x,bz-z)<350);
+      if(L>18&&DEG[a]===2&&DEG[b]===2&&(r.t==='main'||r.t==='avenue')&&pr()<0.35&&nBridge<6&&farJ((A[0]+B[0])/2,(A[1]+B[1])/2)){ const s=L/2, o=r.w/2+2.0, P=[A[0]+ux*s+nx*o,A[1]+uz*s+nz*o], Q=[A[0]+ux*s-nx*o,A[1]+uz*s-nz*o];
+        const bOk=(x,z)=>!off(x,z)&&!nearRoad(x,z)&&!(cellAt(x,z)&(2|4))&&!inGap(x,z); if(bOk(...P)&&bOk(...Q)&&bOk(P[0]+ux*1.3,P[1]+uz*1.3)&&bOk(Q[0]-ux*1.3,Q[1]-uz*1.3)&&!off(A[0]+ux*s,A[1]+uz*s)){
+          for(const p of [P,Q]){ pbox(p[0],4.7,p[1],2.6,9.4,2.6,yaw,0xd9dde2); pbox(p[0],9.5,p[1],3.2,0.3,3.2,yaw,0x6c7a89); const [gx,gz]=[p[0]-ux*1.32,p[1]-uz*1.32]; pbox(gx,3.4,gz,1.6,5.6,0.06,yaw,0x6fa8c8); }
+          const C=[A[0]+ux*s,A[1]+uz*s], span=r.w+4; pbox(C[0],6.4,C[1],span,0.55,3.2,yaw,0xc3c8ce); pbox(C[0],6.1,C[1],span,0.3,2.4,yaw,0x9aa1a9);
+          for(const sd of [-1,1]){ const x=C[0]+ux*1.5*sd, z=C[1]+uz*1.5*sd; pbox(x,7.2,z,span,1.1,0.1,yaw,0x8fb3c9); for(let k=-span/2;k<=span/2;k+=2.5) pbox(x+nx*k,8.1,z+nz*k,0.12,2.6,0.12,yaw,0x6c7a89); }
+          pbox(C[0],9.45,C[1],span,0.25,3.6,yaw,0x5d6d7e);
+          const sg=pp([0,1]); for(const sd of [-1,1]){ const x=C[0]+ux*1.66*sd, z=C[1]+uz*1.66*sd; pbox(x,6.4,z,span*0.6,0.42,0.04,yaw,sg?0x2b6cb0:0x1b7a3e); }
+          BRG.push([C[0],C[1]]); nBridge++; } }
+      // 報攤、電話亭
+      [1,-1].forEach(side=>{ const sx=uz*side, sz=-ux*side, at=(s,o)=>[A[0]+ux*s+sx*(r.w/2+o),A[1]+uz*s+sz*(r.w/2+o)];
+        every('ks'+r.name+side,L,230,s=>{ if(s<lo-10||s>hi+10) return; const [x,z]=at(s,2.7); if(!sideOk(x,z)) return; const y2=Math.atan2(sx,sz);
+          if(pr()<0.55){ pbox(x,0.9,z,1.8,1.8,1.3,y2,0x2e7d4f); pbox(x,1.95,z,2.2,0.12,1.8,y2,0x1f5e3a); for(let k=0;k<5;k++){ const [mx,mz]=[x-sx*0.68+ux*(k-2)*0.34,z-sz*0.68+uz*(k-2)*0.34]; pbox(mx,1.0+(k%2)*0.32,mz,0.28,0.36,0.04,y2,pp([0xe63946,0xffd166,0x118ab2,0xffffff,0xf72585])); } }
+          else { pbox(x,1.15,z,0.95,2.3,0.95,y2,0xb7bec6); pbox(x,1.25,z,0.8,1.6,0.97,y2,0x6fa8c8); pbox(x,2.35,z,1.0,0.18,1.0,y2,0x1e88e5); }
+          nKiosk++; });
+        every('cn'+r.name+side,L,280,s=>{ const [x,z]=at(s,0.7); if(!sideOk(x,z)) return; for(let k=0;k<3+(pr()*3|0);k++){ const [cx,cz]=at(s+k*1.1,0.65); pcone(cx,0.48,cz,0.22,0.7,0xff6a13); pcyl(cx,0.5,cz,0.165,0.1,0xffffff); pbox(cx,0.14,cz,0.5,0.05,0.5,0,0x222222); } }); }); });
+    // 巴士站：背後燈箱廣告
+    STOPS.forEach(([x,z,nx,nz,ux,uz])=>{ const cx=x+nx*0.84+ux*2.6, cz=z+nz*0.84+uz*2.6, P=[cx-ux*0.7,cz-uz*0.7], Q=[cx+ux*0.7,cz+uz*0.7];
+      pbox(cx,1.35,cz,1.6,2.3,0.22,Math.atan2(nx,nz),0x3d4752); const cell=6+(pr()*2|0), u0=(cell%4)/4, u1=u0+0.25, vt=1-Math.floor(cell/4)/2;
+      quad(SQ,Q,P,0.4,2.3,u0,vt-0.5,u1,vt,-nx,-nz); quad(SQ,[P[0]+nx*0.24,P[1]+nz*0.24],[Q[0]+nx*0.24,Q[1]+nz*0.24],0.4,2.3,u0,vt-0.5,u1,vt,nx,nz); });
+    /* 出網格 */
+    const PVM=new THREE.MeshStandardMaterial({vertexColors:true,roughness:0.7});
+    PV.forEach(b=>{ const g=new THREE.BufferGeometry(); g.setAttribute('position',new THREE.Float32BufferAttribute(b.p,3)); g.setAttribute('normal',new THREE.Float32BufferAttribute(b.n,3)); g.setAttribute('color',new THREE.Float32BufferAttribute(b.c,3)); g.computeBoundingSphere();
+      const m=new THREE.Mesh(g,PVM); m.castShadow=true; m.receiveShadow=true; m.matrixAutoUpdate=false; scene.add(m); });
+    qmesh(GQ,RDM,1); qmesh(SQ,SHM); qmesh(NQ,NETM,1); qmesh(GSQ,GSM);
+    window.__PCD={BRG,GAN,STOPS,GSM,GSQ};
+    console.log('電腦畫質細節：路面',nDecal,'舖頭',nShop,'水喉',nPipe,'竹棚',nScaf,'路牌',nGantry,'天橋',nBridge,'報攤／電話亭',nKiosk);
+  }
+
   const DC=scene.children.slice(SC0).filter(o=>o.isMesh&&o.geometry).map(m=>{ m.geometry.computeBoundingSphere(); return {m,c:m.geometry.boundingSphere.center.clone(),r:m.geometry.boundingSphere.radius}; });
   let DCT=0; const DLIM=G2?240:200;
   const dcull=(t)=>{ if(t-DCT<0.4) return; DCT=t; const px=cam.position.x, pz=cam.position.z; for(const d of DC){ const dd=Math.hypot(d.c.x-px,d.c.z-pz)-d.r; d.m.visible=dd<DLIM; } };
@@ -2102,9 +2444,9 @@ const NEON=(()=>{ if(!GFX) return null;
   let LV=0, WET=false;
   window.__DF=DFRONT; console.log('精細模式：門面',JSON.stringify(DFRONT.reduce((o,f)=>(o[f.type]=(o[f.type]||0)+1,o),{})),'欄杆',panels,'塊、招牌',nSigns,'個、巴士站',STOPS.length,'個、閃爍招牌',nFlick);
   // 日夜：日間霓虹燈管冇咁光；黃昏開少少；夜晚／落雨全開，加光暈
-  return { rail:RAILAPI, stops:STOPS,
+  return { rail:RAILAPI, stops:STOPS, lampp:LAMPP,
     set(T,k){ const lv=T.night?1:k==='dusk'?0.55:0; LV=lv; WET=!!T.wet; SMAT.color.setScalar(lv?1:0.74); GMAT.opacity=lv*(T.wet?0.75:0.9); GMAT.visible=lv>0;
-      FS.forEach(m=>m.color.copy(SMAT.color)); FG.forEach(m=>{ m.opacity=GMAT.opacity; m.visible=GMAT.visible; }); RMAT.visible=WET&&lv>0; RMAT.opacity=0.7*lv; LAMPP.im.visible=!!(T.night||T.wet); LAMPP.mat.opacity=T.night?0.7:0.4; },
+      FS.forEach(m=>m.color.copy(SMAT.color)); FG.forEach(m=>{ m.opacity=GMAT.opacity; m.visible=GMAT.visible; }); RMAT.visible=(WET||T.pc==='night')&&lv>0; RMAT.opacity=(WET?0.7:0.32)*lv; LAMPP.im.visible=!!(T.night||T.wet); LAMPP.mat.opacity=T.night?0.7:0.4; },
     tick(t){ dcull(t); if(!LV) return; [0,1].forEach(k=>{ const p=(t*(k?9.3:7.1)+k*3.7)%23, off=p<0.35||(p>4&&p<4.15)||(p>4.4&&p<4.6)||(k&&p>15&&p<16.2);   // 大部分時間著，間中閃兩閃，偶然熄一陣
         FS[k].color.setScalar(off?0.45:1); FG[k].opacity=off?0.05:GMAT.opacity; }); } };
 })();
@@ -2169,7 +2511,7 @@ if(REGION==='tm'){ TRAM.lrt=LMK.lrt=lrtStop(TRAM); TRAM2.lrt=lrtStop(TRAM2); TRA
   add(new THREE.BoxGeometry(3.2,0.9,40),M(0xd5d9de),g,0,0.6,0,false); add(new THREE.BoxGeometry(3.6,0.3,40),M(0xf2a65a),g,0,4.2,0,true);
   [-18,0,18].forEach(o=>add(new THREE.BoxGeometry(0.3,3.4,0.3),M(0x9aa1aa),g,0,2.5,o,false));
   labelPlane(nm,0,4.9,0,Math.PI/2,'#f08c2e',9,g); labelPlane(nm,0,4.9,0,-Math.PI/2,'#f08c2e',9,g);
-  for(let s=-20;s<=20;s+=2){ const q=tramAt(T.lrt+s,T); markSeg([q.x,q.z],[q.x,q.z],3.2,2); } });
+  for(let s=-20;s<20;s+=2){ const q=tramAt(T.lrt+s+1,T); markRect([q.x,q.z],q.a,3.3,2.1); } });
 }
 // 架空電線柱
 TRAMS.forEach(T=>{ for(let s=8;s<T.len-8;s+=14){ const p=tramAt(s,T); let near=false; T.seq.forEach(k=>{ if(SIGNAL[k]&&Math.hypot(NODES[k][0]-p.x,NODES[k][1]-p.z)<CLR[k]+6) near=true; }); if(near||Math.abs(s-T.lrt)<24) continue;
@@ -2436,24 +2778,24 @@ function carLights(m,brake){ const u=m.userData.lt; if(!u) return; const n=CARL.
   if(u.night!==n){ u.night=n; u.hl.forEach(h=>h.material=n?CARL.hlOn:CARL.hlOff); u.gl.visible=n; u.brk=null; }
   if(u.brk!==brake){ u.brk=brake; u.tl.forEach(h=>{ h.material=brake?CARL.tlOn:n?CARL.tlRun:CARL.tlOff; h.scale.y=(brake?1.25:1)*(h.userData.sy||(h.userData.sy=h.scale.y)); }); } }
 /* 綠色專線小巴：米色車身、綠色車頂、車頭頂電子牌 */
-function minibusModel(body){
-  const side=f=>vtex('mb'+f,512,192,(g,W,H)=>{ const X=x=>f?x:W-x; g.fillStyle='#f1e2b4'; g.fillRect(0,0,W,H); g.fillStyle='#2fb07a'; g.fillRect(0,0,W,46);
+function minibusModel(body,red){ const RC=red?'#c8202a':'#2fb07a', RK=red?'r':'';
+  const side=f=>vtex('mb'+f+RK,512,192,(g,W,H)=>{ const X=x=>f?x:W-x; g.fillStyle='#f1e2b4'; g.fillRect(0,0,W,H); g.fillStyle=RC; g.fillRect(0,0,W,46);
     g.fillStyle='#fff'; g.font='bold 18px sans-serif'; g.textAlign='center'; g.fillText('公共小型巴士十九座位',X(300),30);
     g.fillStyle='#1c1e22'; const a=X(30),b=X(400); g.fillRect(Math.min(a,b),56,Math.abs(b-a),60); const c=X(410),d=X(480); g.fillRect(Math.min(c,d),56,Math.abs(d-c),70);
     g.fillStyle='rgba(0,0,0,.15)'; g.fillRect(0,H-10,W,10); });
-  const front=vtex('mbF',256,192,(g,W,H)=>{ g.fillStyle='#f1e2b4'; g.fillRect(0,0,W,H); g.fillStyle='#2fb07a'; g.fillRect(0,0,W,46); g.fillStyle='#1c1e22'; g.fillRect(14,52,W-28,70);
+  const front=vtex('mbF'+RK,256,192,(g,W,H)=>{ g.fillStyle='#f1e2b4'; g.fillRect(0,0,W,H); g.fillStyle=RC; g.fillRect(0,0,W,46); g.fillStyle='#1c1e22'; g.fillRect(14,52,W-28,70);
     g.fillStyle='#d9d9d9'; g.fillRect(24,140,40,18); g.fillRect(W-64,140,40,18); g.fillStyle='#2a2a2a'; g.fillRect(84,140,W-168,22); });
-  const green=solid(0x2fb07a), cream=solid(0xf1e2b4);
+  const green=solid((red?0xc8202a:0x2fb07a)), cream=solid(0xf1e2b4);
   // 車尾：大後窗、綠色車頂、尾燈位、黃色車牌、後泵把（參考香港綠色專線小巴）
-  const rear=vtex('mbB2',256,192,(g,W,H)=>{ g.fillStyle='#f1e2b4'; g.fillRect(0,0,W,H); g.fillStyle='#2fb07a'; g.fillRect(0,0,W,40);
+  const rear=vtex('mbB2'+RK,256,192,(g,W,H)=>{ g.fillStyle='#f1e2b4'; g.fillRect(0,0,W,H); g.fillStyle=RC; g.fillRect(0,0,W,40);
     g.fillStyle='#1c1e22'; g.fillRect(22,46,W-44,70); g.fillStyle='rgba(255,255,255,.16)'; g.beginPath(); g.moveTo(40,112); g.lineTo(80,50); g.lineTo(100,50); g.lineTo(60,112); g.fill();
-    g.fillStyle='#111'; g.fillRect(W/2-46,50,92,22); led(g,'44M',W/2-38,61,18,'#3ddc6a');
+    g.fillStyle='#111'; g.fillRect(W/2-46,50,92,22); led(g,red?'旺角':'44M',W/2-38,61,18,'#3ddc6a');
     g.fillStyle='#c9bb8e'; g.fillRect(W/2-1,118,2,40); g.fillStyle='#8a8a8a'; g.fillRect(W/2+10,134,18,5);
-    g.fillStyle='#2fb07a'; g.font='bold 15px sans-serif'; g.textAlign='center'; g.fillText('公共小型巴士',W/2,132);
+    g.fillStyle=RC; g.font='bold 15px sans-serif'; g.textAlign='center'; g.fillText('公共小型巴士',W/2,132);
     g.fillStyle='#ffd400'; g.fillRect(W/2-36,146,72,20); g.fillStyle='#111'; g.font='bold 15px sans-serif'; g.fillText('MB 2846',W/2,161);
     g.fillStyle='#2a2a2a'; g.fillRect(0,170,W,22); });
   vbox(2.3,2.5,7.0,[side(true),side(false),green,cream,front,rear],body,0,1.55,0);
-  vbox(1.5,0.5,0.8,[green,green,green,green,vtex('mbLed',128,48,(g,W,H)=>{ g.fillStyle='#2fb07a'; g.fillRect(0,0,W,H); g.fillStyle='#111'; g.fillRect(8,6,W-16,H-12); led(g,'44M 屯門',16,24,22,'#ffa31a'); }),green],body,0,3.0,3.0,false);
+  vbox(1.5,0.5,0.8,[green,green,green,green,vtex('mbLed'+RK,128,48,(g,W,H)=>{ g.fillStyle=RC; g.fillRect(0,0,W,H); g.fillStyle='#111'; g.fillRect(8,6,W-16,H-12); led(g,red?'旺角 佐敦':'44M 屯門',16,24,22,'#ffa31a'); }),green],body,0,3.0,3.0,false);
   wheelsAt(body,[[-1.05,2.3],[1.05,2.3],[-1.05,-2.2],[1.05,-2.2]],0.48,0.35); }
 
 /* 的士：市區紅的（銀頂）／新界綠的（白頂），車頂 TAXI 牌 */
@@ -2477,7 +2819,7 @@ function taxiModel(body,green){
 function carModel(kind){
   if(kind==='bus') return busModel();
   const g=new THREE.Group(), body=new THREE.Group(); g.add(body);
-  if(kind==='minibus') minibusModel(body);
+  if(kind==='minibus') minibusModel(body,GFX>=3&&Math.random()<0.45);
   else if(kind==='taxi') taxiModel(body,Math.random()<0.5);
   else { const col=[0x7fb8ff,0xffb3c1,0xc3a6ff,0xfff1a8,0xa8e6cf,0xe9edf2,0x5b6270][Math.random()*7|0];
     add(rbox(2.2,1.0,4.4,0.45),M(col),body,0,0.95,0); add(rbox(1.9,0.85,2.3,0.4),M(col),body,0,1.75,-0.2);
@@ -2741,7 +3083,7 @@ function resetActors(){ clearScene();
   amb.userData.doors.forEach(d=>d.rotation.y=0); amb.visible=true;
 }
 function startCase(i){
-  ensureAudio(); chModeExit(); S.gm='ems'; sirenSet(false);
+  ensureAudio(); chModeExit(); S.gm='ems'; sirenSet(false); if(S.simOn) SIM.end();
   const lv=LEVELS[i]; S.lvl=i; S.level=lv; const k=caseOf(lv); S.kase=k; S.kase.loc=LMK[k.poi]; { const Lc=S.kase.loc; if(NEON&&Lc&&Lc.stop&&Lc.patient) NEON.rail.cutPath([Lc.stop,Lc.patient],3); } DEPOT=DEPOTS[lv.depot||(REGION==='st'?'st':'tm')]; AE=HOSPS[DEF_H]; S.dest=DEF_H; { const fx=Math.sin(DEPOT.a), fz=Math.cos(DEPOT.a); cam.position.set(DEPOT.pos[0]+fx*34,12,DEPOT.pos[1]+fz*34); camLook.set(DEPOT.pos[0],2,DEPOT.pos[1]); }   // 鏡頭即刻去返今關救護站，唔好由另一區飛過嚟
   resetActors(); setTOD(lv.tod); clearEvents();
   const d=DEPOT.pos;
@@ -2750,7 +3092,7 @@ function startCase(i){
   PLAY.radioClear(); PLAY.tutEnd(); PLAY.evReset(); if(S.tutPick){ S.tutPick=false; PLAY.tutStart(); }
   S.noCross=!!(lv.support||lv.escort); const carN=S.noCross?Math.round(lv.cars*0.6):lv.cars;   // 有其他車一齊出動：冇行人過馬路、路面車少啲，提升效能
   S.spawnFree=true; // 開局一次過擺好（之後先避開鏡頭）
-  for(let n=0;n<carN;n++){ const c={m:carModel(['taxi','car','bus','car','minibus','taxi','car'][n%7])}; if(placeCar(c,d[0],d[1])) cars.push(c); else dropModel(c.m); }
+  for(let n=0;n<carN;n++){ const c={m:carModel((GFX>=3?['taxi','car','bus','minibus','taxi','car','minibus','taxi','car']:['taxi','car','bus','car','minibus','taxi','car'])[n%(GFX>=3?9:7)])}; if(placeCar(c,d[0],d[1])) cars.push(c); else dropModel(c.m); }
   for(let n=0;n<PED_N;n++){ const p={m:pedModel()}; if(placePed(p,d[0],d[1])) peds.push(p); else scene.remove(p.m); }
   S.spawnFree=false; setupScene(k,lv);
   const L=k.loc; patient.visible=true; patient.position.set(L.patient[0],0.3,L.patient[1]); patient.rotation.set(0,Math.random()*6,0);
@@ -2779,7 +3121,7 @@ function arriveHospital(){ PLAY.radio('A188'+' 到達'+(AE.name||'')+'急症室�
 function finish(){
   if(REAL.on&&S.gm==='ems'&&!REAL.ending){ realAVM(); return; }   // 寫實模式：交接完先 AVM 返站
   S.stars=S.lives; S.mode='result'; caption(null); sirenSet(false);
-  const lv=S.level; if(!FUN.on){ saveBest(lv.id,S.stars); markDone(lv.id); }
+  const lv=S.level; if(!FUN.on&&!S.simOn){ saveBest(lv.id,S.stars); markDone(lv.id); }
   // 成就（歡樂模式唔計）
   if(!FUN.on){ ach('first'); if(S.lives===5) ach('perfect'); if(S.onTime>=2) ach('ontime'); if(S.stabLow>=85) ach('steady'); if(S.qScore>=2) ach('quiz');
   if(lv.tod==='night'||lv.tod==='rain') ach('night'); if(LEVELS.every(l=>isDone(l.id))) ach('all'); if(!S.redRun&&S.sirenUsed) ach('siren'); }
@@ -2789,13 +3131,14 @@ function finish(){
   const ex=[];
   ex.push((S.onTime>=2?'⏱️ 兩段都準時':'⏱️ 準時 '+S.onTime+' / 2 段'));
   ex.push('🛏️ 病人穩定度最低 '+Math.round(S.stabLow)+'%');
-  ex.push('🧰 裝備 '+(S.equipOk?'揀啱':'揀錯')+' · 小測 '+(S.quizOk?'答啱':'答錯'));
+  if(!S.simOn) ex.push('🧰 裝備 '+(S.equipOk?'揀啱':'揀錯')+' · 小測 '+(S.quizOk?'答啱':'答錯'));
   if(FUN.on) ex.push('🎉 歡樂分 '+FUN.score.toLocaleString());
   if(REAL.on) ex.push('🏅 今更完成 '+REAL.jobs+' 單 · 得分 '+REAL.shift.toLocaleString()+' · 累積總分 '+REAL.cash.toLocaleString());
+  if(S.simOn&&SIM.summary) ex.unshift(SIM.summary);
   if(S.yieldPass) ex.push('🚑 順利越過讓路車 '+S.yieldPass+' 架'); if((S.yieldPass||0)>=5) ach('yield');
   $('rNote').innerHTML=(S.lives===5?'完美！全程冇犯錯。':'扣咗 '+(5-S.lives)+' 粒：'+S.log.join('、'))+'<br><small>'+ex.join(' · ')+'</small>';
   $('rAch').innerHTML=S.newAch.length?'<b>🏆 新成就：</b>'+S.newAch.map(a=>ACH[a].name).join('、'):'';
-  const nx=LEVELS[S.lvl+1]; $('rNext').style.display=nx?'block':'none'; if(nx) $('rNext').textContent='下一關：'+caseOf(nx).place+'（'+nx.todName+'）';
+  const nx=S.simOn?null:LEVELS[S.lvl+1]; $('rNext').style.display=nx?'block':'none'; if(nx) $('rNext').textContent='下一關：'+caseOf(nx).place+'（'+nx.todName+'）';
   $('rTips').innerHTML='<b>📗 已收集知識卡：'+S.kase.title+'</b><ul>'+S.kase.tips.map(t=>'<li>'+t+'</li>').join('')+'</ul>';
   $('rName').value=getName(); $('rSave').disabled=false; $('rSave').textContent='儲存到排行榜';
   PLAY.chalResult(); if(S.tut){ store.set('tutDone',1); $('rTitle').textContent='🎓 新手教學完成！'; } PLAY.tutEnd(); S.tut=false;
@@ -2845,12 +3188,12 @@ R.domElement.addEventListener('pointerdown',e=>{ const D=S.camDrag; D.on=true; D
 R.domElement.addEventListener('pointermove',e=>{ const D=S.camDrag; if(!D.on||e.pointerId!==D.id) return; D.yaw-=(e.clientX-D.x)*0.008; D.pitch=Math.max(-0.5,Math.min(1,D.pitch+(e.clientY-D.y)*0.006)); D.x=e.clientX; D.y=e.clientY; D.t=performance.now(); });
 ['pointerup','pointercancel'].forEach(ev=>R.domElement.addEventListener(ev,e=>{ const D=S.camDrag; D.on=false; D.t=performance.now(); R.domElement.style.cursor='grab'; }));
 R.domElement.style.cursor='grab';
-function camDragTick(dt){ const D=S.camDrag; if(!D.on&&performance.now()-D.t>2000){ const k=Math.min(1,dt*2); D.yaw-=D.yaw*k; D.pitch-=D.pitch*k; } }
+function camDragTick(dt){ const D=S.camDrag; if(S.simOn&&document.body.classList.contains('simScene')) return; if(!D.on&&performance.now()-D.t>2000){ const k=Math.min(1,dt*2); D.yaw-=D.yaw*k; D.pitch-=D.pitch*k; } }
 $('bH').addEventListener('click',()=>{ if(!VSPEC.siren){ horn(); return; } sirenSet(!S.siren); if(S.siren) S.sirenUsed=true; });
-$('rAgain').onclick=()=>{ stopFireworks(); S.gm==='cpr'?startCPR(CP.mode,CP.breaths):S.gm==='taxi'?startTaxi():S.gm==='chase'?startChase():startCase(S.lvl); }; $('rNext').onclick=()=>{ stopFireworks(); startCase(S.lvl+1); }; $('rMenu').onclick=()=>{ stopFireworks(); show('result',false);toMenu();};
+$('rAgain').onclick=()=>{ stopFireworks(); if(S.simOn){ SIM.again(); return; } S.gm==='cpr'?startCPR(CP.mode,CP.breaths):S.gm==='taxi'?startTaxi():S.gm==='chase'?startChase():startCase(S.lvl); }; $('rNext').onclick=()=>{ stopFireworks(); startCase(S.lvl+1); }; $('rMenu').onclick=()=>{ stopFireworks(); show('result',false);toMenu();};
 $('oAgain').onclick=()=>S.gm==='taxi'?startTaxi():S.gm==='chase'?startChase():startCase(S.lvl); $('oMenu').onclick=()=>{show('over',false);toMenu();};
 $('bMenu').onclick=()=>{ sirenSet(false); toMenu(); };
-function toMenu(){ KIT.visible=false; PLAY.radioClear(); PLAY.tutEnd(); S.tut=false; realBegin(false); S.realPick=false; chModeExit(); clearEvents(); setTOD('day'); show('stabBox',false); show('quiz',false); S.quizOpen=false; S.sirenMuted=false; S.mode='menu'; resetActors(); ring.visible=beacon.visible=arrow.visible=false; if(routeMesh) routeMesh.visible=false; caption(null); show('hudWrap',false); renderMenu(); show('menu',true); }
+function toMenu(){ if(S.simOn) SIM.end(); KIT.visible=false; PLAY.radioClear(); PLAY.tutEnd(); S.tut=false; realBegin(false); S.realPick=false; S.pcPick=false; chModeExit(); clearEvents(); setTOD('day'); show('stabBox',false); show('quiz',false); S.quizOpen=false; S.sirenMuted=false; S.mode='menu'; resetActors(); ring.visible=beacon.visible=arrow.visible=false; if(routeMesh) routeMesh.visible=false; caption(null); show('hudWrap',false); renderMenu(); show('menu',true); }
 
 /* ---------- 聲音：警號（撳一下開／關）、出車鐘聲 ---------- */
 let actx=null, osc=null, gain=null, sirenTimer=null;
@@ -2871,7 +3214,7 @@ function audioTick(t){ if(!eng) return; const c=S.car, now=actx.currentTime, dri
   const gas=driving&&S.hold.G&&!S.hold.B; const v=Math.abs(c.v);
   eng.o.frequency.setTargetAtTime(48+v*4.2,now,0.08); eng.o2.frequency.setTargetAtTime(48+v*4.2,now,0.08); eng.f.frequency.setTargetAtTime(300+v*22,now,0.1);
   eng.g.gain.setTargetAtTime(gas?0.03:(driving&&v>1?0.012:0),now,gas?0.05:0.25);
-  const back=driving&&S.hold.B&&c.v<=0.5; const beep=back&&(t*2.4%1)<0.5;
+  const back=driving&&((S.hold.B&&c.v<=0.5&&!DRV.real)||c.v<-0.3||(DRV.real&&DRV.gear==='R'&&S.hold.G)); const beep=back&&(t*2.4%1)<0.5;
   rev.g.gain.setTargetAtTime(beep?0.025:0,now,0.01); }
 function horn(){ ensureAudio(); if(!actx) return; try{ [0,0.22].forEach(d=>{ [392,494].forEach(f=>{ const o=actx.createOscillator(), g=actx.createGain(); o.type='sawtooth'; o.frequency.value=f*(VSPEC.kind==='bus'?0.62:1); g.gain.value=0.02; o.connect(g); g.connect(master); o.start(actx.currentTime+d); o.stop(actx.currentTime+d+0.16); }); }); }catch(e){} }
 function sirenSet(on){ if(on&&!VSPEC.siren) on=false; S.siren=on; $('bH').classList.toggle('siren',on); $('bH').setAttribute('aria-pressed',on);
@@ -2910,16 +3253,16 @@ function ambCircles(x,z,a){ const ux=Math.sin(a),uz=Math.cos(a); return VSPEC.ci
 function hitBuilding(x,z,a){ const ux=Math.sin(a),uz=Math.cos(a), rx=uz, rz=-ux;
   // 喺高架路上面：下面嘅樓／河唔計（以前會變成空氣牆）；車身中間仲喺馬路上（例如過橋）：只計建築物，唔計橋邊嘅河
   if(ELEV(x,z)>2) return false; const mask=(cellAt(x,z)&1)?2:6;
-  for(const o0 of [-3,-1,1,3]) for(const s0 of [-1.1,1.1]){ const o=o0*VSPEC.kl, s=s0*VSPEC.kw; if(cellAt(x+ux*o+rx*s,z+uz*o+rz*s)&mask) return true; } return false; }
+  for(const o0 of [-3,-1,1,3]) for(const s0 of [-1.1,1.1]){ const o=o0*VSPEC.kl, s=s0*VSPEC.kw; if(blockedAt(x+ux*o+rx*s,z+uz*o+rz*s,mask)) return true; } return false; }
 function vib(ms){ try{ if(navigator.vibrate) navigator.vibrate(ms); }catch(e){} }
 function bump(why){ const now=performance.now()/1000; S.collided=true; if(REAL.on) REAL.stress+=12; if(now-(S.lastShake||0)>0.4){ S.lastShake=now; S.shake=0.45; vib(60); } if(now-S.lastHit>2.5){ S.collisions++; S.lastHit=now; loseLife(why,why+'！'); } }
 
 /* ---------- 主迴圈 ---------- */
-function clampCam(want,look){
+function clampCam(want,look,sim){
   // 鏡頭同目標之間有建築物：拉近並升高，避免被樓宇遮住
   const dx=want.x-look.x, dz=want.z-look.z; let f=1;
   for(let k=0.08;k<=1.0;k+=0.04){ if(cellAt(look.x+dx*k,look.z+dz*k)&2){ f=k; break; } }
-  if(f<1){ const k=Math.max(0.22,f-0.08); want.x=look.x+dx*k; want.z=look.z+dz*k; want.y=Math.max(want.y,44); }
+  if(f<1){ if(sim){ const k=Math.max(0.12,f-0.06); want.x=look.x+dx*k; want.z=look.z+dz*k; want.y=Math.max(3.2,Math.min(want.y,want.y*0.55+2.5)); return want; } const k=Math.max(0.22,f-0.08); want.x=look.x+dx*k; want.z=look.z+dz*k; want.y=Math.max(want.y,44); }
   return want;
 }
 
@@ -2946,18 +3289,19 @@ function tick(){
   CURL.forEach((b,i)=>b.material.emissive.setHex(lit&&((i%2===0)===on)?(b.userData.on||0x1550ff):0)); U.pB.intensity=lit&&on?1.4:0; U.pR.intensity=lit&&!on?1.4:0;
   if(FUN.on&&lit) CURL.forEach((b,i)=>{ if(b.material.emissive.getHex()) b.material.emissive.setHSL((t*0.9+i*0.17)%1,1,0.55); });   // 七彩警號燈
   // 煞車燈、轉向燈（跟轉彎方向閃）、警號紅藍光照落地面
-  if(U.LT){ const H=S.hold, braking=S.mode==='drive'&&(H.B||(c.v>2&&!H.G)), st=S.mode==='drive'?(H.L?1:0)-(H.R?1:0):0, bl=Math.floor(t*3.2)%2===0;
+  if(U.LT){ const H=S.hold, braking=S.mode==='drive'&&(H.B||(c.v>2&&!H.G)), st=S.mode==='drive'?DRV.sgn:0, bl=Math.floor(t*3.2)%2===0;
     U.LT.tail.forEach(m=>m.material.emissive.setHex(braking?0xff2020:(CARL.night?0x6a0000:0x400000)));
     [-1,1].forEach(sd=>U.LT.ind[sd].forEach(m=>m.material.emissive.setHex(st===sd&&Math.abs(c.v)>0.5&&bl?0xffa000:0x402000))); }
   SGLOW.tick(lit,on,t);
   if(U.FL){ const n=!!CARL.night&&S.mode!=='menu'; if(U.FL.on!==n){ U.FL.on=n; U.FL.glow.forEach(q=>q.visible=n); U.FL.mat.emissive.setHex(n?0xffffff:0); } }   // 夜間白色照明射燈
   if(S.mode==='cpr') cprTick(dt,t);
   if(S.mode==='drive'&&S.gm==='free'&&FRE.onFoot) freeTick(dt,t); else if(S.mode==='drive'){
-    const H=S.hold, steer=(H.L?1:0)-(H.R?1:0);
+    const H=DRV.input(dt,t), steer=H.steer;
     const nitro=FUN.on&&S.hold.N, onRoad=(cellAt(c.x,c.z)&1)||FUN.on, vmax=(onRoad?(FUN.on?Math.max(VSPEC.vmax,38):VSPEC.vmax):12)*(nitro?1.6:1), AK=(FUN.on?Math.max(VSPEC.acc,1.35):VSPEC.acc)*(nitro?2.2:1);   // 歡樂模式：全車解放、上行人路唔減速、🚀 氮氣
     if(H.G&&!H.B) c.v=Math.min(vmax,c.v+(c.v<0?34:(c.v<12?26:17)*AK)*dt); else if(H.B&&!H.G) c.v=Math.max(-7,c.v-(c.v>0?34:14)*dt);
     else c.v=c.v>0?Math.max(0,c.v-(S.wet?9:14)*dt):Math.min(0,c.v+(S.wet?9:14)*dt);
     if(c.v>vmax) c.v=Math.max(vmax,c.v-20*dt);
+    DRV.post();
     if(!FUN.on) aebTick(dt);
     c.a+=steer*dt*VSPEC.steer*(S.wet?0.82:1)*Math.min(1,Math.abs(c.v)/5+0.35)*(c.v<-0.1?-1:1); stabilityTick(dt,steer);
     const nx=c.x+Math.sin(c.a)*c.v*dt, nz=c.z+Math.cos(c.a)*c.v*dt;
@@ -3065,7 +3409,7 @@ function tick(){
     p.m.position.set(p.pos[0],0.15,p.pos[1]);
   }
   ANI.tick(dt,t);   // 城市動物
-  funTick(dt,t); realTick(dt);
+  funTick(dt,t); realTick(dt); if(S.simOn) SIM.tick(dt); if(S.pcOn) PC.tick(dt,t);
   if(NEON) NEON.tick(t); busWaitTick(dt); TURNS.tick(dt,t); PLAY.tutTick(dt); PLAY.evTick(dt); HELP.tick(dt,t);
   gfxWatch(dt);
   /* --- 到場／醫院動畫 --- */
@@ -3093,7 +3437,7 @@ function tick(){
     else S.camYaw+=dYaw*Math.min(1,dt*4.5);
     camDragTick(dt); const D=S.camDrag, yaw=S.camYaw+D.yaw;
     S.hwK=(S.hwK||0)+(((ANI.hw()&&S.leftDepot&&!(S.gm==='free'&&FRE.onFoot))?1:0)-(S.hwK||0))*Math.min(1,dt*1.2); const hk=S.hwK;   // 高速公路鏡頭：低啲、望遠啲，見到天空
-    const rk=REAL.on?1:0, fs=(S.gm==='free'&&FRE.onFoot)?0.5:1, back=(portrait?19:16)*fs*(1-D.pitch*0.25)*(rk?0.8:1), up=(portrait?14:10.5)*fs*(1+D.pitch)*(1-0.42*hk)*(rk?0.48:1);   // 寫實模式：低鏡頭、貼車
+    const rk=REAL.on?1:0, fs=(S.gm==='free'&&FRE.onFoot)?0.5:1, back=(portrait?19:16)*fs*(1-D.pitch*0.25)*(rk?(S.pcOn?0.74*PC.zoom:0.8):1), up=(portrait?14:10.5)*fs*(1+D.pitch)*(1-0.42*hk)*(rk?(S.pcOn?0.36*(0.6+0.4*PC.zoom):0.48):1);   // 寫實模式：低鏡頭、貼車
     const eh=ELEV(c.x,c.z);
     if(inBay){ const R=16+(back-16)*prog, W=new THREE.Vector3(c.x-Math.sin(yaw)*R,5.5+(up-5.5)*prog,c.z-Math.cos(yaw)*R); const sw=(W.x-DP[0])*hx+(W.z-DP[1])*hz;
       if(sw<9.5){ W.x+=hx*(9.5-sw); W.z+=hz*(9.5-sw); W.y=Math.max(W.y,10); }   // 鏡頭唔入車房：最多退到門口上方
@@ -3103,8 +3447,9 @@ function tick(){
   } else if(S.mode==='seq'||S.mode==='hseq'||S.mode==='result'){
     const P=S.mode==='hseq'?AE.door:(S.kase.loc?S.kase.loc.patient:[c.x+Math.sin(c.a)*8,c.z+Math.cos(c.a)*8]); const rear=[c.x-Math.sin(c.a)*4,c.z-Math.cos(c.a)*4];
     const mx=(rear[0]+P[0])/2, mz=(rear[1]+P[1])/2; let dx=mx-P[0], dz=mz-P[1]; const L=Math.hypot(dx,dz)||1; dx/=L; dz/=L;
-    const want=new THREE.Vector3(mx+dx*(portrait?11:10),portrait?34:26,mz+dz*(portrait?11:10));
-    cam.position.lerp(clampCam(want,new THREE.Vector3(mx,0,mz)),Math.min(1,dt*1.5)); camLook.lerp(new THREE.Vector3(mx,1,mz),Math.min(1,dt*2));
+    let want=new THREE.Vector3(mx+dx*(portrait?11:10),portrait?34:26,mz+dz*(portrait?11:10));
+    if(S.simOn&&S.mode==='seq'&&document.body.classList.contains('simScene')){ const cv=SIM.cam(t); want=cv.p; if(portrait){ want.y+=1.5; } camLook.lerp(cv.l,Math.min(1,dt*2)); }
+    const simC=S.simOn&&S.mode==='seq'&&document.body.classList.contains('simScene'); cam.position.lerp(clampCam(want,simC?camLook.clone().setY(0):new THREE.Vector3(mx,0,mz),simC),Math.min(1,dt*(simC?1.2:1.5))); if(!simC) camLook.lerp(new THREE.Vector3(mx,1,mz),Math.min(1,dt*2));
   } else if(S.mode==='cpr'){ cprCam(dt,t);
   } else { // 主選單：喺救護站上空慢慢轉
     const d=DEPOT.pos; const a=t*0.08; cam.position.set(d[0]+Math.sin(a)*80,55,d[1]+Math.cos(a)*80); camLook.set(d[0],0,d[1]);
@@ -3139,6 +3484,7 @@ $('qNext').onclick=()=>{ show('quiz',false); const k=S.qKind==='equip'?0:S.qKind
 function sequence(dt,t){
   if(S.quizOpen){ walk(crew.userData.c1,t,false); walk(crew.userData.c2,t,false); return; }
   S.seq+=dt;
+  if(S.simOn){ if(S.mode==='seq'&&!S.simSceneDone&&S.seq>=3.3){ S.seq=3.3; SIM.atScene(); } if(S.mode==='hseq'&&!S.simHandDone&&S.seq>=4.3){ S.seq=4.3; SIM.atHosp(); } if(document.body.classList.contains('simScene')){ SIM.anim(dt,t); return; } }   // 現場模擬：救護員跪喺病人旁邊等玩家處理
   if(S.mode==='seq'&&S.seq>=3.2){ if(!S.qDone[0]){ S.seq=3.2; openChoice('equip'); return; } if(!S.qDone[1]){ S.seq=3.2; openChoice('quiz'); return; } if(!S.qDone[2]){ S.seq=3.2; openChoice('triage'); return; } }
   const s=S.seq, c=S.car, U=amb.userData, C1=crew.userData;
   const rear=new THREE.Vector3(c.x-Math.sin(c.a)*4.8,0.12,c.z-Math.cos(c.a)*4.8), inside=new THREE.Vector3(c.x-Math.sin(c.a)*1.2,0.55,c.z-Math.cos(c.a)*1.2);
@@ -3203,10 +3549,10 @@ const BEAM=(()=>{ const m=new THREE.MeshBasicMaterial({color:0xfff1c8,transparen
   return { tick(){ const on=!!CARL.night&&S.mode!=='menu'; bs.forEach(b=>b.visible=on); m.opacity=S.wet?0.07:0.045; } }; })();
 function rainTick(dt){ SPLASH.tick(dt); BEAM.tick(); if(!rain.visible) return; const p=rain.geometry.attributes.position.array; for(let i=0;i<p.length;i+=6){ p[i+1]-=55*dt; p[i+4]-=55*dt; if(p[i+4]<0){ p[i+1]+=60; p[i+4]+=60; } }
   rain.geometry.attributes.position.needsUpdate=true; rain.position.set(cam.position.x,0,cam.position.z); }
-function setTOD(k){ const T=TOD[k]; CARL.night=!!(T.night||k==='rain'); if(typeof NEON!=='undefined'&&NEON) NEON.set(T,k); scene.background.setHex(T.sky); scene.fog.color.setHex(T.sky); scene.fog.near=T.fog[0]; scene.fog.far=T.fog[1]; cam.far=T.fog[1]+60; cam.updateProjectionMatrix();
+function setTOD(k){ if(S.pcOn&&TOD['pc'+k]) k='pc'+k; const T=TOD[k]; CARL.night=!!(T.night||k==='rain'); if(typeof NEON!=='undefined'&&NEON) NEON.set(T,k); scene.background.setHex(T.sky); scene.fog.color.setHex(T.sky); scene.fog.near=T.fog[0]; scene.fog.far=T.fog[1]; cam.far=T.fog[1]+60; cam.updateProjectionMatrix();
   hemi.color.setHex(T.hemi[0]); hemi.groundColor.setHex(T.hemi[1]); hemi.intensity=T.hemi[2]; sun.color.setHex(T.sun[0]); sun.intensity=T.sun[1]; CLOUDMAT.color.setHex(T.cloud);
   Object.values(MAT).forEach(m=>{ if(m.map&&m.emissive){ m.emissiveMap=T.night?m.map:null; m.emissive.setHex(T.night?0x2a261c:0); m.needsUpdate=true; } }); // 夜晚：窗口有燈
-  headL.intensity=T.night?2.4:0; rain.visible=!!T.wet; S.wet=!!T.wet; }
+  headL.intensity=T.night?2.4:0; rain.visible=!!T.wet; S.wet=!!T.wet; if(S.pcOn&&S.pcPal) S.pcPal(T); else if(PCB) PCB.setEnv(null,!!T.night); }
 
 /* ---------- 限時：每段路程有時限，準時到 +1 生命之星，超時 −1 生命之星 ---------- */
 function startLeg(){ setupEvents(); const len=S.route?S.route.len:400; S.legLimit=Math.round(len/16*S.level.limit/1.4+15); if(S.tut) S.legLimit*=3; S.legStart=performance.now()/1000; S.overT=false; }
@@ -3412,9 +3758,10 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
   document.querySelectorAll('#tabs button').forEach(b=>{ b.setAttribute('aria-selected',b.dataset.t===tab); b.onclick=()=>renderMenu(b.dataset.t); });
   const best=bestStars(), el=(tag,cls,txt)=>{ const e=document.createElement(tag); if(cls) e.className=cls; if(txt!=null) e.textContent=txt; return e; };
   if(S.unlockMsg){ S.unlockMsg=false; B.append(el('p','ach-new','🔓 已解鎖全部關卡、知識卡同車款！')); }
-  if(tab==='levels'){ S.menuMode=S.menuMode||store.get('menuMode',REGION==='st'?'st':'ems'); if(S.menuMode!=='real'&&(S.menuMode==='st')!==(REGION==='st')) S.menuMode=REGION==='st'?'st':'ems';
-    const MODES=[['ems','🚑','救護任務',true],['real','🎬','寫實模式',true],['taxi','🚕','的士接客',true],['chase','🚓','追逐模式',true],['free','🚶','自由探索',true],['cpr','❤️','CPR（測試）',true],['st','🏥','救護任務（沙田）',true]];
-    const mr=el('div','modes'); MODES.forEach(([id,ic,nm,on])=>{ const b=el('button','mode'+(S.menuMode===id?' on':'')); b.disabled=!on; b.append(el('span','mi',ic),el('b',null,nm),el('small',null,on?'':'即將推出')); b.onclick=()=>{ const need=id==='st'?'st':id==='real'?REGION:'tm'; if(need!==REGION){ store.set('region',need); store.set('menuMode',id); B.innerHTML='<p style="text-align:center;padding:30px 0">🗺️ 載入'+(need==='st'?'沙田':'屯門')+'地圖中……</p>'; setTimeout(()=>location.reload(),60); return; } S.menuMode=id; store.set('menuMode',id); renderMenu('levels'); }; mr.append(b); }); B.append(mr);
+  if(tab==='levels'){ S.menuMode=S.menuMode||store.get('menuMode',REGION==='st'?'st':'ems'); if(S.menuMode!=='real'&&S.menuMode!=='pc'&&S.menuMode!=='sim'&&(S.menuMode==='st')!==(REGION==='st')) S.menuMode=REGION==='st'?'st':'ems';
+    const MODES=[['ems','🚑','救護任務',true],['real','🎬','寫實模式',true],['pc','🖥️','電腦模式',true],['sim','🩺','現場模擬',true],['taxi','🚕','的士接客',true],['chase','🚓','追逐模式',true],['free','🚶','自由探索',true],['cpr','❤️','CPR（測試）',true],['st','🏥','救護任務（沙田）',true]];
+    const mr=el('div','modes'); MODES.forEach(([id,ic,nm,on])=>{ const b=el('button','mode'+(S.menuMode===id?' on':'')); b.disabled=!on; b.append(el('span','mi',ic),el('b',null,nm),el('small',null,on?'':'即將推出')); b.onclick=()=>{ const need=id==='st'?'st':id==='real'||id==='pc'||id==='sim'?REGION:'tm'; if(id==='pc'&&GFX<3){ store.set('gfxPrev',store.get('gfx',2)); store.set('gfx',3); store.set('menuMode','pc'); B.innerHTML='<p style="text-align:center;padding:30px 0">🖥️ 載入「電腦」畫質（GTA 式高樓、玻璃反光）……</p>'; setTimeout(()=>location.reload(),60); return; } if(need!==REGION){ store.set('region',need); store.set('menuMode',id); B.innerHTML='<p style="text-align:center;padding:30px 0">🗺️ 載入'+(need==='st'?'沙田':'屯門')+'地圖中……</p>'; setTimeout(()=>location.reload(),60); return; } S.menuMode=id; store.set('menuMode',id); renderMenu('levels'); }; mr.append(b); }); B.append(mr);
+    if(S.menuMode==='sim'){ SIM.menu(B,el); return; }
     if(S.menuMode==='taxi'){ B.append(el('p',null,'60 秒內不停接客送客！停喺乘客旁邊就上車，跟橙色導航線送到目的地。'));
       const lg=el('div','txleg'); [['o','橙色','近程','$10','+5 秒'],['y','黃色','中程','$25','+8 秒'],['g','綠色','遠程','$50','+12 秒']].forEach(([k,n,dd,m,s])=>{ const r=el('div'); const dot=el('span','dot'); dot.style.background=TX.cls[k].css; r.append(dot,el('b',null,n+' '+dd),el('span',null,m+' · '+s)); lg.append(r); }); B.append(lg);
       B.append(el('p',null,'提早送到有貼士。撞車、撞人、衝紅燈都冇罰，只會慢落嚟。'));
@@ -3436,14 +3783,15 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
       B.append(el('p',null,'使用車款：'+L.name+'（喺「車款」分頁可以換）'));
       const cb=store.get('chaseBest',{st:0,s:0}); B.append(el('p','txbest','最佳紀錄：'+(cb.st?cb.st+' 粒生命之星逃脫':cb.s?'撐 '+cb.s+' 秒':'未有')));
       const go=el('button','go','🚓 開始追逐'); go.style.background='#1f4fbf'; go.onclick=()=>startChase(); B.append(go); return; }
+    if(S.menuMode==='pc') B.append(el('p','realIntro','🖥️ 電腦模式：寫實模式再升級，專為電腦而設。GTA 式畫面——香港日頭清爽陽光、夜晚霓虹藍紫配黃色街燈；玻璃幕牆寫字樓、私人屋苑、十字型公屋、工廈、酒店、商場同停車場，天台有廣告牌同航空燈。操作掣縮細，字幕喺救護車下面。鍵盤：W／S／A／D 或方向鍵、H 警號、M 地圖、Enter 接受派遣、1–4 答題；滑鼠拖曳轉鏡頭、滾輪縮放。'+(GFX<3?'':'')));
     if(S.menuMode==='real') B.append(el('p','realIntro','🎬 寫實模式：電影感黃昏光影、光暈同調色、低鏡頭跟車，加上派遣接 Call（RES 接受／REJ 拒絕）、圓形小地圖、狀態條、分數同時鐘。用嘅係'+(REGION==='st'?'沙田':'屯門')+'嘅關卡（要較新嘅手機）。'));
     B.append(el('p',null,REGION==='st'?'沙田區：由沙田或者田心救護站出車，到場處理，再送去威爾斯親王醫院急症室。完成一關解鎖下一關：':'由屯門救護站出車，到場處理，再送去屯門醫院急症室。完成一關解鎖下一關：'));
-    if(S.menuMode==='ems'){ const tb=el('button','go','🎓 新手教學（第一次玩建議先試）'); tb.style.cssText='background:#ffb703;color:#3a2a00;margin:0 0 10px'; tb.onclick=()=>{ S.realPick=false; S.tutPick=true; startCase(0); }; B.append(tb); }
+    if(S.menuMode==='ems'){ const tb=el('button','go','🎓 新手教學（第一次玩建議先試）'); tb.style.cssText='background:#ffb703;color:#3a2a00;margin:0 0 10px'; tb.onclick=()=>{ S.realPick=false; S.pcPick=false; S.tutPick=true; startCase(0); }; B.append(tb); }
     const box=el('div'); box.id='cases'; LEVELS.forEach((lv,i)=>{ const k=caseOf(lv), lock=!unlockedAll()&&i>0&&!isDone(LEVELS[i-1].id), st=best[lv.id]||0;
       const b=el('button','case'+(lock?' locked':'')); b.disabled=lock;
       b.append((()=>{ const x=el('span','pl','第 '+(i+1)+' 關 · '+lv.todName+(lv.works?' · 修路':'')+(lv.jam?' · 塞車':'')); if(isDone(lv.id)) x.insertAdjacentHTML('beforeend',PLAY.chalHTML(lv.id)); return x; })(), el('b',null,(lock?'🔒 ':'')+k.place+'：'+k.title), (()=>{ const x=el('span','st'); x.innerHTML=[0,1,2,3,4].map(i=>'<i class="'+(i<st?'on':'off')+'">'+lifeStar(14)+'</i>').join(''); return x; })());
       if(lv.support&&lv.support.length) b.append(el('span','sup',supTags(lv).join(' · ')));
-      b.onclick=()=>{ S.realPick=S.menuMode==='real'; startCase(i); }; box.append(b); }); B.append(box);
+      b.onclick=()=>{ S.realPick=S.menuMode==='real'||S.menuMode==='pc'; S.pcPick=S.menuMode==='pc'; startCase(i); }; box.append(b); }); B.append(box);
     const r=el('div','rules'); r.innerHTML='<b>點玩：</b>◀ ▶ 轉彎，按住「油」前進，「倒」倒車；撳「警號」開閃燈同警號，其他車會讓路，可以安全過紅燈。<br><b>限時：</b>準時到 +1 生命之星，超時 −1 生命之星。<br><b>生命之星：</b>5 粒；撞車、撞樓、撞人、冇警號衝紅燈、揀錯裝備、答錯小測、病人穩定度跌晒，每次 −1 生命之星，扣晒遊戲結束。<br><b>送院：</b>轉彎同煞車要慢慢嚟，保持病人穩定。'; B.append(r); }
   if(tab==='cards'){ B.append(el('p',null,'完成關卡就收集到嗰個個案嘅急救知識卡：'));
     LEVELS.forEach((lv,i)=>{ const k=caseOf(lv), d=el('div','kcard'+(isDone(lv.id)||unlockedAll()?'':' lock'));
@@ -3467,12 +3815,19 @@ function renderMenu(tab){ if(!tab&&!S.tab){ const o=store.get('openTab',null); i
     sec('🔤 提示字體大小');
     { const cur=store.get('fontSz',0), segs=el('div','set-seg'); [['小','預設'],['中','大少少'],['大','最易睇']].forEach(([t,d],v)=>{ const b=el('button','set-segb'+(cur===v?' on':'')); b.append(el('b',null,t),el('small',null,d)); b.setAttribute('aria-pressed',cur===v);
         b.onclick=()=>{ store.set('fontSz',v); applyFontSz(); renderMenu('set'); }; segs.append(b); }); B.append(segs); }
+    sec('🚑 駕駛');
+    row('真實設定',sw(DRV.real,v=>{ DRV.setReal(v); },'真實設定'),DRV.real?'開：好似自動波車。撳 D／R 掣轉波（要停定車），踩「油」先會郁，「煞」煞車；左邊軚盤左右滑動轉彎，放手自動回正。鍵盤 ↑ 油、↓ 煞、R 轉波、← → 扭軚；手掣 RT 油、LT 煞、Y 轉波、左搖桿扭軚（大地圖改用 Back）':'關：用 ◀ ▶ 轉彎，「油」前進，「倒」煞車／倒車');
+    row('倒車動畫',sw(DRV.rev,v=>{ DRV.setRev(v); },'倒車動畫'),DRV.rev?'開：倒車前救護員由左邊落車行去車尾睇後，佢到咗先可以倒；轉返向前時要等佢跑返上車頭':'關：即刻可以倒車');
     sec('🚶 行人');
     row('行人自動避開',sw(DODGE.on,v=>{ DODGE.on=v; store.set('dodge',v); },'行人自動避開'),DODGE.on?'開：撞埋去之前行人會自己跳開，唔會受傷，亦唔扣生命之星':'關：撞到行人會瞓喺地下，一陣後消失（會扣生命之星）');
     sec('🖼️ 畫面質素');
-    { const cur=store.get('gfx',2), segs=el('div','set-seg'); [['標準','最順，舊手機都得'],['精細','欄杆、街道設施、霓虹招牌'],['超精細','再多招牌同細節，新手機用']].forEach(([t,d],v)=>{ const b=el('button','set-segb'+(cur===v?' on':'')); b.append(el('b',null,t),el('small',null,d)); b.setAttribute('aria-pressed',cur===v);
+    { const cur=store.get('gfx',2), segs=el('div','set-seg'); [['標準','最順，舊手機都得'],['精細','欄杆、街道設施、霓虹招牌'],['超精細','再多招牌同細節，新手機用'],['電腦','GTA 式高樓、玻璃反光，電腦用']].forEach(([t,d],v)=>{ const b=el('button','set-segb'+(cur===v?' on':'')); b.append(el('b',null,t),el('small',null,d)); b.setAttribute('aria-pressed',cur===v);
         b.onclick=()=>{ if(cur===v) return; store.set('gfx',v); store.set('openTab','set'); B.innerHTML='<p style="text-align:center;padding:30px 0">🖼️ 轉做「'+t+'」，重新載入地圖中……</p>'; setTimeout(()=>location.reload(),60); }; segs.append(b); });
       const r=el('div','set-row set-col'); const l=el('div','set-l'); l.append(el('b',null,'畫面細節'),el('small',null,'轉模式會重新載入地圖')); r.append(l,segs); B.append(r); }
+    { const cur=!!store.get('pcBars',false), segs=el('div','set-seg'); [['關','全畫面'],['開','上下黑邊，電影感']].forEach(([t,d],v)=>{ const b=el('button','set-segb'+(+cur===v?' on':'')); b.append(el('b',null,t),el('small',null,d)); b.onclick=()=>{ PC.setBars(!!v); renderMenu('set'); }; segs.append(b); });
+      const r=el('div','set-row set-col'); const l=el('div','set-l'); l.append(el('b',null,'🎞️ 電腦模式電影黑邊'),el('small',null,'只喺電腦模式生效')); r.append(l,segs); B.append(r); }
+    { const cur=!!store.get('simShuffle',false), segs=el('div','set-seg'); [['關','按流程次序排列'],['開','打亂次序，要自己記流程']].forEach(([t,d],v)=>{ const b=el('button','set-segb'+(+cur===v?' on':'')); b.append(el('b',null,t),el('small',null,d)); b.onclick=()=>{ store.set('simShuffle',!!v); renderMenu('set'); }; segs.append(b); });
+      const r=el('div','set-row set-col'); const l=el('div','set-l'); l.append(el('b',null,'🩺 現場模擬：打亂程序按鈕'),el('small',null,'左邊 RSE、LOC、D、CAB… 按鈕嘅排列')); r.append(l,segs); B.append(r); }
     sec('🐾 城市動物');
     row('生成動物',sw(C.on,v=>C.on=v,'生成動物'),'行人路、河上同天空嘅動物');
     row('地上動物數量',step(C.ground,1,12,v=>C.ground=v,'地上動物數量'),'同一時間最多幾多隻（落雨減半）');
@@ -3882,7 +4237,7 @@ function freeTick(dt,t){ const c=S.car; pedFlyTick(dt);
     const mag=Math.min(1,Math.hypot(fwd,side)); const yaw=S.camYaw+S.camDrag.yaw;
     if(mag>0.08){ const mx=Math.sin(yaw)*fwd+Math.sin(yaw+Math.PI/2)*side, mz=Math.cos(yaw)*fwd+Math.cos(yaw+Math.PI/2)*side; const want=Math.atan2(mx,mz);
       c.a+=((want-c.a+Math.PI*3)%(Math.PI*2)-Math.PI)*Math.min(1,dt*10); const sp=7*mag, L=Math.hypot(mx,mz)||1; const nx=c.x+mx/L*sp*dt, nz=c.z+mz/L*sp*dt;
-      if(!(cellAt(nx,c.z)&6)) c.x=nx; if(!(cellAt(c.x,nz)&6)) c.z=nz; }
+      if(!blockedAt(nx,c.z,6)) c.x=nx; if(!blockedAt(c.x,nz,6)) c.z=nz; }
     FRE.vy-=22*dt; FRE.y=Math.max(0,FRE.y+FRE.vy*dt); if(FRE.y===0) FRE.vy=0;
     FRE.p.position.set(c.x,ELEV(c.x,c.z)+FRE.y,c.z); FRE.p.rotation.y=c.a; walk(FRE.p,t,mag>0.08&&FRE.y===0);
     c.v=0; FRE.cand=frNearest(); $('bEnter').disabled=!FRE.cand; $('bEnter').classList.toggle('ready',!!FRE.cand);
@@ -4643,13 +4998,14 @@ const rq_=id=>document.getElementById(id);
 function realStars(){ rq_('rlStars').innerHTML=[0,1,2,3,4].map(i=>'<span class="'+(i<S.lives?'':'off')+'"><svg viewBox="-12 -12 24 24" width="22" height="22"><g fill="currentColor" stroke="#fff" stroke-width="1.2"><rect x="-3" y="-11" width="6" height="22" rx="1"/><rect x="-3" y="-11" width="6" height="22" rx="1" transform="rotate(60)"/><rect x="-3" y="-11" width="6" height="22" rx="1" transform="rotate(-60)"/></g><path d="M0-7V7" stroke="#fff" stroke-width="1.4"/></svg></span>').join(''); }
 function realCash(){ rq_('rCash').textContent=REAL.cash.toLocaleString()+' 分'; }
 /* ----- 開／關 ----- */
-function realBegin(on){ REAL.on=!!on; document.body.classList.toggle('real',REAL.on); realSky.visible=false; REAL.fx=false;
+function realBegin(on){ REAL.on=!!on; if(!REAL.on&&S.pcHook) S.pcHook(false); document.body.classList.toggle('real',REAL.on); realSky.visible=false; REAL.fx=false;
   if(!REAL.on){ REAL.dispatch=false; REAL.avm=false; REAL.pend=null; rq_('rDisp').classList.remove('on'); cam.fov=FOV0; cam.updateProjectionMatrix(); return; }
   realComposer(); REAL.stress=0; REAL.jobs=0; REAL.shift=0; REAL.avm=false; REAL.jobAt=null; REAL.pend=null; REAL.ending=false; REAL.dep=S.level.depot; rq_('rMis').classList.remove('avm'); rq_('rmS').textContent='緊急輔助醫療救護服務'; REAL.clock={day:14*60+20,dusk:19*60+28,night:2*60+40,rain:4*60}[S.level.tod]??19*60+28;
   REAL.fx=S.level.tod!=='day'; realSky.visible=S.level.tod==='dusk';   // 日間照用日間；黃昏、夜晚、落雨先加光暈同調色
   if(S.level.tod==='dusk') setTOD('real');
   realStars(); realCash();
   const k=S.kase; rq_('rdC').textContent=k.title; rq_('rdP').textContent=k.place; rq_('rdW').innerHTML='A188 救護車<br>收到控制中心指示';
+  if(S.pcHook) S.pcHook(!!S.pcPick);
   rq_('rDisp').classList.add('on'); REAL.dispatch=true; S.mode='dispatch'; vib([80,60,80]); }
 rq_('rRes').onclick=()=>{ if(!REAL.dispatch) return; REAL.dispatch=false; rq_('rDisp').classList.remove('on');
   if(REAL.pend!=null){ const i=REAL.pend; REAL.pend=null; realNewJob(i); return; }
@@ -4737,6 +5093,1462 @@ const BIGMAP=(()=>{ const d=document.createElement('div'); d.id='bigMap'; d.inne
   addEventListener('keydown',e=>{ if(e.code==='KeyM'&&!e.repeat){ S.mode==='map'?close():open(); } if(e.code==='Escape') close(); });
   addEventListener('resize',()=>{ if(S.mode==='map') draw(); });
   return {open,close,draw}; })();
+
+/* ---------- 🖥️ 電腦模式：由寫實模式再開發 ----------
+   GTA 式畫面（香港日頭／夜景兩套調色、玻璃反光、光暈、電影調色）、細操作掣、字幕喺救護車下面、
+   滑鼠拖曳轉鏡頭、滾輪縮放、鍵盤快捷鍵。派遣、AVM、計分照用寫實模式。要配合「電腦」畫質（GFX 3）。 */
+/* 香港日頭：清爽藍天、暖陽、少少煙霞；香港夜景：霓虹藍紫氛圍＋黃色鈉燈街燈 */
+TOD.pcday={sky:0x8fc0ea,hemi:[0xeaf3ff,0x8a8070,0.46],sun:[0xffe6c0,1.25],fog:[230,640],cloud:0xffffff,pc:'day'};
+TOD.pcnight={sky:0x100d2c,hemi:[0x6c5cf0,0x120e22,0.34],sun:[0x8078ff,0.16],fog:[150,520],cloud:0x2c2552,night:true,pc:'night'};
+TOD.pcdusk=TOD.pcnight; TOD.pcreal=TOD.pcnight;
+TOD.pcrain={sky:0x1d1d3e,hemi:[0x7066d8,0x1a1830,0.46],sun:[0x8a88d8,0.18],fog:[90,360],cloud:0x3a3660,night:true,wet:true,pc:'night'};
+const PC=(()=>{
+  if(GFX>=3){ sun.shadow.mapSize.set(2048,2048); }
+  const P={on:false,zoom:store.get('pcZoom',1),bars:store.get('pcBars',false),env:{}};
+  /* ----- 天空：日間由地平線白霞到頂部深藍；夜晚地平線紫紅霓虹光到頂部深靛 ----- */
+  const sky=(()=>{ const g=new THREE.SphereGeometry(420,32,16); const col=new Float32Array(g.attributes.position.count*3); g.setAttribute('color',new THREE.BufferAttribute(col,3));
+    const m=new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide,fog:false,depthWrite:false,toneMapped:false})); m.renderOrder=-10; m.visible=false; m.frustumCulled=false; scene.add(m); return m; })();
+  const SKY={day:[0xe4edf2,0xa9cdee,0x4f8fdc],night:[0x6a2f8a,0x2a1d5c,0x07081c]};
+  function paintSky(k){ const [h,mi,t]=SKY[k].map(c=>new THREE.Color(c)), P_=sky.geometry.attributes.position, C=sky.geometry.attributes.color, c=new THREE.Color();
+    for(let i=0;i<P_.count;i++){ const y=P_.getY(i)/420; if(y<0.06) c.copy(h).lerp(mi,Math.max(0,y)/0.06); else if(y<0.4) c.copy(mi).lerp(t,(y-0.06)/0.34); else c.copy(t); if(y<0) c.copy(h).multiplyScalar(k==='night'?0.5:0.85); C.setXYZ(i,c.r,c.g,c.b); }
+    C.needsUpdate=true; }
+  /* ----- 反光環境圖（玻璃幕牆用）：天空漸變＋遠處一排排光 ----- */
+  function envFor(k){ if(P.env[k]) return P.env[k]; const es=new THREE.Scene(); const g=new THREE.SphereGeometry(50,32,16), col=[], p=g.attributes.position, c=new THREE.Color();
+    const [h,mi,t]=SKY[k].map(x=>new THREE.Color(x)), gr=new THREE.Color(k==='night'?0x0b0a18:0x5d6168);
+    for(let i=0;i<p.count;i++){ const y=p.getY(i)/50; if(y<0) c.copy(gr); else if(y<0.08) c.copy(h).lerp(mi,y/0.08); else c.copy(mi).lerp(t,Math.min(1,(y-0.08)/0.4)); col.push(c.r,c.g,c.b); }
+    g.setAttribute('color',new THREE.Float32BufferAttribute(col,3)); es.add(new THREE.Mesh(g,new THREE.MeshBasicMaterial({vertexColors:true,side:THREE.BackSide})));
+    const bm=new THREE.MeshBasicMaterial({color:k==='night'?0x1a1838:0x8b939c});
+    for(let i=0;i<40;i++){ const a=i/40*Math.PI*2, r=40, h2=4+Math.random()*16; const b=new THREE.Mesh(new THREE.BoxGeometry(5+Math.random()*5,h2,5),bm); b.position.set(Math.cos(a)*r,h2/2-1,Math.sin(a)*r); b.lookAt(0,h2/2-1,0); es.add(b);
+      if(k==='night') for(let j=0;j<5;j++){ const l=new THREE.Mesh(new THREE.PlaneGeometry(0.8,0.5),new THREE.MeshBasicMaterial({color:[0xffd28a,0x8fd0ff,0xff6ad5,0x6a7dff][j%4]})); l.position.copy(b.position).multiplyScalar(0.93); l.position.y=1+Math.random()*h2*0.9; l.lookAt(0,l.position.y,0); es.add(l); } }
+    if(k==='day'){ const s=new THREE.Mesh(new THREE.SphereGeometry(3,12,8),new THREE.MeshBasicMaterial({color:0xfff4dc})); s.position.set(25,30,-20); es.add(s); }
+    const pm=new THREE.PMREMGenerator(R); const rt=pm.fromScene(es,0.02); pm.dispose(); return P.env[k]=rt.texture; }
+  /* ----- 調色：電影感 tone curve、飽和、日間暖陽／夜晚藍紫、暗角 ----- */
+  const GR={uniforms:{tDiffuse:{value:null},time:{value:0},night:{value:0}},
+    vertexShader:'varying vec2 vUv; void main(){ vUv=uv; gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0); }',
+    fragmentShader:`uniform sampler2D tDiffuse; uniform float time; uniform float night; varying vec2 vUv;
+      vec3 aces(vec3 x){ return clamp((x*(2.51*x+0.03))/(x*(2.43*x+0.59)+0.14),0.0,1.0); }
+      void main(){ vec2 d=vUv-0.5; float r=dot(d,d); float ca=0.0018*r;
+        vec3 col=vec3(texture2D(tDiffuse,vUv+d*ca).r,texture2D(tDiffuse,vUv).g,texture2D(tDiffuse,vUv-d*ca).b);
+        col=mix(col,aces(col*1.25),0.75);
+        float l=dot(col,vec3(0.299,0.587,0.114));
+        vec3 sh=mix(vec3(0.94,0.98,1.06),vec3(0.86,0.8,1.16),night), hi=mix(vec3(1.06,1.02,0.92),vec3(1.08,0.98,0.86),night);
+        col=mix(col*sh,col,smoothstep(0.0,0.6,l)); col=mix(col,col*hi,smoothstep(0.4,1.0,l)*0.7);
+        col=mix(vec3(l),col,mix(1.14,1.2,night)); col=(col-0.5)*mix(1.06,1.1,night)+0.5;
+        col*=1.0-smoothstep(0.25,0.75,r*1.6)*mix(0.22,0.36,night);
+        float n=fract(sin(dot(vUv*vec2(12.9898,78.233)+time,vec2(1.0)))*43758.5453); col+=(n-0.5)*0.01;
+        gl_FragColor=vec4(clamp(col,0.0,1.0),1.0); }`};
+  function comp(){ if(P.comp) return P.comp; const C=new THREE.EffectComposer(R); C.addPass(new THREE.RenderPass(scene,cam));
+    const bloom=new THREE.UnrealBloomPass(new THREE.Vector2(innerWidth/2,innerHeight/2),0.3,0.5,0.9); C.addPass(bloom); const gp=new THREE.ShaderPass(GR); C.addPass(gp);
+    if(C.setPixelRatio) C.setPixelRatio(R.getPixelRatio());
+    addEventListener('resize',()=>{ C.setSize(innerWidth,innerHeight); bloom.setSize(innerWidth/2,innerHeight/2); }); P.bloom=bloom; P.gp=gp; return P.comp=C; }
+  /* ----- 街燈：夜晚轉黃色鈉燈 ----- */
+  const LH=typeof LAMPHEAD!=='undefined'?LAMPHEAD:null; const LH0=LH?[LH.color.getHex(),LH.emissive.getHex()]:null;
+  function palette(T){ const k=T.pc||'day', night=k==='night'; sky.visible=P.on; paintSky(k); scene.background.setHex(night?0x100d2c:0x9cc6ec);
+    if(PCB) PCB.setEnv(envFor(k),night,!!T.wet);
+    const LP=NEON&&NEON.lampp; if(LP){ LP.mat.color.setHex(night?0xffa63a:0xffffff); LP.mat.opacity=night?(T.wet?0.75:0.95):0.4; }
+    if(LH){ LH.color.setHex(night?0xffd08a:LH0[0]); LH.emissive.setHex(night?0xff9a28:LH0[1]); }
+    if(P.bloom){ P.bloom.strength=night?0.62:0.2; P.bloom.threshold=night?0.74:0.92; P.bloom.radius=night?0.5:0.4; } GR.uniforms.night.value=night?1:0; P.night=night; }
+  function restore(){ sky.visible=false; if(PCB) PCB.setEnv(null,false); const LP=NEON&&NEON.lampp; if(LP) LP.mat.color.setHex(0xffffff); if(LH){ LH.color.setHex(LH0[0]); LH.emissive.setHex(LH0[1]); } }
+  /* ----- 介面 ----- */
+  const st=document.createElement('style'); st.textContent=`
+  body.pc .btns{transform:scale(.62);transform-origin:bottom right;left:auto;right:10px;width:330px}
+  body.pc .btns .lr{transform-origin:bottom left}
+  body.pc #bMenu,body.pc #bAEB{top:calc(12px + env(safe-area-inset-top))!important;right:auto!important;left:12px!important;background:#0b0e14b8!important;color:#e8edf3!important;border-radius:4px!important;font-size:11px!important;padding:5px 9px!important;box-shadow:none!important}
+  body.pc #bAEB{left:70px!important}
+  body.pc #mini{left:18px!important;bottom:calc(50px + env(safe-area-inset-bottom))!important;width:176px!important;height:176px!important;border:3px solid #0d1118!important;outline:3px solid #ffffff22;box-shadow:0 6px 24px #000a!important}
+  body.pc #rTR{left:18px;right:auto;top:auto!important;bottom:calc(14px + env(safe-area-inset-bottom));text-align:left;display:flex;gap:10px;align-items:center}
+  body.pc #rlStars{justify-content:flex-start}body.pc #rClock{margin:0;font-size:13px;background:#0d1118cc}
+  body.pc #rMis{left:auto;right:14px;top:calc(14px + env(safe-area-inset-top));max-width:300px;background:#0b0e14c8;border:1px solid #ffffff1a;border-radius:6px;backdrop-filter:blur(6px)}
+  body.pc #rMis .ic{border-radius:4px}body.pc #rMis b{font-size:13px}body.pc #rMis span{font-size:11.5px}
+  body.pc .rb div{border-color:#ffffff44;border-radius:2px;height:6px}body.pc .rb u{background:linear-gradient(90deg,#ff4d3d,#ffb347)}
+  body.pc #rDisp{left:22px;top:auto;bottom:calc(250px + env(safe-area-inset-bottom));max-width:330px;background:#0b0e14e0;border-radius:6px;border-left:4px solid #ffcf5a;backdrop-filter:blur(6px)}
+  body.pc #rDisp .bt button{font-size:17px;border-radius:4px;padding:6px 0}body.pc #rDisp .bl span:first-child::before{content:'Enter · '}body.pc #rDisp .bl span:last-child::before{content:'Backspace · '}
+  /* 字幕：救護車下面 */
+  body.pc #toast,body.pc #cap,body.pc #radio{position:fixed;left:var(--sx,50%)!important;right:auto!important;bottom:auto!important;transform:translateX(-50%)!important;max-width:min(640px,80vw)!important;text-align:center;z-index:24}
+  body.pc #radio{top:calc(var(--sy,70%) + 14px)!important;background:#000000a8!important;border:none!important;color:#fff!important;border-radius:4px!important;font-size:calc(15px * var(--fz,1))!important;padding:6px 14px!important;transition:opacity .25s}
+  body.pc #radio b{color:#7dd3fc;margin-right:6px}
+  body.pc #toast{top:calc(var(--sy,70%) + 58px)!important;background:none!important;color:#fff!important;font-size:calc(17px * var(--fz,1))!important;font-weight:800!important;text-shadow:0 0 3px #000,0 2px 5px #000,0 0 12px #000!important;white-space:normal!important;box-shadow:none!important;padding:2px 8px!important}
+  body.pc #toast .pcw{color:#ffcf5a}
+  body.pc #cap{top:calc(var(--sy,70%) + 96px)!important;background:#000000a0!important;border-radius:4px!important;font-size:calc(15px * var(--fz,1))!important;padding:6px 14px!important}
+  /* 小測、裝備：深色半透明 */
+  body.pc .sheet .panel{background:#0b0e14ec;color:#eef2f7;border:1px solid #ffffff1f;border-radius:8px;max-width:600px;backdrop-filter:blur(8px)}
+  body.pc #qText{color:#fff}body.pc .qo{background:#ffffff0d;border:1px solid #ffffff26;color:#eef2f7;border-radius:6px;counter-increment:qo}
+  body.pc #qOpts{counter-reset:qo}body.pc .qo::before{content:counter(qo);display:inline-block;min-width:20px;margin-right:8px;padding:1px 5px;border:1px solid #ffffff55;border-radius:3px;font-size:12px;text-align:center;color:#ffcf5a}
+  body.pc .qo:disabled{color:#cfd5dd}body.pc .qo.ok{background:#16a34a33;border-color:#4ade80}body.pc .qo.bad{background:#dc262633;border-color:#f87171}body.pc #qWhy{color:#cfd5dd}
+  #pcKeys{display:none;position:fixed;left:50%;bottom:calc(8px + env(safe-area-inset-bottom));transform:translateX(-50%);z-index:7;font-size:11.5px;color:#e8edf3cc;background:#0b0e14a0;border-radius:4px;padding:4px 10px;white-space:nowrap;pointer-events:none}
+  #pcKeys kbd{font:inherit;font-weight:800;color:#fff;border:1px solid #ffffff55;border-radius:3px;padding:0 4px;margin:0 2px}
+  body.pc.pcDrive #pcKeys{display:block}
+  #pcBars{display:none;position:fixed;inset:0;pointer-events:none;z-index:5}#pcBars::before,#pcBars::after{content:'';position:absolute;left:0;right:0;height:6.5vh;background:#000}#pcBars::before{top:0}#pcBars::after{bottom:0}
+  body.pc.pcLB #pcBars{display:block}
+  @media (max-width:820px){ #pcKeys{display:none!important} }`; document.head.append(st);
+  const keys=document.createElement('div'); keys.id='pcKeys'; keys.innerHTML='<kbd>W</kbd><kbd>↑</kbd>油　<kbd>S</kbd><kbd>↓</kbd>倒車　<kbd>A</kbd><kbd>D</kbd>轉彎　<kbd>H</kbd>警號　<kbd>M</kbd>地圖　<kbd>Esc</kbd>選單　滑鼠拖曳 轉鏡頭　滾輪 縮放'; document.body.append(keys);
+  const bars=document.createElement('div'); bars.id='pcBars'; document.body.append(bars);
+  // 字幕：講嘢嘅人（「控制中心：」）用黃色
+  const T_=$('toast'); new MutationObserver(()=>{ const t=T_.textContent; if(!P.on||T_.dataset.pc===t) return; const i=t.indexOf('：'); if(i>0&&i<8){ T_.dataset.pc=t; T_.innerHTML='<span><b class="pcw">'+t.slice(0,i+1)+'</b>'+t.slice(i+1).replace(/[<>&]/g,c=>({'<':'&lt;','>':'&gt;','&':'&amp;'}[c])); } }).observe(T_,{childList:true,characterData:true,subtree:true});
+  /* ----- 滾輪縮放 ----- */
+  R.domElement.addEventListener('wheel',e=>{ if(!P.on) return; e.preventDefault(); P.zoom=Math.max(0.55,Math.min(1.8,P.zoom*(e.deltaY>0?1.08:1/1.08))); store.set('pcZoom',P.zoom); },{passive:false});
+  /* ----- 鍵盤 ----- */
+  addEventListener('keydown',e=>{ if(!P.on||typing(e)) return;
+    if(S.quizOpen&&/^Digit[1-6]$/.test(e.code)){ const b=document.querySelectorAll('#qOpts .qo')[+e.code.slice(5)-1]; if(b&&!b.disabled){ b.click(); e.preventDefault(); } return; }
+    if(e.code==='Enter'||e.code==='NumpadEnter'){ const qn=$('qNext'); if(S.quizOpen&&qn&&qn.style.display!=='none'&&qn.offsetParent){ qn.click(); e.preventDefault(); return; } if(REAL.dispatch){ rq_('rRes').click(); e.preventDefault(); } return; }
+    if(e.code==='Backspace'&&REAL.dispatch){ rq_('rRej').click(); e.preventDefault(); return; }
+    if(e.code==='Escape'&&S.mode==='drive'&&!e.repeat){ $('bMenu').click(); } });
+  /* ----- 開／關 ----- */
+  function begin(on){ P.on=!!on; S.pcOn=P.on; document.body.classList.toggle('pc',P.on); document.body.classList.toggle('pcLB',P.on&&P.bars);
+    if(!P.on){ document.body.classList.remove('pcDrive'); if(P.saved){ REAL.comp=P.saved[0]; REAL.gp=P.saved[1]; REAL.bloom=P.saved[2]; P.saved=null; } restore(); return; }
+    const C=comp(); if(!P.saved) P.saved=[REAL.comp,REAL.gp,REAL.bloom]; REAL.comp=C; REAL.gp=P.gp; REAL.bloom=P.bloom; REAL.fx=true; realSky.visible=false;
+    setTOD(S.level.tod==='dusk'?'dusk':S.level.tod); }
+  const v=new THREE.Vector3();
+  function tick(dt,t){ if(!P.on) return; if(PCB) PCB.tick(t); sky.position.copy(cam.position);
+    document.body.classList.toggle('pcDrive',S.mode==='drive');
+    v.set(S.car.x,ELEV(S.car.x,S.car.z)+0.2,S.car.z).project(cam); let sx=(v.x*0.5+0.5)*innerWidth, sy=(-v.y*0.5+0.5)*innerHeight; if(v.z>1){ sx=innerWidth/2; sy=innerHeight*0.7; }
+    sx=Math.max(innerWidth*0.3,Math.min(innerWidth*0.7,sx)); sy=Math.max(innerHeight*0.45,Math.min(innerHeight-190,sy));
+    const b=document.body.style; if(Math.abs((P.sx||0)-sx)>1) { b.setProperty('--sx',sx.toFixed(0)+'px'); P.sx=sx; } if(Math.abs((P.sy||0)-sy)>1){ b.setProperty('--sy',sy.toFixed(0)+'px'); P.sy=sy; } }
+  S.pcHook=begin; S.pcPal=palette;
+  return Object.assign(P,{begin,tick,palette,setBars(on){ P.bars=!!on; store.set('pcBars',P.bars); document.body.classList.toggle('pcLB',P.on&&P.bars); }}); })();
+window.__PC=PC;
+
+/* ---------- 🩺 現場模擬關卡：每個 protocol 一關，每次隨機抽一個規程分支（資料來源：ems.homes） ---------- */
+const SIMLV=(()=>{
+  const HOSP=()=>(typeof REGION!=='undefined'&&REGION==='st')?'威爾斯親王醫院':'屯門醫院';
+  const pk=a=>a[Math.random()*a.length|0];
+  const sh=a=>{ const b=a.slice(); for(let i=b.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; [b[i],b[j]]=[b[j],b[i]]; } return b; };
+  const S=(k,act,find,q,o,why,x)=>Object.assign({k,act,find,q:{q,o,a:0,why}},x||{});
+  const AV=['A 清醒','V 對說話有反應','P 對痛楚有反應','U 冇反應'];
+  const O2O={room:'室內空氣 (Room Air)，每兩分鐘監察 SpO₂',nc:'鼻插喉／簡單面罩，維持 SpO₂ ≥ 94%',nrm:'不能回吸面罩 (NRM) 15 L 高濃度氧氣',bvm:'膠囊活門面罩 (BVM) 輔助通氣，15 L 氧氣',ven:'文氏面罩，由 FiO₂ 0.24 @ 3 L 開始',none:'暫時唔俾氧，每兩分鐘監察 SpO₂'};
+  const O2W={room:'第 4 類一般病人：SpO₂ ≥ 94% 而冇呼吸困難 → Room Air，每兩分鐘監察。',nc:'第 4 類一般病人：SpO₂ 85–93%（或 ≥ 94% 但有呼吸困難）→ 鼻插喉／簡單面罩，維持 SpO₂ ≥ 94%。',nrm:'嚴重受傷或罹患危疾（休克、重大創傷、頭部重創、過敏反應、全身抽搐、一氧化碳中毒、吸入性損傷等）→ 不能回吸面罩／BVM 高濃度氧氣。',bvm:'呼吸驟停或呼吸率及／或深度不足 → 用膠囊活門面罩 (BVM)。',ven:'COPD 有呼吸困難 → 文氏面罩程序：由 0.24／3 L 開始，目標 SpO₂ 90–94%，每兩分鐘監察。',none:'攝取百草枯：SpO₂ ≥ 85% 唔應俾氧，每兩分鐘監測；< 85% 先俾最低量氧氣，目標 85–88%。'};
+  function BB(o){ const s=[];
+    s.push(o.rseQ?Object.assign({k:'RSE',act:o.rseAct||'觀察環境、留意致傷過程 (MOI)、自我介紹',find:o.rse},{q:o.rseQ}):S('RSE',o.rseAct||'觀察環境、留意致傷過程 (MOI)、自我介紹',o.rse,'到場第一步要確認咩？',['現場安全 (RSE)，留意致傷過程 (MOI)','即刻俾氧氣','先量血壓','先問病史'],'流程由 RSE 開始：先確保現場安全，再接觸病人。'));
+    const [a,lf]=o.loc; s.push(S('LOC','叫病人、問「剛才發生咩事？」；冇反應就輕壓肩斜肌',lf,'AVPU 評級係？',[AV[a],...AV.filter((_,i)=>i!==a)],'A 清醒、V 對說話有反應、P 對痛楚有反應、U 完全冇反應。',{reveal:['avpu']}));
+    const [dn,df]=o.d; s.push(S('D','問有冇跌倒、撞傷頭頸、頸痛、能否自己坐起',df,'脊椎 (D) 點處理？',dn?['懷疑脊椎受損：隊員用頭鎖固定頭部，再按脊柱處理準則評估','Rule out D，唔使理','叫病人自己行幾步試吓','郁吓條頸睇吓痛唔痛']:['Rule out D，唔使固定頭部','隊員用頭鎖固定頭部','即刻上頸套同脊椎板','叫病人瞓低唔好郁'],dn?'懷疑脊椎受損 → 隊員用頭鎖固定頭部，氣道用 Modified jaw thrust；之後按 Spinal Management（經改良 NEXUS 準則）決定制動。':'冇跌倒、冇撞傷、冇頸痛、可以自己坐起 → Rule out D。'));
+    s.push(o.cabQ?{k:'CAB',act:'摸脈搏、睇氣道、視聽觸呼吸',find:o.cab,reveal:['hr','rr'],q:o.cabQ,set:o.cabSet}:S('CAB','摸脈搏、睇氣道、視聽觸呼吸',o.cab,'摸到橈動脈脈搏，大約表示上壓 ≥ 幾多？',['80 mmHg','60 mmHg','70 mmHg','100 mmHg'],'Radial ≥ 80、Femoral ≥ 70、Carotid ≥ 60；冇脈搏即 CPR。',{reveal:['hr','rr']}));
+    const [c,of,sp]=o.o2; const wr=sh(Object.keys(O2O).filter(k=>k!==c&&!(c==='nrm'&&k==='bvm')&&!(c==='bvm'&&k==='nrm'))).slice(0,3);
+    s.push(S('O2','夾 SpO₂，按氧氣治療規程',of,'應該點俾氧？',[O2O[c],...wr.map(k=>O2O[k])],O2W[c],{reveal:['spo2'],set:sp?{spo2:sp}:null}));
+    s.push(o.rbsQ?{k:'RBS',act:'快速檢查頭、頸、胸、腹、髖、背、下肢、上肢',find:o.rbs,q:o.rbsQ,set:o.rbsSet}:S('RBS','快速檢查頭、頸、胸、腹、髖、背、下肢、上肢（約 30 秒）',o.rbs,'快速檢查 (RBS) 嘅次序係？',['頭、頸、胸、腹、髖、背、下肢、上肢','上肢、下肢、頭、胸','胸、腹、頭、頸','只檢查痛嘅位置'],'約 30 秒，展露傷處盡快處理。'));
+    s.push(o.skinQ?{k:'SKIN',act:'睇皮膚顏色、摸溫度同濕度',find:o.skin,q:o.skinQ}:o.shock?S('SKIN','睇皮膚顏色、摸溫度同濕度',o.skin,'皮膚蒼白濕冷提示？',['可能有休克，要密切留意','正常','發燒','曬傷'],'休克徵狀：Pale、cool、clammy（蒼白、冷、濕）。'):S('SKIN','睇皮膚顏色、摸溫度同濕度',o.skin,'皮膚檢查要睇咩？',['顏色（蒼白、潮紅、發紺）、濕／乾、冷／暖','只睇有冇紋身','只睇有冇疤痕','唔使睇'],'正常係「Pink, warm, dry」。'));
+    const [u,dx,dw]=o.dec; s.push(S('DEC','決定：穩定定不穩定',dx,'病人情況屬於？',u?['不穩定 (Unstable)：盡快處理及送院','穩定 (Stable)：喺現場詳細檢查先決定']:['穩定 (Stable)：可以喺現場進一步檢查','不穩定：即刻送院、唔使處理'],dw||(u?'不穩定：清醒程度下降、呼吸 < 10 或 > 29、休克徵狀、胸痛、新出現發紺等。':'冇威脅生命嘅情況 → 穩定，可以喺現場進一步檢查同處理。')));
+    return s; }
+  const VS=(f,x)=>S('VS','量維生指數',f,'不穩定病人幾耐量一次維生指數？',['每 5 分鐘 (Q5)','每 15 分鐘','每 30 分鐘','到醫院先量'],'不穩定病人 Q5、穩定病人 Q15。',Object.assign({reveal:['sbp','hr','rr','spo2']},x||{}));
+  const VS2=(f,x)=>S('VS','量維生指數',f,'行到 Protocol（不穩定）嘅病人幾耐量一次維生指數？',['每 5 分鐘 (Q5)','每 15 分鐘','每小時','唔使量'],'行到 Protocol 嘅病人屬不穩定：Q5；冇生命危險嘅穩定病人先係 Q15。',Object.assign({reveal:['sbp','hr','rr','spo2']},x||{}));
+  const LG=(f,q,o,w,x)=>S('LG','LOAD & GO：上車床送院',f,q||'下一步？',o||['LOAD & GO，送院途中繼續密切觀察','留喺現場等病人完全好返','叫病人自己去醫院','等家人到咗先走'],w||'處理好即時問題後 LOAD & GO，途中繼續密切觀察。',x);
+  const H=(re,m)=>[...(re?[re]:[]),{k:'MIST',act:'向急症室交接',mist:m}];
+  const ARR=(rse,cpr,aed)=>[S('RSE','觀察環境、確保安全',rse,'到場見病人倒地，第一步？',['確保現場安全，再接觸病人','即刻開始 CPR 唔使理環境','先搵病人身份證','先問旁人病歷'],'RSE 先：確保自己同其他人安全。'),
+    S('LOC','拍膊頭、大聲叫、輕壓肩斜肌','對聲音同痛楚都冇反應。','AVPU 評級係？',['U 冇反應','P','V','A'],'完全冇反應 = U。',{reveal:['avpu']}),
+    S('CAB','同時檢查脈搏同呼吸（唔多過 10 秒）','頸動脈摸唔到脈搏，冇呼吸（間中有瀕死呼吸 Gasping）。','即刻要做咩？',['立即施行 CPR（≥ 8 歲 30:2），儘快接駁 AED','先俾氧觀察 5 分鐘','先量血壓','擺復原臥式'],'發現冇呼吸脈搏 → 立即 CPR；瀕死呼吸當冇呼吸。',{reveal:['hr','rr']}),...(cpr||[]),...(aed||[])];
+  const L=[];
+  /* ================= 用藥 Protocol ================= */
+  L.push({id:'chest',ic:'❤️',cat:'藥',title:'心源性胸部痛',en:'Cardiac Chest Pain',
+    vars:[{k:'ntg',label:'有處方 NTG、血壓足夠'},{k:'nontg',label:'冇處方 NTG → 痛未止用 Penthrox'},{k:'lowbp',label:'SBP < 100 → 唔可以俾 NTG'},{k:'asa24',label:'24 小時內已服 ASA'}],
+    make(v){ const sbp=v.k==='lowbp'?94:138; return {who:'62 歲男子',call:'有 62 歲男子胸口痛、出冷汗，佢話以前有心臟病。',v:{hr:96,sbp,dbp:v.k==='lowbp'?60:86,rr:22,spo2:92,avpu:0,gcs:15,rbs:6.8,pain:8,rhythm:'sinus'},
+      steps:[...BB({rse:'大堂環境安全。男子坐喺櫈度，手按住胸口，額頭冒汗。',loc:[0,'對答清楚：「胸口好翳……好似有嘢壓住。」'],d:[0,'冇跌倒、冇撞傷、冇頸痛，自己坐得穩。'],cab:'橈動脈有脈，約 96 次、規則；氣道暢通；呼吸 22 次。',o2:['nc','SpO₂ 92%，冇 COPD、冇食百草枯，輕微氣促。',96],rbs:'冇明顯傷勢。',skin:'蒼白、濕冷。',shock:1,dec:[1,'清醒，但有胸痛、皮膚濕冷。','有胸痛（懷疑心臟病發）屬情況不穩定。']}),
+        S('HX','問 OPQRST 同 Critical Hx','O：20 分鐘前行樓梯開始 · P：休息都唔減 · Q：好似重物壓住 · R：胸口中間，傳去左手 · S：8／10 · T：持續。'+(v.k==='nontg'?'冇醫生處方 NTG。':'有心臟病，醫生處方 NTG（Isordil）。')+(v.k==='asa24'?'今朝已經自己食咗一粒阿士匹靈。':'今日未食阿士匹靈。')+'冇藥物敏感、一星期內冇做手術、72 小時內冇用壯陽藥。','問胸口痛用嘅口訣係？',['OPQRST','MIAMIA','CHEAP PAIN','3N'],'OPQRST：Onset、Provocation／palliation、Quality、Region／radiation、Severity、Time。',{reveal:['pain']}),
+        VS(`BP ${sbp}／${v.k==='lowbp'?60:86} · HR 96 · RR 22 · SpO₂ 96%`),
+        v.k==='asa24'?S('TX','ASA：確認適用症、排除禁忌症 (SAPHBUS)','24 小時內已因今次不適服用 ASA。','點處理？',['唔使再俾 ASA（SAPHBUS 嘅 U：Used）','再俾 200 mg','俾 100 mg 補足','俾 400 mg'],'如病人 24 小時內曾因今次心臟不適服用 ASA（自服、醫生或 PAD 指示），救護人員唔需要再俾。')
+          :S('TX','ASA：確認適用症、排除禁忌症 (SAPHBUS)','懷疑心源性胸痛、≥ 12 歲；冇 SAPHBUS 任何一項。','ASA（阿士匹靈）點俾？',['200 mg，只俾一劑','100 mg，每 5 分鐘一劑','唔可以俾：佢有心臟病','400 mg'],'ASA 200 mg，Only One Dose。禁忌 SAPHBUS：吞嚥、< 12 歲、懷孕、過敏、出血、24 小時內已服、一星期內手術；LVAD 亦唔可以。',{e:{q:'救護員會俾胸口痛病人咀嚼咩藥？',o:['阿士匹靈 (Aspirin)','止咳水','維他命 C'],a:0,why:'懷疑心臟引致嘅胸口痛，冇禁忌就俾阿士匹靈 200 mg。'}}),
+        v.k==='ntg'||v.k==='asa24'?S('TX','NTG：睇處方同維生指數',`有醫生處方 NTG；SBP ${sbp}、HR 96；冇 LVAD。`,'NTG 點處理？',['SBP ≥ 100、HR ≤ 150 → 0.4 mg 一噴','唔可以：SBP 要 ≥ 140','一次過噴 3 下','已經俾咗 ASA 就唔可以俾'],'NTG 0.4 mg／噴，最多 3 噴，每劑相隔 5 分鐘；SBP ≥ 100、HR ≤ 150。',{set:{pain:6,sbp:126,hr:92}})
+        :v.k==='lowbp'?S('TX','NTG：睇處方同維生指數','有醫生處方 NTG，但 SBP 94。','NTG 點處理？',['唔可以俾：收縮壓 < 100','可以俾 0.4 mg','俾半劑','先俾 NS 再噴'],'NTG 禁忌：SBP < 100、HR > 150、對 NTG 過敏、72 小時內用過壯陽藥、LVAD。')
+        :S('TX','NTG：睇處方','冇醫生處方 NTG。','NTG 點處理？',['唔可以俾：冇醫生處方 NTG','可以俾 0.4 mg','俾 3 噴','問家人借'],'NTG 適用症要病人有醫生處方嘅 NTG／Nitrates。'),
+        S('TX','其他檢查','情況許可。','情況許可時，應同時做咩檢查？',['12 導聯心電圖 (12-Lead ECG)','量體溫','驗尿','唔使'],'心源性胸痛規程：如情況許可，同時進行 12-Lead ECG。'),
+        LG('病人用車床上車。',null,['LOAD & GO，途中繼續觀察，需要時再按規程處理','留喺現場等痛完全消失','叫病人自己行上車','等家人到咗先走'])],
+      hosp:H(v.k==='ntg'||v.k==='asa24'?S('RE','第一劑 NTG 後 5 分鐘重新評估','仍然胸痛 6／10 · BP 124／80 · HR 90','點處理？',['相隔 5 分鐘、SBP ≥ 100、HR ≤ 150 → 第 2 劑 NTG 0.4 mg','停止所有用藥','再俾 ASA 200 mg','一次過噴 3 下'],'仍有胸痛及 SBP ≥ 100、HR ≤ 150：相隔 5 分鐘俾第 2／3 劑 NTG。',{set:{pain:4,sbp:120,hr:86}})
+        :S('RE','途中重新評估','仍然胸痛 7／10；冇 NTG 可用。','點處理？',['密切觀察，嘗試使用 Penthrox（綠哨子）','俾 NTG','再俾 ASA','唔使理'],'已用盡劑量或冇處方 NTG → 密切觀察病人，嘗試使用 Penthrox。',{set:{pain:4}}),
+        ['62 歲男，20 分鐘前行樓梯開始胸口痛，有心臟病','胸口中間壓住感傳去左手，皮膚蒼白濕冷','BP '+sbp+' → '+(v.k==='lowbp'?'96':'120')+' · HR 96 → 86 · SpO₂ 92% → 97%',v.k==='asa24'?'氧氣、（已自服 ASA）、NTG × 2、12 導聯心電圖':v.k==='ntg'?'氧氣、ASA 200 mg、NTG 0.4 mg × 2、12 導聯心電圖':'氧氣、ASA 200 mg、Penthrox、12 導聯心電圖'])}; } });
+  L.push({id:'resp',ic:'🫁',cat:'藥',title:'呼吸（氣促）',en:'Respiratory',
+    vars:[{k:'asthma',label:'哮喘成人'},{k:'copd',label:'COPD → 文氏面罩'},{k:'preg',label:'懷孕 → 唔可以用 Atrovent'},{k:'child',label:'8 歲小童'},{k:'glau',label:'有青光眼病歷（冇急性發作）'}],
+    make(v){ const child=v.k==='child', age=child?'8 歲男童':v.k==='copd'?'72 歲男子':v.k==='preg'?'30 歲孕婦':'35 歲女子';
+      return {who:age,call:'有'+age+'氣促、講嘢斷斷續續。',v:{hr:114,sbp:128,dbp:80,rr:30,spo2:v.k==='copd'?86:90,avpu:0,gcs:15,rbs:6,pain:0,rhythm:'tachy'},
+      steps:[...BB({rse:'住宅單位，環境安全。病人坐喺床邊、身向前傾，用力呼吸。',loc:[0,'清醒，講嘢斷斷續續。'],d:[0,'冇跌倒、冇撞傷。'],cab:'橈動脈 114 次；氣道暢通；呼吸 30 次，有喘鳴、用輔助肌。',o2:v.k==='copd'?['ven','SpO₂ 86%，有 COPD 病歷，呼吸困難。',90]:['nc','SpO₂ 90%，冇 COPD，呼吸困難。',94],rbs:'冇傷勢。',skin:'冒汗、嘴唇稍為發紺。',skinQ:{q:'嘴唇發紺代表？',o:['缺氧','發燒','過敏','正常'],a:0,why:'新出現嘅發紺屬情況不穩定。'},dec:[1,'呼吸 30 次、SpO₂ 偏低。','呼吸每分鐘 > 29、新出現發紺屬不穩定。']}),
+        S('HX','問 Critical Hx',(v.k==='copd'?'有 COPD，用開 Ventolin、Atrovent。':child?'有哮喘，用開 Ventolin。':'有哮喘，醫生處方 Ventolin。')+(v.k==='preg'?'懷孕 28 星期。':'')+(v.k==='glau'?'有青光眼病歷，而家冇眼痛、視力正常。':'')+'對 Ventolin 冇敏感。','Ventolin／Atrovent 適用症包括？',['主要不適為氣促，有哮喘／COPD 病歷或處方 Beta2-agonist 等','任何咳嗽病人','只限 COPD','只限 65 歲以上'],'適用症：主要不適為氣促，而有哮喘／COPD 病歷、或處方 Beta2-agonist／Anti-cholinergic、或曝露於不明氣體引致下支氣管收窄（需先聽肺）。'),
+        VS('BP 128／80 · HR 114 · RR 30 · SpO₂ '+(v.k==='copd'?'90%':'94%')+'；聽肺音（前後）有喘鳴'),
+        S('TX','Salbutamol (Ventolin)',(child?'8 歲':'成人')+'，聽肺確認下支氣管收窄。','Ventolin 劑量？',child?['300 mcg（3 puffs）','400 mcg（4 puffs）','200 mcg（2 puffs）','唔可以俾']:['400 mcg（4 puffs）','300 mcg（3 puffs）','200 mcg（2 puffs）','100 mcg（1 puff）'],'Salbutamol：2 至 < 5 歲 200 mcg（2 puffs）、5 至 < 12 歲 300 mcg（3 puffs）、≥ 12 歲 400 mcg（4 puffs）。',{set:{rr:26,spo2:v.k==='copd'?91:95}}),
+        child?S('TX','Ipratropium Bromide (Atrovent)','8 歲。','Atrovent 可唔可以俾？',['唔可以：< 12 歲係禁忌','可以 40 mcg','可以 20 mcg','可以 80 mcg'],'Atrovent 禁忌：< 12 歲、對 Ipratropium／Atropine 敏感、懷孕或母乳餵哺、急性青光眼發作。')
+        :v.k==='preg'?S('TX','Ipratropium Bromide (Atrovent)','懷孕 28 星期。','Atrovent 可唔可以俾？',['唔可以：懷孕係禁忌','可以 40 mcg','俾一半劑量','可以，冇問題'],'Atrovent 禁忌：< 12 歲、敏感、懷孕或母乳餵哺、急性青光眼發作。')
+        :v.k==='glau'?S('TX','Ipratropium Bromide (Atrovent)','有青光眼病歷，但而家冇急性發作。','Atrovent 點用？',['可以用 40 mcg（2 puffs），用前叫病人閉眼並用紗布遮住雙眼','唔可以用','用 80 mcg','直接噴，唔使理眼'],'有青光眼病歷而未有急性發作，仍可用 Atrovent，但使用前要請病人閉上雙眼並用紗布遮擋。')
+        :S('TX','Ipratropium Bromide (Atrovent)','≥ 12 歲、冇禁忌。','Atrovent 劑量？',['40 mcg（2 puffs）','20 mcg（1 puff）','80 mcg（4 puffs）','400 mcg'],'Atrovent 40 mcg／2 puffs。'),
+        LG('病人坐起上車床。',null,['LOAD & GO，途中繼續觀察，需要時繼續行使 Respiratory Protocol','留喺現場等完全唔氣促','叫病人行落樓','唔使送院'])],
+      hosp:H(S('RE','相隔 5 分鐘重新評估','仍然氣促、有喘鳴；病人表示仍然辛苦。','點處理？',['相隔 5 分鐘，俾相應歲數嘅第 2 劑 Ventolin','停止所有用藥','俾雙倍劑量','改俾 ASA'],'有氣促徵狀或病人表示仍然氣促 → 與上次用藥相隔 5 分鐘，俾第 2／3／4 劑 Ventolin。',{set:{rr:22,spo2:96,hr:104}}),
+        [age+'，突然氣促，'+(v.k==='copd'?'COPD 病歷':'哮喘病歷'),'用輔助肌呼吸、喘鳴、嘴唇發紺','RR 30 → 22 · SpO₂ '+(v.k==='copd'?'86% → 92%':'90% → 96%')+' · HR 114 → 104',(v.k==='copd'?'文氏面罩、':'鼻插喉氧氣、')+'Ventolin × 2'+(child||v.k==='preg'?'（冇用 Atrovent：禁忌）':'、Atrovent 40 mcg')])}; } });
+  L.push({id:'hypo',ic:'🍬',cat:'藥',title:'血糖症',en:'Glycemia',
+    vars:[{k:'iv',label:'唔可以吞嚥 → IV D10W'},{k:'oral',label:'可以安全吞嚥 → 口服'},{k:'high',label:"H'stix > 20 → NS"},{k:'stop',label:"2nd H'stix > 20 → 停 D10W"}],
+    make(v){ const hi=v.k==='high', r1=hi?24.5:2.4; return {who:'70 歲婦人',call:'有 70 歲婦人神志不清、答非所問，家人話佢有糖尿病。',v:{hr:104,sbp:132,dbp:78,rr:18,spo2:96,avpu:v.k==='oral'?0:1,gcs:v.k==='oral'?14:13,rbs:r1,pain:0,rhythm:'sinus'},
+      steps:[...BB({rse:'住宅客廳，環境安全。婦人坐喺梳化，家人陪住。',loc:v.k==='oral'?[0,'清醒但有啲混亂、手震，可以正常吞嚥。']:[1,'叫佢會望你，但答非所問、講嘢含糊。'],d:[0,'冇跌倒、冇撞頭。'],cab:'橈動脈 104 次；氣道暢通；呼吸 18 次，深度足夠。',cabQ:{q:'CAB 正常，係咪要用 BVM？',o:['唔使：呼吸率同深度足夠，繼續評估','要即刻 BVM','要即刻插 OPA','要 CPR'],a:0,why:'Very shallow、very slow、laboured、gasping、發紺先要 Bag。'},o2:['room','SpO₂ 96%，冇呼吸困難。'],rbs:'冇傷勢。',skin:hi?'皮膚乾、口乾。':'蒼白、冒冷汗。',dec:[1,'清醒程度改變／神經功能急性變化。','清醒程度下降（例如糖尿病）屬不穩定。']}),
+        S('HS',"檢查 1st H'stix","1st H'stix："+r1+' mmol/L',"血糖症規程嘅血糖讀數適用症係？",['≦ 4 mmol/L 或 > 20 mmol/L','< 6 mmol/L','≦ 2 mmol/L','> 11 mmol/L'],'Glycemia：非創傷病人有清醒程度下降／神經功能急性變化／懷疑血糖問題，及血糖 ≦ 4 或 > 20；< 12 歲禁用。',{reveal:['rbs']}),
+        VS('BP 132／78 · HR 104 · RR 18 · SpO₂ 96%'),
+        ...(hi?[S('TX','0.9% Normal Saline',"1st H'stix 24.5（> 20）。",'點處理？',['IV NS 200 ml／hr（一秒一滴）','D10W 100 ml FR','口服糖水','唔使處理'],"1st H'stix > 20 → LOAD & GO，IV 0.9% NS 200 ml／hr（一秒一滴，口訣「滴二三四、滴二三四」）。",{e:{q:'血糖太高，救護員會？',o:['打鹽水點滴','俾糖水','俾朱古力'],a:0,why:'血糖太高唔可以再俾糖。'}})]
+        :v.k==='oral'?[S('TX','D10W：揀給藥方式','病人清醒程度輕微改變，氣道冇問題，可以安全吞嚥。',"1st H'stix ≦ 4，可以安全吞嚥，D10W 點俾？",['口服 D10W 200 ml（唔需要 Thiamine）','IV 100 ml FR + Thiamine','IV 100 ml／hr','唔使俾'],'口服：每次 200 ml，唔需要 Thiamine；IV 先需要 Thiamine。',{e:{q:'清醒又可以吞嘢嘅低血糖病人，救護員會？',o:['俾佢飲糖水 (D10W)','俾佢瞓覺','俾佢食止痛藥'],a:0,why:'可以安全吞嚥就口服糖水。'}}),
+          S('HS',"開始 5 分鐘後檢查 2nd H'stix","2nd H'stix：3.8 mmol/L。","2nd H'stix ≦ 4，點處理？",['再口服 D10W 200 ml（口服最多 400 ml）','改 IV Full Rate','停止','俾 Glucagon'],"2nd H'stix ≦ 4：口服每次 200 ml（最多 400 ml）；IV 就 100 ml／FR。",{reveal:['rbs'],set:{rbs:5.6,avpu:0,gcs:15,hr:94}})]
+        :[S('TX','D10W：揀給藥方式','病人 V 級，唔可以安全吞嚥。',"1st H'stix ≦ 4，唔可以安全吞嚥，D10W 點俾？",['IV D10W 100 ml Full Rate（預先接駁 3-way）','口服 D10W 200 ml','IV 100 ml／hr（兩秒一滴）','唔使俾'],'口服要可以安全吞嚥；IV 1st ≦ 4 → 100 ml／FR。IV 不成功或無法 IV，留意 Glucagon。',{e:{q:'唔清醒嘅低血糖病人，救護員會？',o:['經靜脈俾糖水 (D10W)','餵佢食糖','叫佢瞓覺'],a:0,why:'唔清醒嘅病人唔可以餵嘢食，會哽親。'}}),
+          S('TX','俾 IV D10W 時嘅預防用藥','冇 Thiamine 敏感。','俾 IV D10W 時要預防性俾咩？',['Thiamine 50 mg（0.5 ml，3-way 落藥）','Glucagon','Midazolam','ASA'],'Thiamine 適用症：給予 D10W (IV) 時嘅預防；口服唔需要。'),
+          v.k==='stop'?S('HS',"開始 5 分鐘後檢查 2nd H'stix","2nd H'stix：21.2 mmol/L；病人清醒。","2nd H'stix > 20，點處理？",['停止輸入 D10W','繼續 100 ml FR','改 100 ml／hr','再俾 Thiamine'],"2nd H'stix > 20 → 停止輸入糖水 (D10W)。",{reveal:['rbs'],set:{rbs:21.2,avpu:0,gcs:15,hr:94}})
+          :S('HS',"開始 5 分鐘後檢查 2nd H'stix","2nd H'stix：5.8 mmol/L；病人開始清醒。","2nd H'stix > 4 及 ≦ 20，D10W 點調？",['改為 100 ml／hr（兩秒一滴）','再俾 100 ml FR','停止所有輸液','改口服 400 ml'],"2nd > 4 及 ≦ 20 → 100 ml／hr；> 20 → 停止 D10W。",{reveal:['rbs'],set:{rbs:5.8,avpu:0,gcs:15,hr:94}})]),
+        LG('病人用車床上車。','送院途中問病歷用咩口訣？',['MIAMIA（進食、胰島素、活動、藥物、疾病、酒精）','OPQRST','SAPHBUS','3N'],'Glycemia：上車後問病歷及發生經過，詢問 MIAMIA。')],
+      hosp:H(S('RE','途中重新評估','病人清醒。','如果 IV 試咗 1／2／3 次都唔成功，應該留意用咩？',['Glucagon（胰高血糖素）','Midazolam','Adrenaline','NTG'],'1／2／3 次 IV 不成功或無法進行 IV → 留意是否需要使用 Glucagon。'),
+        ['70 歲女，糖尿病，今朝開始神志不清',(v.k==='oral'?'清醒程度輕微改變':'清醒程度 V')+"，1st H'stix "+r1,(hi?"HR 104 · H'stix 24.5（仍高）· 清醒程度未有明顯改變":"HR 104 → 94 · H'stix 2.4 → "+(v.k==='stop'?'21.2':v.k==='oral'?'5.6':'5.8')+' · 清醒程度改善'),hi?'IV NS 200 ml／hr':v.k==='oral'?'口服 D10W 200 ml × 2':v.k==='stop'?'IV D10W 100 ml FR、Thiamine 50 mg，已停 D10W':'IV D10W 100 ml FR、Thiamine 50 mg，之後 100 ml／hr'])}; } });
+  L.push({id:'glucagon',ic:'💉',cat:'藥',title:'胰高血糖素',en:'Glucagon',
+    vars:[{k:'im',label:'IV 失敗 → Glucagon IM'},{k:'sc',label:'有 IMI 禁忌症 → SC'},{k:'pheo',label:'嗜咯細胞瘤 → 禁用'}],
+    make(v){ return {who:'58 歲男子',call:'有 58 歲男子喺公園暈暈沉沉，朋友話佢有糖尿病。',v:{hr:108,sbp:126,dbp:76,rr:18,spo2:97,avpu:1,gcs:12,rbs:2.1,pain:0,rhythm:'sinus'},
+      steps:[...BB({rse:'公園長櫈，環境安全。男子半坐半瞓，冒汗。',loc:[1,'叫佢會應，但含糊。'],d:[0,'冇跌倒。'],cab:'橈動脈 108 次；氣道暢通；呼吸 18 次。',o2:['room','SpO₂ 97%，冇呼吸困難。'],rbs:'冇傷勢。',skin:'蒼白、濕冷。',shock:1,dec:[1,'清醒程度下降。']}),
+        S('HS',"檢查 1st H'stix","1st H'stix：2.1 mmol/L",'下一步？',['試 IV D10W；1／2／3 次 IV 失敗或無法 IV 就考慮 Glucagon','即刻 Glucagon，唔使試 IV','俾口服糖水','俾 Midazolam'],'Glucagon 適用症：同 Glycemia 一樣，加上 H\'stix ≦ 4 及 1／2／3 次 IV 嘗試失敗或無法進行 IV。',{reveal:['rbs']}),
+        VS('BP 126／76 · HR 108 · RR 18 · SpO₂ 97%'),
+        S('TX','IV 嘗試','試咗 3 次 IV 都唔成功。'+(v.k==='sc'?'病人有 IMI 禁忌症。':'')+(v.k==='pheo'?'家人拎出病歷：有嗜咯細胞瘤 (Phaeochromocytoma)。':''),'下一步？',v.k==='pheo'?['唔可以用 Glucagon（禁忌），LOAD & GO，途中可再試 IV','照俾 Glucagon 1 mg','俾雙倍 Glucagon','口服 D10W']:v.k==='sc'?['Glucagon 1 mg 經皮下 (SC) 注射','唔可以俾','Glucagon 1 mg IV','Glucagon 2 mg IM']:['Glucagon 1 mg（1 ml）肌肉注射','Glucagon 0.5 mg','Glucagon 1 mg IV','唔可以俾'],'Glucagon 1 mg／1 ml；禁忌：< 12 歲、敏感、嗜咯細胞瘤。有 IMI 禁忌症可以 SC 注射。'),
+        LG('病人用車床上車。','送院途中、未到檢查 2nd H\'stix 之前，可以做咩？',['再試餘下嘅 IV 次數（最多 3 次），或病人冇氣道問題、可以吞嚥就飲 D10W','乜都唔做','俾第二劑 Glucagon','俾 Thiamine 先'],'Glucagon 流程：途中可嘗試餘下 IV 次數，或病人可以自行吞嚥就飲 D10W。')],
+      hosp:H(v.k==='pheo'?null:S('RE',"Glucagon 後 5 分鐘檢查 2nd H'stix","2nd H'stix：5.2 mmol/L",'2nd H\'stix > 4 及 ≦ 20，點處理？',['密切觀察，量維生指數','再俾 Glucagon','俾 D10W FR','停止觀察'],"2nd > 4 及 ≦ 20：密切觀察；如有 IV 就 D10W 100 ml／hr。",{reveal:['rbs'],set:{rbs:5.2,avpu:0,gcs:15,hr:96}}),
+        ['58 歲男，糖尿病，公園暈暈沉沉',"清醒程度 V，H'stix 2.1，IV 三次失敗"+(v.k==='pheo'?'，有嗜咯細胞瘤':''),(v.k==='pheo'?"HR 108 · H'stix 2.1 → 待複查":"HR 108 → 96 · H'stix 2.1 → 5.2"),v.k==='pheo'?'冇用 Glucagon（禁忌），途中再試 IV':'Glucagon 1 mg '+(v.k==='sc'?'SC':'IM')])}; } });
+  L.push({id:'narc',ic:'💊',cat:'藥',title:'麻醉藥過量',en:'Narcotic Overdose',
+    vars:[{k:'std',label:'成人，冇 IMI 禁忌'},{k:'imi',label:'有 IMI 禁忌症都要打'},{k:'young',label:'< 12 歲 → 禁用'}],
+    make(v){ const who=v.k==='young'?'11 歲男童':'26 歲男子', arm=Math.random()<0.5, site=arm?'右前臂內側':'左大腿內側（近腹股溝）', st=arm?'手臂':'大腿'; const yg=v.k==='young'; return {who,marks:yg?null:arm?'armR':'thighL',call:yg?'屋企有'+who+'叫極都唔醒，家人話佢可能誤飲咗阿爺嘅美沙酮。':'後樓梯有'+who+'昏迷，旁邊有針筒。',v:{hr:56,sbp:100,dbp:62,rr:6,spo2:84,avpu:3,gcs:3,rbs:5.4,pain:0,rhythm:'brady'},
+      steps:[...BB({rse:yg?'住宅客廳，枱面有一支打開咗嘅美沙酮藥水樽，家人好驚慌。':'後樓梯，地上有用過嘅針筒、針嘴同藥樽。',rseQ:{q:'RSE 時要特別留意咩？',o:['附近有冇麻醉藥／藥樽／注射器（小心針刺）','樓梯有幾多級','病人錢包','天氣'],a:0,why:'Narcotic Overdose 流程：RSE 檢查附近有無麻醉藥／藥樽／注射器。'},loc:[3,'冇反應。'],d:[0,yg?'家人話佢喺梳化慢慢瞓低，冇跌倒。':'旁人話佢坐低之後慢慢瞓低，冇跌倒。'],cab:'橈動脈 56 次；鼻鼾聲；呼吸 6 次、非常淺。',cabQ:{q:'呼吸 6 次、非常淺，點處理？',o:['OPA（拒絕就試 NPA），用 BVM Bagging','鼻插喉 2 L','觀察 5 分鐘','擺坐姿'],a:0,why:'如病人呼吸非常淺／非常慢，使用 BVM；病人拒絕 OPA 可試 NPA。'},o2:['bvm','SpO₂ 84%。',92],rbs:'瞳孔針孔狀 (Pin point)；冇明顯外傷。',rbsQ:{q:'RBS 發現瞳孔針孔狀，加上呼吸又慢又淺，要諗起？',o:['麻醉劑（鴉片類）過量','低血糖','中風','中暑'],a:0,why:'Narcotic 流程：檢查瞳孔是否 Pin point、針孔（常見於手臂／腹股溝）、旁觀者資料。'},skin:yg?'嘴唇同指甲發紺、皮膚濕冷；冇針孔。':'嘴唇同指甲發紺、皮膚濕冷；'+site+'有多個針孔同瘀痕。',skinQ:yg?{q:'嘴唇、指甲發紺代表？',o:['缺氧，要繼續有效 BVM 通氣','曬傷','好健康','皮膚敏感'],a:0,why:'發紺 = 缺氧。小朋友誤服鴉片類藥物（例如美沙酮）一樣會呼吸抑制、瞳孔針孔狀。'}:{q:'皮膚發紺，'+st+'有多個新舊針孔同瘀痕，代表？',o:['缺氧，加上經常注射藥物（支持麻醉藥過量）','曬傷','蚊叮','皮膚敏感'],a:0,why:'發紺 = 缺氧。Narcotic 流程要檢查針孔，常見於手臂、腹股溝／大腿內側，配合 Pin point 瞳孔同呼吸抑制，支持鴉片類過量。'},dec:[1,'清醒程度下降、呼吸抑制。']}),
+        VS('BP 100／62 · HR 56 · RR 6（BVM 中）· SpO₂ 92%'),
+        S('TX','Naloxone：確認適用症、排除禁忌症',v.k==='young'?'11 歲。':v.k==='imi'?'病人有 IMI 禁忌症（服用抗凝血藥）。':'≥ 12 歲、冇敏感。','點處理？',v.k==='young'?['唔可以俾 Naloxone（< 12 歲禁忌），繼續 BVM，LOAD & GO','俾 0.4 mg','俾 0.2 mg','俾 0.8 mg']:v.k==='imi'?['照樣肌肉注射 Naloxone 0.4 mg，注射後加壓止血並通知醫護人員','唔可以俾','改 SC','俾 0.2 mg']:['Naloxone 0.4 mg（1 ml）肌肉注射','Naloxone 4 mg','唔可以俾','Naloxone 0.04 mg'],'Naloxone 0.4 mg／1 ml；適用：麻醉劑過量、清醒程度下降及需要 BVM。禁忌：< 12 歲、敏感。有 IMI 禁忌症都需要注射，之後加壓止血。生效 2–15 分鐘，持續 30–60 分鐘。',{set:v.k==='young'?null:{rr:12,avpu:1,gcs:11,spo2:96,hr:80}}),
+        LG('BVM 下上車床。','LOAD & GO 之後仲要做咩？',["檢查 1st H'stix，按讀數用 Glycemia Protocol",'唔使再理','俾第二劑 Naloxone 預防','俾 ASA'],"Narcotic 流程：LOAD & GO 後檢查 1st H'stix。")],
+      hosp:H(S('RE','途中重新評估',v.k==='young'?'仍然需要 BVM。':'呼吸 12 次，叫佢會應。','Naloxone 持續時間有幾耐？',['30–60 分鐘（可能比麻醉藥短，要密切觀察）','24 小時','5 分鐘','永久'],'Naloxone 生效 2–15 分鐘、持續 30–60 分鐘。'),
+        [who+(yg?'，懷疑誤飲美沙酮，叫唔醒':'，後樓梯昏迷，旁有針筒'),yg?'U、瞳孔針孔狀、發紺、RR 6':'U、瞳孔針孔狀、'+st+'針孔、發紺、RR 6',yg?'RR 6（BVM 中）· SpO₂ 84% → 92% · HR 56':'RR 6 → 12 · SpO₂ 84% → 96% · HR 56 → 80','OPA + BVM'+(v.k==='young'?'（< 12 歲冇用 Naloxone）':'、Naloxone 0.4 mg IM')])}; } });
+  L.push({id:'charcoal',ic:'⚫',cat:'藥',title:'活性炭',en:'Activated Charcoal',
+    vars:[{k:'ok',label:'2 小時內、清醒 → HKPIC 批准'},{k:'late',label:'超過 2 小時 → 禁用'},{k:'nocall',label:'30 秒接唔通 → 先離場'}],
+    make(v){ return {who:'24 歲女子',call:'有 24 歲女子話食咗一樽成藥，人仲清醒。',v:{hr:98,sbp:118,dbp:72,rr:18,spo2:98,avpu:0,gcs:15,rbs:5.8,pain:0,rhythm:'sinus'},
+      steps:[...BB({rse:'住宅睡房，枱面有空藥樽。',rseQ:{q:'RSE 時要做咩？',o:['檢查附近有無服用物品包裝，情況許可帶同送院','即刻掉咗佢','唔使理','影相 post 上網'],a:0,why:'Activated Charcoal 流程：檢查附近有無服用物品包裝（如情況許可，帶同送院）。'},loc:[0,'清醒、合作。'],d:[0,'冇跌倒。'],cab:'橈動脈 98 次；氣道暢通；呼吸 18 次。',o2:['room','SpO₂ 98%，冇呼吸困難。'],rbs:'冇傷勢。',skin:'正常。',dec:[0,'清醒、生命表徵穩定。']}),
+        S('HX','Critical Hx：吞服時間、物品性質及數量',v.k==='late'?'約 3 小時前食咗 20 粒撲熱息痛。':'約 1 小時前食咗 20 粒撲熱息痛；冇嘔吐，吞嚥正常。','活性炭適用症包括？',['攝入過量有毒物質／藥物 2 小時內，完全清醒合作、可自行飲用、氣道暢通','任何時間都可以','昏迷病人都可以','只限小童'],'禁忌：< 12 歲、攝入超過 2 小時、敏感、清醒程度下降／不合作／吞嚥困難／氣道不暢／嘔吐、未獲 HKPIC 當值醫生批准。'),
+        VS2('BP 118／72 · HR 98 · RR 18 · SpO₂ 98%'),
+        v.k==='late'?S('TX','睇吓可唔可以用活性炭','攝入已超過 2 小時。','點處理？',['唔可以用活性炭，LOAD & GO','照俾 50 g','俾一半','叫病人嘔'],'攝入該物質超過 2 小時屬禁忌。')
+        :S('TX','聯絡香港中毒諮詢中心','先填 FSG 337 表格，再致電 HKPIC（2772 2211）。'+(v.k==='nocall'?'電話 30 秒都未接通。':'當值醫生批准使用。'),'點處理？',v.k==='nocall'?['先行離場 LOAD & GO，送院途中再致電 HKPIC','喺現場一直等到接通','唔使批准直接俾','放棄']:['活性炭 50 g（250 ml），記錄飲用份量','100 g','25 g','唔使批准都可以俾'],'30 秒內未能接通或冇人接聽 → 先行離場，途中再試；獲批准後俾 Activated Charcoal 50 g／250 ml，記錄飲用份量；無論可唔可以飲都要填妥 FSG 337。'),
+        LG('病人行上車。')],
+      hosp:H(v.k==='nocall'?S('RE','途中再致電 HKPIC','接通，當值醫生批准。','點處理？',['俾活性炭 50 g（250 ml），記錄飲用份量','唔使俾','俾 100 g','到院先算'],'送院途中可繼續嘗試聯絡 HKPIC，獲批准後俾藥。'):null,
+        ['24 歲女，食咗 20 粒撲熱息痛（'+(v.k==='late'?'約 3 小時前':'約 1 小時前')+'）','清醒合作，冇嘔吐','生命表徵穩定',v.k==='late'?'超過 2 小時，冇用活性炭；藥樽帶同送院':'活性炭 50 g；FSG 337 已填；藥樽帶同送院'])}; } });
+  L.push({id:'fit',ic:'⚡',cat:'藥',title:'抽搐',en:'Convulsion',
+    vars:[{k:'big',label:'成人 ≥ 50 kg'},{k:'small',label:'成人 < 50 kg'},{k:'child',label:'< 12 歲、> 36 kg'},{k:'stopped',label:'到場前已停 → 唔使 Midazolam'}],
+    make(v){ const who=v.k==='child'?'11 歲男童（40 kg）':v.k==='small'?'25 歲女子（45 kg）':'35 歲男子（72 kg）'; const stop=v.k==='stopped'; const d1=v.k==='big'||stop?['10 mg（2 ml）','7.5 mg（1.5 ml）']:['7.5 mg（1.5 ml）','10 mg（2 ml）'];
+      return {who,call:'巴士站有'+who+'倒地全身抽搐'+(stop?'，而家停咗。':'，已經大約 3 分鐘。'),v:{hr:128,sbp:150,dbp:90,rr:24,spo2:90,avpu:stop?2:3,gcs:stop?8:3,rbs:6.2,pain:0,rhythm:stop?'tachy':'noise'},
+      steps:[...BB({rse:'巴士站有途人圍觀；'+(stop?'病人抽搐已經停咗，瞓喺地。':'病人倒地全身抽搐。')+'朋友話佢有癲癇。',rseQ:{q:'抽搐病人嘅現場安全，要做咩？',o:['移開附近硬物、保持空間，唔好塞嘢入口','用力按住手腳','塞毛巾入口防咬舌','扶佢企起身'],a:0,why:'保護病人同自己；唔好強行按住或塞嘢入口。'},loc:stop?[2,'對痛楚有反應。']:[3,'冇反應，仍然抽搐。'],d:[0,'朋友扶住佢慢慢落地，冇撞頭。'],cab:'頸動脈 128 次。口有分泌物。呼吸 24 次。',cabQ:stop?{q:'抽搐後 (Post-ictal) 病人，氣道點處理？',o:['擺復原臥式、Suction 清分泌物、俾氧','叫醒佢企起身','餵水','唔使理'],a:0,why:'保持氣道暢通：PositioN、SuctioN、OxygeN。'}:{q:'病人正在抽搐，要做「3N」，係？',o:['PositioN 姿勢、SuctioN 抽吸、OxygeN 氧氣','NTG、Naloxone、NS','Neck、Nose、Nerve','等佢停咗先理'],a:0,why:'抽搐流程：如病人正在抽搐 → 3N。'},o2:['nrm','SpO₂ 90%。',95],rbs:'冇明顯傷勢；舌頭輕微咬損。',skin:'嘴唇輕微發紺、冒汗。',skinQ:{q:'發紺代表？',o:['缺氧','發燒','過敏','正常'],a:0,why:'新出現嘅發紺屬情況不穩定。'},dec:[1,stop?'抽搐後未回復平時精神狀態。':'仍然全身性抽搐。']}),
+        S('HX','問朋友 Critical Hx','有癲癇，今日冇食藥；到場前冇用過止抽筋藥；'+who.replace(/.*（|）/g,'')+'。','用 Midazolam 前，除咗年齡仲要確認咩？',['體重（決定劑量）','血型','身高','最後進食時間'],'Midazolam 劑量按年齡同體重。'),
+        VS('BP 150／90 · HR 128 · RR 24 · SpO₂ 95%（NRM）'),
+        stop?S('TX','睇吓需唔需要 Midazolam','抽搐已停咗；病人未回復平時精神狀態。','點處理？',["唔使俾 Midazolam：檢查 LOC 及 CAB、維生指數、H'stix，LOAD & GO",'照俾 10 mg 預防','俾 5 mg','俾 Naloxone'],'Midazolam 係俾仍然全身性抽搐嘅病人；停止抽搐後檢查 LOC、CAB、維生指數同 H\'stix。',{reveal:['rbs']})
+        :S('TX','Midazolam 1st 劑量',who+'，仍然全身性抽搐。','1st Midazolam 劑量？',[d1[0],d1[1],'5 mg（1 ml）','2.5 mg'],'≥ 12 歲：< 50 kg 7.5 mg／1.5 ml、≥ 50 kg 10 mg／2 ml；< 12 歲而 > 36 kg：> 36 kg 及 < 50 kg 7.5 mg、≥ 50 kg 10 mg。鼻內注射前多抽 0.1 ml，每邊鼻孔一半。',{set:{rhythm:'sinus',hr:110,avpu:2,gcs:7,spo2:96},e:{q:'抽筋唔停，救護員會用咩？',o:['止抽筋藥 (Midazolam)','止痛藥','糖水'],a:0,why:'Midazolam 可以喺鼻內或肌肉注射，令抽搐停止。'}}),
+        stop?LG('病人側臥上車床。'):S('TX','抽搐停止後','抽搐停咗，對痛楚有反應。',"停止抽搐後要做咩？",["檢查 LOC 及 CAB、維生指數、檢查 1st H'stix",'即刻叫佢企起身','再俾一劑 Midazolam 預防','除低氧氣'],"停止抽搐後：檢查 LOC 及 CAB、維生指數、H'stix，按讀數用 Glycemia Protocol。",{reveal:['rbs']}),
+        ...(stop?[]:[LG('病人側臥上車床。')])],
+      hosp:H(stop?S('RE','途中重新評估','途中再次全身抽搐！','點處理？',['檢查 LOC 及 CAB，按體重俾 1st Midazolam','唔使理','俾 Naloxone','即刻停車 CPR'],'途中再次抽搐：檢查 LOC 及 CAB，排除禁忌，按劑量表俾藥。',{set:{rhythm:'sinus',avpu:2,gcs:7,hr:110}})
+        :S('RE','途中重新評估','1st 劑量後 5 分鐘再次抽搐。','2nd 劑量係？',v.k==='big'?['5 mg（1 ml）','10 mg（2 ml）','3.75 mg（0.75 ml）','唔可以再俾']:['3.75 mg（0.75 ml）','7.5 mg（1.5 ml）','5 mg（1 ml）','唔可以再俾'],'2nd 劑量：≥ 50 kg 5 mg／1 ml；< 50 kg（或 > 36 kg 及 < 50 kg）3.75 mg／0.75 ml；5 分鐘內冇用過 Benzodiazepines。'),
+        [who+'，癲癇，全身抽搐約 3 分鐘','舌頭咬損、冇撞頭；H\'stix 6.2','HR 128 → 104 · SpO₂ 90% → 97%','3N、NRM'+(stop?'、途中再抽搐後 Midazolam × 1':'、Midazolam × 2')])}; } });
+  L.push({id:'ana',ic:'🦐',cat:'藥',title:'過敏反應',en:'Basic Anaphylaxis',
+    vars:[{k:'abc',label:'成人 A+B+C，冇自己 EpiPen'},{k:'own',label:'已用自己第一支 EpiPen'},{k:'child',label:'小童 → Jext 150'},{k:'ac',label:'A+C，冇氣道阻塞'}],
+    make(v){ const child=v.k==='child', who=child?'9 歲女童':'28 歲男子', airway=v.k!=='ac'; return {who,call:'有'+who+'食完蝦全身出疹'+(airway?'、話喉嚨緊、氣促。':'、頭暈。'),v:{hr:124,sbp:84,dbp:50,rr:airway?28:22,spo2:airway?91:95,avpu:0,gcs:15,rbs:6.1,pain:3,rhythm:'tachy'},
+      steps:[...BB({rse:'茶餐廳環境安全；枱面有食剩嘅蝦。'+(v.k==='own'?'病人 3 分鐘前已經用咗自己嘅 EpiPen。':''),rseQ:{q:'到場時除咗現場安全，仲要留意咩？',o:['過敏反應跡象同可能嘅致敏原','餐廳衛生評級','食物價錢','有冇其他客人'],a:0,why:'過敏反應流程：RSE 時留意過敏性反應跡象。'},loc:[0,'清醒，好焦慮。'],d:[0,'冇跌倒。'],cab:'摸唔到橈動脈（頸動脈快而弱）。'+(airway?'聲沙、有喘鳴；呼吸 28 次。':'氣道暢通；呼吸 22 次，冇喘鳴。'),cabQ:{q:'摸唔到橈動脈脈搏代表？',o:['血壓低 = 休克 → 將病人躺平','正常','要即刻 CPR','只係緊張'],a:0,why:'過敏反應流程：C 冇橈動脈 = 血壓低 = 休克（將病人躺平）。'},o2:['nrm','SpO₂ '+(airway?'91%':'95%')+'。',96],rbs:'嘴唇腫。',rbsQ:{q:'嘴唇腫屬於邊類跡象？',o:['A：皮膚／黏膜（Angioedema）','B：氣道阻塞','C：血壓低','唔相關'],a:0,why:'A：蕁麻疹、風疹塊、全身潮紅、嘴唇腫。'},skin:'全身風疹塊、潮紅。',skinQ:{q:'符合過敏反應適用症邊個組合？',o:[airway?'A + B + C':'A + C','只有 A','只有 B','唔符合'],a:0,why:'A 皮膚 + B 氣道阻塞（經聽診）+ C 血壓低 (SBP < 90)：A+B、A+C 或 A+B+C。'},dec:[1,'過敏反應有休克徵狀。','嚴重敏感屬不穩定；DECISION：移去致敏原。']}),
+        VS('BP 84／50 · HR 124 · RR '+(airway?28:22)+' · SpO₂ 96%（NRM）'),
+        v.k==='own'?S('TX','第二支 Jext／EpiPen','病人有兩支自己嘅 EpiPen；第一支 3 分鐘前已用。','點處理？',['唔應喺現場拖延等夠 5 分鐘；LOAD & GO，途中與第一支相隔 5 分鐘先用第二支','即刻打第二支','打處方提供嘅 Jext 300，再打自己兩支','唔可以再用'],'同一次過敏一日內可用兩支（先用病人自己嘅），每支相隔 5 分鐘；到場前已用咗，就唔應喺現場拖延至夠 5 分鐘。')
+        :S('TX','Jext／EpiPen',(child?'小童':'成人')+'，冇自己嘅 Jext／EpiPen；對 Adrenaline 冇敏感。','點處理？',child?['處方提供嘅 Jext 150（0.15 mg）肌肉注射，停留 10 秒','Jext 300','唔使用','一次過打兩支']:['處方提供嘅 Jext 300（0.3 mg）肌肉注射，停留 10 秒','Jext 150','唔使用','一次過打兩支'],'成人 0.3 mg、小童 0.15 mg；處方提供上限一支；注射後停留 10 秒先抽出。',{set:{sbp:88,hr:118},e:{q:'嚴重過敏，救護員會用咩？',o:['腎上腺素筆 (Jext／EpiPen)','止痛藥','冰袋'],a:0,why:'腎上腺素係嚴重過敏嘅第一線藥物。'}}),
+        S('TX','Chlorpheniramine (Piriton)',child?'9 歲。':'≥ 12 歲、冇敏感、4 小時內冇用抗組織胺。','Piriton 點處理？',child?['唔可以俾：< 12 歲係禁忌','10 mg IM','5 mg IM','20 mg']:['10 mg（1 ml）肌肉注射','5 mg','20 mg','唔可以俾'],'Piriton 10 mg／1 ml；禁忌：< 12 歲、敏感、4 小時內用過抗組織胺；有 IMI 禁忌症就唔使打 Piriton。'),
+        airway?S('TX','Salbutamol (Ventolin)','聽診確認有下呼吸道阻塞。','Ventolin 劑量？',child?['300 mcg（3 puffs）','400 mcg（4 puffs）','200 mcg','唔適用']:['400 mcg（4 puffs）','200 mcg（2 puffs）','300 mcg（3 puffs）','唔適用'],'2 至 < 5 歲 200 mcg、5 至 < 12 歲 300 mcg、≥ 12 歲 400 mcg。',{set:{rr:23,spo2:97}})
+        :S('TX','Salbutamol (Ventolin)','聽診冇上／下呼吸道阻塞。','Ventolin 點處理？',['唔使俾：冇呼吸道阻塞','照俾 400 mcg','俾 200 mcg','俾 Atrovent'],'Ventolin 只係俾經聽診確認有上／下呼吸道阻塞嘅病人。'),
+        child?S('TX','0.9% Normal Saline','9 歲。','NS 點處理？',['唔可以：< 12 歲係禁忌','500 ml FR','100 ml／hr','1000 ml'],'過敏反應規程 NS 禁忌：< 12 歲。')
+        :S('TX','0.9% Normal Saline','SBP 88（< 90），未俾過 NS。','點處理？',['NS 500 ml Full Rate','100 ml／hr（兩秒一滴）','唔使俾','1000 ml 一次過'],'SBP < 90（俾咗 0／1 次 500 ml FR 後）→ 500 ml／FR；Full Rate 不超過 1000 ml。',{set:{sbp:92,hr:110}}),
+        LG('病人躺平上車床。','要送去邊間醫院？',['最就近醫院（嚴重過敏反應）','創傷中心','病人想去嘅私家醫院','唔使送院'],'心搏停止、呼吸停止、嚴重敏感嘅病人要送往最就近醫院。')],
+      hosp:H(v.k==='own'?S('RE','與第一支相隔 5 分鐘','仍有休克徵狀；病人仲有第二支自己嘅 EpiPen。','點處理？',['確認適用症，用第二支 EpiPen','唔使用','用處方 Jext 300 再加自己一支','等到院'],'還有第二支 Jext／EpiPen 及未超過使用量 → 與第一支相隔 5 分鐘使用。',{set:{sbp:96,hr:104}})
+        :child?null:S('RE','途中重新評估','BP 92／58（已俾一次 500 ml FR）。','NS 應該點調？',['SBP ≥ 90 且曾俾一次 500 ml FR → 500 ml／hr（兩秒五滴）','再俾 500 ml FR','停止 NS','100 ml／hr'],'SBP ≥ 90：從未俾 FR → 100 ml／hr；曾俾一次 500 ml FR 後 → 500 ml／hr。',{set:{sbp:96,hr:104}}),
+        [who+'，食蝦後全身出疹'+(airway?'、喉嚨緊、氣促':''),'過敏反應 '+(airway?'A+B+C':'A+C')+'：風疹塊、嘴唇腫'+(airway?'、喘鳴':'')+'、冇橈動脈','BP 84／50 → 96／60 · HR 124 → 104','NRM、'+(v.k==='own'?'EpiPen × 2（病人自己）':child?'Jext 150':'Jext 300')+(child?'':'、Piriton 10 mg')+(airway?'、Ventolin':'')+(child?'':'、NS')])}; } });
+  L.push({id:'hypovol',ic:'🩸',cat:'藥',title:'低血容積',en:'Hypovolemia',
+    vars:[{k:'bleed',label:'創傷大量失血 SBP < 90'},{k:'dehyd',label:'嘔吐腹瀉脫水'},{k:'heat',label:'炎熱劇烈運動、SBP ≥ 90'},{k:'kid',label:'< 12 歲 → 禁用'}],
+    make(v){ const who=v.k==='kid'?'10 歲男童':v.k==='heat'?'40 歲男子（行山）':v.k==='dehyd'?'78 歲婆婆':'32 歲電單車司機'; const sbp=v.k==='heat'?96:82, tr=v.k==='bleed';
+      return {who,call:v.k==='bleed'?'有電單車撞欄，司機大腿流好多血。':v.k==='dehyd'?'有 78 歲婆婆嘔吐肚瀉兩日，好虛弱。':v.k==='heat'?'有行山人士頭暈、大量出汗。':'有 10 歲男童肚瀉多日，好虛弱。',v:{hr:126,sbp,dbp:52,rr:24,spo2:95,avpu:0,gcs:15,rbs:5.6,pain:tr?7:2,rhythm:'tachy'},
+      steps:[...BB({rse:tr?'公路旁，警察已封路。司機坐喺路邊，大腿傷口大量出血。':'環境安全。',rseQ:tr?{q:'見到病人嚴重出血，RSE 之後即刻要？',o:['盡快止血：立即安排人手直接加壓','先填表','先量血壓','先問病史'],a:0,why:'Hypovolemia 流程：RSE → 盡快止血（嚴重出血）。'}:null,loc:[0,'清醒，好虛弱。'],d:tr?[1,'電單車撞欄，頸痛。']:[0,'冇跌倒。'],cab:'橈動脈弱而快，126 次；氣道暢通；呼吸 24 次。',o2:['nrm','SpO₂ 95%。',98],rbs:tr?'右大腿開放性傷口，已加壓止血。':'眼睛凹陷、口唇乾。',rbsQ:tr?null:{q:'以下邊樣係脫水症狀？',o:['脈搏快、低血壓、眼睛凹陷、口乾、虛弱','皮膚潮紅、發熱','瞳孔針孔狀','嘴唇腫'],a:0,why:'脫水：脈搏加快、低血壓、皮膚失彈性、眼睛凹陷、口乾、心慌、呼吸急促、虛弱、頭暈、清醒程度下降。'},skin:'蒼白、濕冷。',shock:1,dec:[1,'出現休克徵狀。']}),
+        S('HX','確認適用症',v.k==='bleed'?'創傷大量失血 (A) + 休克 (D)。':v.k==='heat'?'炎熱潮濕下劇烈運動、脫水 (C) + 預期休克 (D)。':'嘔吐腹瀉大量體液流失 (B) + 休克 (D)。','Hypovolemia 適用症組合係？',['A／B／C 其中一項 + D（出現或預期出現休克）','只要有 A 就得','只要有 D 就得','A + B + C 三項齊'],'A 大量失血、B 大量體液流失、C 炎熱潮濕劇烈運動；要配合 D：出現休克或預期出現休克。禁忌：< 12 歲。'),
+        LG('上車床。',tr?'創傷大量失血，幾時開始運送？':'下一步？',tr?['儘早 LOAD & GO（留意創傷中心），避免喺現場做靜脈注射','喺現場插好 IV 先走','等 NS 滴完先走','等警察落口供先走']:null,tr?'儘早運送，避免喺現場靜脈注射，除非病人被困或 Paramedic MC／RRV 主管等緊救護車。':null),
+        VS('BP '+sbp+'／52 · HR 126 · RR 24 · SpO₂ 98%（NRM）'),
+        v.k==='kid'?S('TX','0.9% Normal Saline','10 歲。','NS 點處理？',['唔可以：Hypovolemia Protocol < 12 歲禁忌','500 ml FR','100 ml／hr','1000 ml'],'Hypovolemia 禁忌：< 12 歲。')
+        :v.k==='heat'?S('TX','0.9% Normal Saline','SBP 96（≥ 90），從未俾過 500 ml FR。','NS 點處理？',['100 ml／hr（兩秒一滴）','500 ml FR','500 ml／hr','唔使俾'],'SBP ≥ 90（從未俾 500 ml FR）→ 100 ml／hr，口訣「滴二三四、一二三四」。')
+        :S('TX','0.9% Normal Saline','SBP 82（< 90），從未俾過 NS。','NS 點處理？',['500 ml Full Rate','100 ml／hr','500 ml／hr','唔使俾'],'SBP < 90（俾咗 0／1 次 500 ml FR 後）→ 500 ml／FR；Full Rate 不超過 1000 ml。',{set:{sbp:92,hr:112},e:{q:'失血、血壓低，救護員會？',o:['打鹽水點滴補充血容量','俾佢飲咖啡','叫佢行吓'],a:0,why:'靜脈注射鹽水幫助維持血壓。'}}),
+        ...(tr?[S('TX','其他 Protocol','創傷 1 小時內、≥ 18 歲、SBP < 90。','仲要留意咩？',['Tranexamic Acid (TXA) 傳明酸 Protocol，同埋創傷中心','ASA','Glucagon','唔使'],'創傷引致大量失血（內／外出血）→ 參考 TXA Protocol；留意是否需要前往創傷中心。')]:[])],
+      hosp:H(v.k==='kid'||v.k==='heat'?null:S('RE','途中重新評估','BP 92／58（已俾一次 500 ml FR）。','NS 點調？',['SBP ≥ 90 且曾俾一次 500 ml FR → 500 ml／hr（兩秒五滴）','再俾 500 ml FR','停止','100 ml／hr'],'按收縮壓調整 NS Rate。',{set:{sbp:96,hr:106}}),
+        [who+'，'+(v.k==='bleed'?'電單車撞欄，大腿大量出血':v.k==='heat'?'炎熱下行山、大量出汗':'嘔吐腹瀉多日'),'休克徵狀：脈弱快、皮膚濕冷'+(tr?'，大腿開放性傷口':''),'BP '+sbp+' → '+(v.k==='kid'||v.k==='heat'?sbp:96)+' · HR 126'+(v.k==='kid'||v.k==='heat'?'':' → 106'),'NRM、'+(v.k==='kid'?'（< 12 歲冇用 NS）':v.k==='heat'?'NS 100 ml／hr':'NS 500 ml FR → 500 ml／hr')+(tr?'、直接加壓止血、考慮 TXA':'')])}; } });
+  L.push({id:'tramadol',ic:'🩼',cat:'藥',title:'曲馬多',en:'Tramadol',
+    vars:[{k:'big',label:'≥ 50 kg → 75 mg'},{k:'small',label:'< 50 kg → 50 mg'},{k:'epi',label:'癲癇病歷 → 禁用'},{k:'teen',label:'< 18 歲 → 禁用'}],
+    make(v){ const who=v.k==='teen'?'16 歲男學生':v.k==='small'?'45 歲女子（46 kg）':'50 歲男子（75 kg）'; return {who,call:'有'+who+'跌倒，小腿明顯變形，劇痛。',v:{hr:104,sbp:132,dbp:82,rr:20,spo2:97,avpu:0,gcs:15,rbs:6,pain:9,rhythm:'sinus'},
+      steps:[...BB({rse:'屋苑樓梯，環境安全。',loc:[0,'完全清醒，痛到喊。'],d:[0,'冇撞頭、冇頸痛，自己坐起。'],cab:'橈動脈 104 次；氣道暢通；呼吸 20 次。',o2:['room','SpO₂ 97%，冇呼吸困難。'],rbs:'右小腿閉合性骨折、變形。',skin:'正常。',dec:[0,'清醒、生命表徵穩定。','冇威脅生命嘅情況。Tramadol 前要完成：脊柱保護、制止大量出血、處理軟組織及骨骼創傷。']}),
+        S('HX','Critical Hx：Penthrox 試過未？','已經用咗 Penthrox，冇止痛效果。'+(v.k==='epi'?'有癲癇病歷。':'')+'兩星期內冇食止咳水、冇精神科藥、冇濫藥、冇飲酒、冇懷孕。','Tramadol 適用症係？',['軀體／肢體創傷劇痛、完全清醒，及拒絕／不能用 Penthrox 或 Penthrox 冇效','任何痛症都可以','只限小朋友','只限頭痛'],'Tramadol 禁忌 CHEAP PAIN：止咳水、SBP < 90、癲癇、< 18 歲、精神科藥、懷孕／母乳、濫藥、醉酒、對麻醉劑／Tramadol 敏感。',{reveal:['pain']}),
+        VS2('BP 132／82 · HR 104 · RR 20 · SpO₂ 97%'),
+        v.k==='epi'||v.k==='teen'?S('TX','Tramadol：排除禁忌症',v.k==='epi'?'有癲癇病歷。':'16 歲。','可唔可以俾？',['唔可以（CHEAP PAIN 禁忌）','可以 75 mg','可以 50 mg','俾一半'],v.k==='epi'?'E：Epilepsy 有癲癇或癲癇病歷。':'A：Age < 18 歲。')
+        :S('TX','Tramadol：劑量',who+'。','Tramadol 劑量？',v.k==='big'?['75 mg（1.5 ml）肌肉注射','50 mg（1 ml）','100 mg','25 mg']:['50 mg（1 ml）肌肉注射','75 mg（1.5 ml）','100 mg','25 mg'],'< 50 kg 50 mg／1 ml；≥ 50 kg 75 mg／1.5 ml；有 IMI 禁忌症就唔使打。',{set:{pain:5},e:{q:'骨折好痛，綠哨子冇效，救護員可以？',o:['按規程注射止痛藥 (Tramadol)','俾佢飲酒','乜都唔做'],a:0,why:'Tramadol 係另一隻止痛藥，有好多禁忌要先排除。'}}),
+        S('TX','固定骨折','止痛後。','下一步？',['使用夾板固定骨折位置','叫病人行吓','唔使固定','拉直條腳'],'Tramadol 流程：給藥後用夾板固定骨折位置，再 LOAD & GO。'),
+        LG('病人用車床上車。')],
+      hosp:H(S('RE','途中重新評估','病人有啲反胃、頭暈。','以下邊樣係 Tramadol 常見副作用？',['反胃、嘔吐、低血壓、頭暈、倦睡','皮膚出疹','瞳孔放大','高血糖'],'最常見：反胃、嘔吐、噁心、低血壓、頭暈、口乾、出汗及便秘；亦可抑制呼吸。'),
+        [who+'，跌倒，右小腿變形劇痛','閉合性骨折，Penthrox 冇效','BP 132／82 · HR 104 · 痛楚 9 → '+(v.k==='epi'||v.k==='teen'?'8':'5'),(v.k==='epi'||v.k==='teen'?'冇用 Tramadol（禁忌）':'Tramadol '+(v.k==='big'?'75':'50')+' mg IM')+'、夾板固定'])}; } });
+  L.push({id:'txa',ic:'🧪',cat:'藥',title:'傳明酸',en:'Tranexamic Acid (TXA)',
+    vars:[{k:'go',label:'符合：3 小時內、SBP < 90'},{k:'late',label:'受傷超過 3 小時'},{k:'bp',label:'SBP ≥ 90'},{k:'arrest',label:'注射中途心搏停止'}],
+    make(v){ const sbp=v.k==='bp'?98:80; return {who:'45 歲男子',call:'地盤有工人被重物壓傷，大量出血。',v:{hr:130,sbp,dbp:50,rr:26,spo2:94,avpu:1,gcs:13,rbs:6,pain:8,rhythm:'tachy'},
+      steps:[...BB({rse:'地盤已停工，重物已移開。',loc:[1,'叫佢會應，好虛弱。'],d:[1,'重物壓傷下半身，有背痛。'],cab:'橈動脈弱而快 130 次；氣道暢通；呼吸 26 次。',o2:['nrm','SpO₂ 94%。',97],rbs:'盆骨同大腿嚴重受傷，懷疑內出血。',skin:'蒼白、濕冷。',shock:1,dec:[1,'嚴重創傷、休克。']}),
+        LG('儘早上車。','嚴重創傷，靜脈注射喺邊度做？',['儘早 LOAD & GO（留意創傷中心），避免喺現場做靜脈注射','喺現場做好先走','唔使做','到院先做'],'TXA 流程：儘早運送，避免現場靜脈注射；除非病人被困或 Paramedic MC／RRV 主管等緊救護車。'),
+        VS('BP '+sbp+'／50 · HR 130 · RR 26 · SpO₂ 97%（NRM）'),
+        S('TX','先用 Hypovolemia Protocol','SBP '+sbp+'。','點處理？',sbp<90?['NS 500 ml Full Rate（Hypovolemia Protocol）','NS 100 ml／hr','唔使','1000 ml 一次過']:['NS 100 ml／hr（Hypovolemia：SBP ≥ 90 從未俾 FR）','500 ml FR','唔使','1000 ml'],'TXA 流程：使用 Hypovolemia Protocol。'),
+        S('HX','Critical Hx：受傷時間',v.k==='late'?'工友話約 4 小時前已經被壓住。':'約 40 分鐘前受傷；冇 TXA 敏感。','TXA 適用症係？',['嚴重創傷懷疑大量出血、受傷 3 小時內、≥ 18 歲、SBP < 90','任何出血','只要 SBP < 100','只限 12 歲以下'],'TXA 適用症：嚴重創傷和懷疑大量出血、創傷發生 3 小時內、≥ 18 歲、SBP < 90；禁忌：對 TXA 敏感。'),
+        v.k==='late'||v.k==='bp'?S('TX','TXA：確認適用症',v.k==='late'?'受傷已超過 3 小時。':'SBP 98（≥ 90）。','可唔可以俾 TXA？',['唔可以：唔符合適用症','可以','俾一半','到院先問'],v.k==='late'?'創傷要喺 3 小時內。':'要 SBP < 90。')
+        :S('TX','TXA：劑量','符合適用症。','TXA 點注射？',['每分鐘 100 mg／1 ml，10 分鐘內分 10 次','一次過 1 g','每分鐘 50 mg','每 5 分鐘 500 mg'],'每分鐘注射 100 mg／1 ml，10 分鐘內分開 10 次；開始後無論血壓有冇升到 ≥ 90 都要完成 10 次。',{set:{sbp:86}})],
+      hosp:H(v.k==='arrest'?S('RE','注射 TXA 途中','病人突然心搏停止！','點處理 TXA？',['將剩下劑量一次注射，之後行使 AED／Adrenaline Protocol','停止 TXA','繼續每分鐘 100 mg','抽返出嚟'],'TXA 途中心搏停止 → 剩下劑量全部一次注射，其後行使 AED 及／或 Adrenaline Protocol。',{set:{rhythm:'vf',hr:0}})
+        :v.k==='go'?S('RE','注射 TXA 途中','SBP 升到 94；病人突然抽搐。','點處理？',['繼續每分鐘 100 mg 完成 10 次，同時行使 Convulsion Protocol','停止 TXA','一次過注射晒','改俾 NS'],'TXA 途中抽搐：繼續按時間每分鐘注射，並可同時行使 Convulsion Protocol；到院未完成可問醫生是否繼續。',{set:{sbp:94}})
+        :S('RE','途中重新評估','SBP 仍然 < 90。','仲要留意咩？',['按收縮壓調 NS、送創傷中心','俾 TXA','俾 ASA','唔使理'],'唔符合 TXA 適用症就按 Hypovolemia Protocol 處理，留意創傷中心。'),
+        ['45 歲男，地盤被重物壓傷（約 '+(v.k==='late'?'4 小時前':'40 分鐘前')+'）','盆骨、大腿嚴重受傷，懷疑內出血','BP '+sbp+'／50 · HR 130 · GCS 13','NRM、NS'+(v.k==='late'||v.k==='bp'?'（唔符合 TXA）':'、TXA 100 mg／分鐘')])}; } });
+  L.push({id:'olz',ic:'😡',cat:'藥',title:'疑似興奮性譫妄',en:'Olanzapine',
+    vars:[{k:'go',label:'符合 → Olanzapine 10 mg'},{k:'old',label:'> 65 歲 → 禁用'},{k:'lowbp',label:'SBP < 90 → 禁用'}],
+    make(v){ const who=v.k==='old'?'70 歲男子':'30 歲男子'; const sbp=v.k==='lowbp'?86:148; return {who,call:'有'+who+'喺街情緒激動、揮拳，警察在場。',v:{hr:132,sbp,dbp:v.k==='lowbp'?54:90,rr:26,spo2:96,avpu:0,gcs:14,rbs:6,pain:0,rhythm:'tachy'},
+      steps:[...BB({rse:'街上，警察已到場；病人大叫、揮拳。',rseQ:{q:'面對激動病人，RSE 要點做？',o:['保持距離、確保自己同旁人安全，警察協助','即刻衝上前按住','叫圍觀人士幫手','唔理佢'],a:0,why:'安全至上，有需要由警員協助。'},loc:[0,'清醒但思緒混亂、唔接受勸告。'],d:[0,'冇跌倒。'],cab:'脈搏 132；呼吸 26。',o2:['room','SpO₂ 96%。'],rbs:'手臂擦傷。',skin:'大量出汗、身熱。',dec:[1,'有傷害自己或他人傾向。']}),
+        S('HX','先試一般方法','好言相勸、平復情緒都唔得。','Olanzapine 適用症係？',['情緒激動具侵略性、思緒混亂不接受勸告、有傷害自己或他人傾向，及未能以一般方法控制','任何發脾氣嘅人','只要飲咗酒','只要病人唔合作'],'適用症 1.1–1.3 加上 2：未能以一般方法控制。'),
+        S('TX','制服','病人仍然好激動。','點做？',['喺警員或其他人士協助下用適當方法制服病人','自己一個人按住','綁住條頸','唔理佢'],'流程：在警員或其他人士協助下使用適當方法制服病人。'),
+        VS('BP '+sbp+'／'+(v.k==='lowbp'?54:90)+' · HR 132 · RR 26 · SpO₂ 96%'),
+        v.k==='go'?S('TX','Olanzapine：劑量','≥ 12 歲及 ≤ 65 歲、SBP 148、冇 NMS、冇急性青光眼。','點準備同注射？',['2.1 ml 注射用水溶解，抽 10 mg／2 ml，股外肌（大腿前外側中 1/3）肌肉注射','5 mg 靜脈注射','20 mg','口服'],'Olanzapine 10 mg／2 ml IMI 股外肌；有 IMI 禁忌症都要注射，之後加壓止血；生效 15–45 分鐘。',{set:{hr:112}})
+        :S('TX','Olanzapine：排除禁忌症',v.k==='old'?'70 歲。':'SBP 86。','可唔可以俾？',['唔可以（禁忌）','可以 10 mg','俾 5 mg','俾 20 mg'],'禁忌：敏感、急性青光眼、< 12 歲或 > 65 歲、SBP < 90、NMS。'),
+        LG('多名警員護送上車。','送院途中要點觀察？',['面對面全程留意，情況許可接 SpO₂ & ECG，體溫過高就冷凍治療','鎖喺車廂後面唔使理','俾佢瞓覺','關燈'],'途中面對面全程留意；如情況許可 SpO₂ & ECG Monitor；針對體溫過高作冷凍治療；要求多個警察護送。')],
+      hosp:H(null,[who+'，街上情緒激動、具侵略性','思緒混亂、出汗、身熱','BP '+sbp+'／'+(v.k==='lowbp'?54:90)+' · HR 132','警員協助制服、'+(v.k==='go'?'Olanzapine 10 mg IM':'冇用 Olanzapine（禁忌）')+'、冷凍治療'])}; } });
+  L.push({id:'penthrox',ic:'🟢',cat:'藥',title:'甲氧氟烷（綠哨子）',en:'Penthrox',
+    vars:[{k:'go',label:'符合 → 3 ml'},{k:'bp',label:'SBP < 90 → 禁用'},{k:'kidney',label:'腎病 → 禁用'},{k:'preg',label:'孕婦 → 可以用'}],
+    make(v){ const who=v.k==='preg'?'29 歲孕婦':'40 歲女子'; const sbp=v.k==='bp'?86:126; return {who,call:'有'+who+'行山扭傷腳踝，好痛。',v:{hr:v.k==='bp'?112:98,sbp,dbp:v.k==='bp'?52:78,rr:20,spo2:98,avpu:0,gcs:15,rbs:6,pain:8,rhythm:'sinus'},
+      steps:[...BB({rse:'郊野公園山徑，環境安全。',loc:[0,'完全清醒。'],d:[0,'冇撞頭、冇頸痛。'],cab:'橈動脈 '+(v.k==='bp'?112:98)+' 次；呼吸 20 次。',o2:['room','SpO₂ 98%。'],rbs:v.k==='bp'?'右腳踝腫脹變形；佢話今日行咗 5 個鐘、成日冇點飲水，企起身會頭暈。':'右腳踝腫脹變形。',skin:v.k==='bp'?'蒼白、冒汗。':'正常。',dec:v.k==='bp'?[1,'血壓偏低 (SBP 86)、脈搏快，要密切監察。']:[0,'清醒、生命表徵穩定。']}),
+        S('HX','Critical Hx',(v.k==='kidney'?'有慢性腎病。':'冇肝病、腎病。')+(v.k==='preg'?'懷孕 20 星期。':'')+'24 小時內冇用過 Penthrox；冇惡性高熱。','Penthrox 適用症係？',['所有痛症及 ≥ 12 歲','只限骨折','只限 65 歲以上','只限頭痛'],'Penthrox 禁忌：< 12 歲、SBP < 90、24 小時內用過、肝病、腎病、惡性高熱、清醒程度改變、呼吸抑制、敏感。',{reveal:['pain']}),
+        (v.k==='bp'?VS:VS2)('BP '+sbp+'／'+(v.k==='bp'?52:78)+' · HR '+(v.k==='bp'?112:98)+' · RR 20 · SpO₂ 98%'),
+        v.k==='bp'||v.k==='kidney'?S('TX','Penthrox：排除禁忌症',v.k==='bp'?'SBP 86。':'有腎病。','可唔可以俾？',['唔可以（禁忌）','可以 3 ml','俾 1.5 ml','俾 6 ml'],v.k==='bp'?'SBP < 90 係禁忌。':'腎病係禁忌（腎結石、肝炎、肝硬化、脂肪肝都唔可以）。')
+        :S('TX','Penthrox：劑量',(v.k==='preg'?'孕婦，':'')+'冇禁忌。',v.k==='preg'?'孕婦可唔可以用？劑量？':'Penthrox 劑量？',v.k==='preg'?['可以：3 ml，Only One Dose','唔可以：懷孕係禁忌','可以 6 ml','只可以 1.5 ml']:['3 ml，Only One Dose','6 ml','1 ml 每 5 分鐘','唔限'],'Penthrox 3 ml 只俾一劑；孕婦或母乳餵哺、胎動／分娩痛都可以用。8–10 次呼吸後開始鎮痛。',{set:{pain:4},e:{q:'綠哨子 (Penthrox) 點用？',o:['病人自己含住吸入器呼吸','打針','擦喺皮膚'],a:0,why:'病人自己握住吸入器，透過吸嘴呼吸。'}}),
+        S('TX','使用注意','病人開始吸入。','使用時要注意咩？',['唔好留病人無人看管；喺車上開窗通風；過度鎮靜或 SBP < 90 就停','關晒窗','俾病人自己行開','可以叫病人一次過吸晒'],'喺救護車使用時打開窗通風；唔好讓病人無人看管；呼吸困難、呼吸抑制或失去知覺即終止且同程唔再用。'),
+        S('TX','固定','止痛後。','下一步？',['夾板固定骨折位置或進行其他 Protocol','叫病人行落山','唔使固定','熱敷'],'Penthrox 流程：使用夾板固定骨折位置或進行其他 Protocol。'),
+        LG('用搬運椅落山上車。')],
+      hosp:H(null,[who+'，行山扭傷右腳踝','腳踝腫脹變形','BP '+sbp+'／'+(v.k==='bp'?52:78)+' · HR '+(v.k==='bp'?112:98)+' · 痛楚 8 → '+(v.k==='bp'||v.k==='kidney'?'7':'4'),(v.k==='bp'||v.k==='kidney'?'冇用 Penthrox（禁忌）':'Penthrox 3 ml')+'、夾板固定'])}; } });
+  L.push({id:'o2',ic:'🫧',cat:'藥',title:'氧氣治療',en:'Supplemental O₂ Therapy',
+    vars:[{k:'gen',label:'一般病人 SpO₂ 85–93%'},{k:'copd',label:'COPD 有呼吸困難'},{k:'para',label:'百草枯 SpO₂ ≥ 85%'},{k:'co',label:'一氧化碳中毒'}],
+    make(v){ const M={gen:['55 歲男子','發燒咳嗽、有啲氣促',91,'nc'],copd:['76 歲男子','COPD 氣促加劇',84,'ven'],para:['48 歲男子','飲咗殺草水',90,'none'],co:['36 歲女子','喺密閉房燒炭，頭痛嘔吐',99,'nrm']}[v.k];
+      return {who:M[0],call:'有'+M[0]+M[1]+'。',v:{hr:104,sbp:130,dbp:80,rr:24,spo2:M[2],avpu:0,gcs:15,rbs:6,pain:0,rhythm:'sinus'},
+      steps:[...BB({rse:v.k==='co'?'密閉房，已開窗通風、移走炭盆。':v.k==='para'?'住宅，枱面有殺草水樽。':'住宅，環境安全。',rseQ:v.k==='para'?{q:'攝取百草枯，救護人員要點保護自己？',o:['穿著 PPE 及配戴 N95','唔使','只戴手套','只戴口罩'],a:0,why:'O₂ 流程第 1／2 類病人：需穿著 PPE 及配戴 N95。'}:null,loc:[0,'清醒。'],d:[0,'冇跌倒。'],cab:'橈動脈 104 次；呼吸 24 次。',o2:[M[3],'SpO₂ '+M[2]+'%。'+(v.k==='co'?'（一氧化碳中毒時 SpO₂ 讀數唔可信）':v.k==='copd'?'有呼吸困難。':v.k==='para'?'':'冇 COPD，有輕微呼吸困難。'),v.k==='para'?null:v.k==='copd'?87:v.k==='co'?100:95],rbs:'冇傷勢。',skin:v.k==='co'?'面色潮紅。':'正常。',dec:[1,'需要密切監察。','有呼吸問題／中毒，屬需要密切監察嘅病人。']}),
+        S('TX','氧氣類別',v.k==='gen'?'冇百草枯、唔係嚴重受傷或危疾、冇 COPD。':v.k==='copd'?'冇百草枯；有 COPD。':v.k==='para'?'攝取百草枯。':'一氧化碳中毒。','屬於 O₂ Protocol 邊一類？',v.k==='gen'?['第 4 類：非 1–3 類一般病人','第 1 類：百草枯','第 2 類：嚴重受傷或罹患危疾','第 3 類：COPD']:v.k==='copd'?['第 3 類：COPD','第 4 類一般病人','第 2 類','第 1 類']:v.k==='para'?['第 1 類：攝取百草枯','第 4 類','第 2 類','第 3 類']:['第 2 類：嚴重受傷或罹患危疾（一氧化碳中毒）','第 4 類','第 3 類','第 1 類'],'類別：1 百草枯、2 嚴重受傷或罹患危疾、3 COPD、4 非 1–3 類一般病人。'),
+        VS('BP 130／80 · HR 104 · RR 24'),
+        v.k==='copd'?S('TX','文氏面罩調節','用咗 0.24／3 L 兩分鐘後，SpO₂ 87%。','SpO₂ 85–89%，點調？',['提升 FiO₂ 一級，每一至兩分鐘監察','降低 FiO₂','維持','即刻轉 NRM'],'SpO₂ > 94% 降低（最低 0.24／3 L）；90–94% 維持；85–89% 提升，每 1–2 分鐘監察；< 85% 提升，每 30 秒至 1 分鐘監察；已到 0.5／6 L 就轉 NRM。',{set:{spo2:91}})
+        :v.k==='para'?S('TX','監察','兩分鐘後 SpO₂ 跌到 83%。','SpO₂ < 85%，點處理？',['俾最低量氧氣，目標 SpO₂ 85–88%，每兩分鐘監察','俾 NRM 15 L 目標 100%','繼續唔俾','俾 BVM'],'SpO₂ < 85% → 最低量氧氣，目標 85–88%；之後就算 > 88% 都唔應中斷。並可嘗試活性炭程序。',{set:{spo2:86}})
+        :v.k==='co'?S('TX','讀數判斷','SpO₂ 顯示 99%。','SpO₂ 99% 係咪可以唔俾氧？',['唔可以：一氧化碳中毒 SpO₂ 唔可信，照俾高濃度氧氣','可以 Room Air','俾鼻插喉 1 L 就夠','俾文氏面罩'],'一氧化碳中毒（燒炭）、貧血、大量失血、血壓過低時 SpO₂ 唔可信；就算 100% 都要俾高流量氧氣。')
+        :S('TX','調節','鼻插喉 2 L 後 SpO₂ 93%。','點調？',['調高 FiO₂，維持 SpO₂ ≥ 94%；已到頂點就轉 NRM／BVM','停氧','轉文氏面罩','維持唔郁'],'一般病人：調節 FiO₂ 維持 SpO₂ ≥ 94%；FiO₂ 到頂點就轉不能回吸面罩／BVM。鼻插喉 1–4 L ≈ FiO₂ 0.24–0.36。',{set:{spo2:95}}),
+        LG('上車床。',null,['LOAD & GO，途中保持監察 SpO₂，交接時避免中斷氧氣','到院先除低氧氣','途中唔使監察','停氧慳氧氣'],'應把施行補充氧氣療法嘅情況通知接收醫院；移交時盡量避免中斷。')],
+      hosp:H(null,[M[0]+'，'+M[1],'SpO₂ '+M[2]+'%'+(v.k==='co'?'（讀數唔可信）':''),'HR 104 · RR 24',{gen:'鼻插喉氧氣，維持 SpO₂ ≥ 94%',copd:'文氏面罩，目標 SpO₂ 90–94%',para:'最低量氧氣，目標 85–88%',co:'NRM 高濃度氧氣'}[v.k]])}; } });
+  /* ================= 心臟驟停 ================= */
+  const CPRQ=(age)=>S('CPR','開始 CPR',age<8?'病人 '+age+' 歲（身高 < 115 cm），兩名救護員。':'成年病人。','CPR 按壓比率？',age<8?['30:2 單人／15:2 雙人','30:2 一律','3:1','15:1']:['30:2','15:2','3:1','5:1'],'新生嬰兒 3:1；< 8 歲 (< 115 cm) 單人 30:2、雙人 15:2；≥ 8 歲 30:2。');
+  L.push({id:'aed',ic:'⚡',cat:'停',title:'自動心臟去顫器',en:'AED',
+    vars:[{k:'shock',label:'第一次分析需要電擊'},{k:'pea',label:'唔需電擊、有電流、冇脈搏'},{k:'rosc',label:'唔需電擊、有電流、有脈搏'},{k:'child',label:'< 8 歲小童'}],
+    make(v){ const age=v.k==='child'?6:65; const who=v.k==='child'?'6 歲女童':'65 歲男子'; return {who,call:'有'+who+'喺商場突然暈低，旁人做緊 CPR。',v:{hr:0,sbp:0,dbp:0,rr:0,spo2:0,avpu:3,gcs:3,rbs:6,pain:0,rhythm:v.k==='shock'||v.k==='child'?'vf':'pea'},
+      steps:[...ARR('商場大堂，旁人做緊 CPR。'),CPRQ(age),
+        S('AED','儘快接駁 AED','貼好電擊片。','電擊能量？',age<8?['50 焦耳','150 焦耳','200 焦耳','唔可以用 AED']:['150 焦耳','50 焦耳','360 焦耳','100 焦耳'],'< 8 歲 (< 115 cm) 50 焦耳；≥ 8 歲 150 焦耳；新生嬰兒禁用 AED。'),
+        v.k==='shock'||v.k==='child'?S('AED','AED 第一次分析','建議電擊。','電擊後點做？',['即刻喺現場做兩分鐘 CPR，再做第二次分析','即刻檢查脈搏','即刻上車','再電一次'],'需要電擊 → 電擊 → 現場兩分鐘 CPR → 第二次分析，之後 Moving CPR 送院。',{set:{rhythm:'vf'}})
+        :S('AED','AED 第一次分析','唔需要電擊；畫面有電流活動。','點做？',v.k==='rosc'?['檢查病人脈搏','即刻電擊','停止 CPR 等死亡證','再分析 10 次']:['檢查病人脈搏','即刻電擊','停止所有處理','俾 Naloxone'],'唔需要電擊 → 檢查 AED 有冇電流活動；有電流活動 → 檢查脈搏；冇電流活動 → Moving CPR 送院。'),
+        v.k==='rosc'?S('AED','檢查脈搏','摸到頸動脈脈搏，開始有呼吸。','點做？',['重新檢查 LOC > CAB…、ECG & SpO₂，LOAD & GO','繼續 CPR','再電擊','俾 Adrenaline'],'有脈搏 → 重新檢查病人狀態，ECG & SpO₂，LOAD & GO，按需要施行其他 Protocol。',{set:{rhythm:'sinus',hr:88,sbp:96,dbp:60,rr:10,spo2:92,avpu:3,gcs:3}})
+        :v.k==='pea'?S('AED','檢查脈搏','冇脈搏。','點做？',['Moving CPR 送院，LOAD & GO，情況許可每 2–3 分鐘分析','停止 CPR','電擊','喺現場等'],'有電流活動但冇脈搏 → Moving CPR 送院；塞車／停燈位時每 2–3 分鐘分析；按情況高級氣道處理。')
+        :S('AED','AED 第二次分析','第二次分析：需要電擊。','電擊之後？',['Moving CPR 送院（LOAD & GO），情況許可每 2–3 分鐘分析','喺現場再做兩分鐘','停止 CPR','檢查瞳孔'],'第二次分析後：電擊／唔需電擊都 Moving CPR 送院。',{set:{rhythm:'vf'}}),
+        LG('上車床。','心搏停止病人要送去邊？',['最就近醫院','屬區醫院','創傷中心','私家醫院'],'心搏停止、呼吸停止、嚴重敏感嘅病人要送往最就近醫院。')],
+      hosp:H(S('RE','途中病情','途中如果病人再次心搏停頓，要停車做幾耐 CPR？','點處理？',['用 AED，第一次分析需要電擊就停車做兩分鐘 CPR 至第二次分析，之後即送最就近醫院','唔使停車','停車 10 分鐘','停止 CPR'],'整個旅程只有喺第一次分析需要電擊時，先停車施行兩分鐘 CPR；不論第二次分析結果都要即送最就近醫院。'),
+        [who+'，商場突然暈低，旁人 CPR','冇脈搏、冇呼吸；AED '+(v.k==='shock'||v.k==='child'?'建議電擊':'唔需電擊'),v.k==='rosc'?'ROSC：HR 88 · BP 96／60':'持續 CPR 中','CPR'+(age<8?' 15:2、AED 50 J':' 30:2、AED 150 J')+(v.k==='shock'||v.k==='child'?' 電擊':'')+'、BVM'])}; } });
+  L.push({id:'adr',ic:'💉',cat:'停',title:'腎上腺素',en:'Adrenaline',
+    vars:[{k:'shock',label:'需要電擊 → 途中用藥'},{k:'noshock',label:'唔需電擊'},{k:'trapped',label:'病人被困 → 現場用藥'}],
+    make(v){ return {who:'58 歲男子',call:'有 58 歲男子喺屋企暈低，冇呼吸。',v:{hr:0,sbp:0,dbp:0,rr:0,spo2:0,avpu:3,gcs:3,rbs:6,pain:0,rhythm:v.k==='noshock'?'asys':'vf'},
+      steps:[...ARR(v.k==='trapped'?'病人困喺狹窄廁所，消防員拆緊門。':'住宅客廳，家人做緊 CPR。'),CPRQ(58),
+        S('AED','AED 第一次分析',v.k==='noshock'?'唔需要電擊、冇電流活動。':'需要電擊，已電擊。','之後點做？',v.k==='noshock'?['喺現場做 CPR + AED Protocol，之後 Moving CPR 送院','即刻停 CPR','即刻打 Adrenaline 唔使 CPR','檢查瞳孔']:['喺現場做兩分鐘 CPR，再第二次分析','即刻上車','即刻打 Adrenaline','檢查脈搏'],'CPR + AED Protocol + BVM 優先。'),
+        LG('Moving CPR 上車。','Adrenaline Protocol 通常幾時開始？',v.k==='trapped'?['病人被困：可喺現場、唔中斷基本生命支持下使用','一定要到院先用','一定要上車先用','唔可以用']:['救護車前往醫院途中啟動','喺現場一到就打','到院先用','唔使用'],'Adrenaline Protocol 通常喺前往醫院途中啟動；病人被困或現場冇救護車時，可在不中斷基本生命支持下喺現場使用。'),
+        S('TX','確認適用症、建立 IV／IO','≥ 12 歲、心臟驟停；試咗 3 次 IV 都搵唔到靜脈。','點做？',['考慮骨內注射 (IO)','放棄用藥','肌肉注射','皮下注射'],'IO 之前先考慮 IV；最多 3 次未能建立 IV 或冇清晰可見嘅靜脈，就考慮 IO。'),
+        S('TX','Adrenaline 劑量','IO 已建立。','Adrenaline 點俾？',['1 mg（10 ml），每 3–5 分鐘一次，最多 5 次','0.3 mg IM','1 mg 每分鐘','5 mg 一次'],'Adrenaline 1 mg／10 ml，每 3–5 分鐘，最多 5 次；之後調整三通 Full Rate 10 秒沖管。',{e:{q:'心臟停頓，救護員可以用咩藥？',o:['腎上腺素 (Adrenaline)','止痛藥','糖水'],a:0,why:'Adrenaline 幫助心臟停頓病人恢復循環。'}}),
+        S('TX','氣道 vs 藥物優先次序','BVM 通氣有效，胸口有起伏。','先做高級氣道定先打 Adrenaline？',['BVM 通氣有效 → 先打第一劑 Adrenaline，之後先高級氣道','先插高級氣道','兩樣都唔做','先俾 Amiodarone'],'BVM 可以維持通氣就先啟動第一劑 Adrenaline；BVM 通氣無效就先處理氣道。')],
+      hosp:H(v.k==='noshock'?S('RE','途中','第 1 劑 Adrenaline 已經打咗 4 分鐘；AED 再分析仍然唔需要電擊、冇電流活動。','點做？',['繼續 CPR，相隔 3–5 分鐘俾第 2 劑 Adrenaline 1 mg','即刻 Amiodarone 300 mg','停止 CPR','電擊一次試吓'],'Asystole 唔適用 Amiodarone（要 3 次電擊）；Adrenaline 每 3–5 分鐘一次，最多 5 次。'):S('RE','途中','已電擊 3 次、打咗 1 劑 Adrenaline。','仲可以考慮咩？',['Amiodarone 1st 300 mg','再打 5 mg Adrenaline','停止 CPR','俾 NS 1000 ml'],'3 次電擊（不需連續）及最少 1 劑 Adrenaline → 可俾 Amiodarone 300 mg。'),
+        ['58 歲男，屋企暈低','心搏停止，'+(v.k==='noshock'?'Asystole':'VF 已電擊'),'持續 CPR','CPR、AED、BVM、IO、Adrenaline 1 mg q3–5 min'])}; } });
+  L.push({id:'amio',ic:'🫀',cat:'停',title:'胺碘酮',en:'Amiodarone',
+    vars:[{k:'go',label:'已電擊 3 次 + 1 劑 Adrenaline'},{k:'notyet',label:'只電擊 2 次 → 未符合'}],
+    make(v){ return {who:'50 歲男子',call:'有 50 歲男子喺健身室暈低。',v:{hr:0,sbp:0,dbp:0,rr:0,spo2:0,avpu:3,gcs:3,rbs:6,pain:0,rhythm:'vf'},
+      steps:[...ARR('健身室，職員用緊 AED。'),CPRQ(50),
+        S('AED','AED','VF，已電擊。','之後？',['兩分鐘 CPR、第二次分析，Moving CPR 送院','停止 CPR','即刻 Amiodarone','檢查脈搏'],'CPR + AED Protocol + BVM。'),
+        LG('Moving CPR 上車。'),
+        S('TX','途中狀況',v.k==='go'?'途中累計電擊 3 次（不需連續），已打 1 劑 Adrenaline。':'途中累計電擊 2 次，已打 1 劑 Adrenaline。','可唔可以俾 Amiodarone？',v.k==='go'?['可以：1st 300 mg（6 ml），之後 Full Rate 10 秒沖管','唔可以','150 mg','600 mg']:['未可以：要 3 次電擊','可以 300 mg','可以 150 mg','可以 600 mg'],'Amiodarone 適用症：心臟驟停、≥ 12 歲、已電擊 3 次、已注射最少 1 劑 Adrenaline。1st 300 mg／6 ml。'),
+        S('TX','2nd 劑量條件','1st Amiodarone 之後。','2nd Amiodarone 要符合咩？',['1st 之後再電擊最少 1 次、再打最少 1 劑 Adrenaline，及相隔 5 分鐘 → 150 mg（3 ml）','即刻再打 300 mg','唔可以再俾','相隔 1 分鐘 → 300 mg'],'每位病人最多兩劑，第二劑一半（150 mg／3 ml）。')],
+      hosp:H(null,['50 歲男，健身室暈低','VF 心搏停止','持續 CPR','CPR、AED 電擊、Adrenaline、'+(v.k==='go'?'Amiodarone 300 mg':'未符合 Amiodarone')])}; } });
+  L.push({id:'aedp',ic:'🔌',cat:'停',title:'接手已用 AED 的病人',en:'Taking over AED',
+    vars:[{k:'fr',label:'先遣急救員 FR AED'},{k:'pub',label:'社區 AED(P)'},{k:'saed',label:'SAED Corpuls1 壞咗'},{k:'saedok',label:'SAED Corpuls1 正常'}],
+    make(v){ const D={fr:['先遣急救員嘅 FR AED','FR AED'],pub:['商場嘅社區 AED(P)','AED(P)'],saed:['RRV 嘅 SAED Corpuls1（部機出現故障）','SAED'],saedok:['RRV 嘅 SAED Corpuls1（運作正常）','SAED']}[v.k]; return {who:'70 歲男子',call:'有 70 歲男子心臟停頓，現場已經用緊 AED。',v:{hr:0,sbp:0,dbp:0,rr:0,spo2:0,avpu:3,gcs:3,rbs:6,pain:0,rhythm:'vf'},
+      steps:[S('RSE','到場、確認安全','病人已連接 '+D[0]+'。','用 AED 時，「安全情況」係指？',['AED 唔係正在分析、唔係正在電擊','AED 已關機','病人有脈搏','冇人掂病人'],'交接要喺安全情況下：AED 不是正在分析、不是正在電擊。'),
+        S('AED','AED 優先次序','你哋嘅 DM／SAED 可正常使用。','AED 優先次序係？',['DM／SAED → FR AED → FSD AED（AED 搵得到）→ 社區 AED(P)','社區 AED(P) 最優先','FR AED 最優先','邊部都一樣'],'第一優先救護人員 DM／SAED；第二 FR AED；第三 FSD AED；第四 AED(P)。'),
+        v.k==='saed'?S('AED','SAED 壞咗','SAED Corpuls1 出現故障，唔可以再用（唔可以喺救護車上使用）。','點做？',['改用 DM，將 SAED 內嘅 SD Card 轉交救護車主管','繼續用壞咗嘅 SAED 上車','唔使 SD Card','停止 CPR'],'SAED Corpuls1 壞咗（不可在救護車上使用）→ 改用 DM，SD Card 轉交救護車主管；到院用 SD Card 列印 ECG，連同 DM 嘅 ECG 一併提交，完成後交返 SD Card 俾 Corpuls1 擁有者。')
+        :v.k==='saedok'?S('AED','SAED 運作正常','SAED Corpuls1 運作正常（可以喺救護車上使用）。','點做？',['繼續用 SAED Corpuls1 上車，繼續 AED Protocol','一定要轉用 DM','關機唔再用','停止 CPR'],'SAED Corpuls1 冇壞（可在救護車上使用）→ 繼續用佢跟 AED Protocol 送院，唔使換機；到院用 SD Card 列印 ECG，擁有者回局上載資料。如送院途中 ROSC，繼續用 SAED，只用 DM 量 BP 同 SpO₂。')
+        :S('AED','更換 AED','安全情況下。','點更換？',['安全情況下關閉現場 AED（唔好移除電擊片），重新評估 LOC > D > CAB，再用 DM 開始 AED Protocol（之前電擊次數唔計）','直接拔走佢哋嘅 AED','繼續用佢哋部機上車','兩部一齊用'],v.k==='fr'?'FR AED：安全情況下關閉、不要移除電擊片、重新評估，需要時用 AED Protocol（不計算之前電擊），之後移除 FR 電擊片貼上 DM／SAED。':'更換 AED 時盡量避免中斷 CPR、避免帶嚟不必要損傷。'),
+        CPRQ(70),LG('Moving CPR 上車。')],
+      hosp:H(null,['70 歲男，心臟停頓','現場已用 '+D[1],'持續 CPR',v.k==='saedok'?'繼續用 SAED Corpuls1，CPR + AED Protocol':'接手後轉用 DM／SAED，CPR + AED Protocol'+(v.k!=='pub'?'，SD Card 已交主管':'')])}; } });
+  L.push({id:'accm',ic:'🤖',cat:'停',title:'自動胸外按壓機',en:'ACCM',
+    vars:[{k:'go',label:'成人可安裝'},{k:'preg',label:'懷孕 → 禁用'},{k:'airway',label:'已置入高級氣道'}],
+    make(v){ const who=v.k==='preg'?'32 歲孕婦':'60 歲男子'; return {who,call:'有'+who+'心臟停頓。',v:{hr:0,sbp:0,dbp:0,rr:0,spo2:0,avpu:3,gcs:3,rbs:6,pain:0,rhythm:'asys'},
+      steps:[...ARR('住宅，家人做緊 CPR。'),CPRQ(40),
+        S('TX','ACCM 適用症',v.k==='preg'?'病人懷孕。':'成年（≥ 8 歲、身高 ≥ 115 cm），可以穩固安裝。','可唔可以用 ACCM？',v.k==='preg'?['唔可以：懷孕係禁忌，繼續手動 CPR','可以','裝喺腹部','只用一半力']:['可以：成人 ≥ 8 歲、可以正確安全穩固安裝','唔可以','只限小童','要醫生批准'],'禁忌：懷孕、胸部嚴重外傷（大面積開放損傷／胸腔嚴重變形）、附近有爆炸危機或易燃氣體。'),
+        v.k==='preg'?LG('Moving CPR 上車。'):S('TX','ACCM 設定','安裝好。','ACCM 設定係？',['30:2、深度 5.0 cm、每分鐘 100 下','15:2、3 cm、80 下','連續、6 cm、120 下','3:1'],'Configured Mode 30:2；Depth 5.0 cm；Rate 100／min。'),
+        ...(v.k==='airway'?[S('AW','置入高級氣道後','已置入 LMA Supreme。','ACCM 要點調？',['由 30:2 改為 continuous，每 6 秒灌氣一次，唔停按壓','維持 30:2','停機','每 2 秒灌氣'],'為病人置入高級氣道後：ACCM 由 30:2 改 cont.；每 6 秒灌氣一次；唔應為灌氣而停頓心外壓。')]:[]),
+        ...(v.k==='preg'?[]:[LG('用 ACCM 上車。')])],
+      hosp:H(null,[who+'，心臟停頓','Asystole','持續 CPR',v.k==='preg'?'手動 CPR（懷孕禁用 ACCM）':'ACCM 30:2'+(v.k==='airway'?' → continuous + LMA':'')])}; } });
+  L.push({id:'lt',ic:'🫁',cat:'停',title:'喉管 LTS-D',en:'Laryngeal Tube',
+    vars:[{k:'h4',label:'身高 5 尺半'},{k:'h3',label:'身高 4 尺半'},{k:'corr',label:'攝入腐蝕性物質 → 禁用'},{k:'poor',label:'灌氣不足 → 選項一／二'}],
+    make(v){ const h=v.k==='h3'?'4 尺半':'5 尺半'; return {who:'55 歲'+(v.k==='h3'?'女子':'男子')+'（'+h+'）',call:'有人心臟停頓。',v:{hr:0,sbp:0,dbp:0,rr:0,spo2:0,avpu:3,gcs:3,rbs:6,pain:0,rhythm:'asys'},
+      steps:[...ARR('住宅，'+(v.k==='corr'?'旁邊有渠水樽（腐蝕性）。':'家人做緊 CPR。')),CPRQ(55),
+        S('AW','LTS-D 適用症','心臟驟停、≥ 12 歲。'+(v.k==='corr'?'懷疑飲咗腐蝕性渠水。':''),'可唔可以用 LTS-D？',v.k==='corr'?['唔可以：攝入腐蝕性物質係禁忌，用 OPA／NPA + BVM','可以','可以但細一碼','只可以用 Combitube']:['可以','唔可以','只限 18 歲以上','只限創傷'],'禁忌：上呼吸道阻塞、異物梗塞、懷疑急性會厭炎、上呼吸道腫脹、已知食道疾病、攝入腐蝕性物質。'),
+        ...(v.k==='corr'?[]:[S('AW','揀尺碼','病人身高 '+h+'。','用邊個尺碼？',v.k==='h3'?['#3 黃色，灌氣 50–60 ml','#4 紅色 70–80 ml','#5 紫色 80–90 ml','#2']:['#4 紅色，灌氣 70–80 ml','#3 黃色 50–60 ml','#5 紫色 80–90 ml','#2'],'#3（4 至 < 5 尺）黃 50–60 ml；#4（5 至 6 尺）紅 70–80 ml；#5（> 6 尺）紫 80–90 ml。'),
+          S('AW','插入程序','準備好。','正確程序係？',['測試袖口 → 潤滑 → 頭頸自然位 → BVM × 4 → 連續 CPR → 移除 OPA → 插入至牙齒標記 → 打氣 → 接 BVM 連 Filter → 停 CPR 聽兩邊肺同胃','直接插入唔使測試','先停 CPR 一分鐘再插','插入後唔使聽'],'LTS-D 程序：測試、潤滑、自然位、BVM × 4、連續 CPR、移除 OPA、插入、打氣、接 BVM 連 Filter、停 CPR 聽肺（Air × 2）、胃（No Air）、繼續 CPR。')]),
+        ...(v.k==='poor'?[S('AW','灌氣不足','胸部起伏不足，冇肺音。','點處理？',['聽診確認位置、檢查袖口；考慮選項一（重新插入 LTS-D）或選項二（改 LMA Supreme），都唔得就返 BVM + OPA／NPA','繼續用','加大灌氣到 200 ml','停止 CPR'],'嘗試任何一個選項一次；重新定位／更換後胸部冇起伏，就取出，用 BVM 和氣道輔助裝置恢復通氣。')]:[]),
+        LG('Moving CPR 上車。')],
+      hosp:H(null,['55 歲，心臟停頓','Asystole'+(v.k==='corr'?'，懷疑攝入腐蝕性物質':''),'持續 CPR',v.k==='corr'?'OPA + BVM（LTS-D 禁忌）':'LTS-D '+(v.k==='h3'?'#3':'#4')+(v.k==='poor'?'（灌氣不足，已處理）':'')])}; } });
+  L.push({id:'lma',ic:'😷',cat:'停',title:'喉罩 LMA Supreme',en:'LMA Supreme',
+    vars:[{k:'go',label:'成人，電擊後 2 分鐘內'},{k:'kid',label:'< 12 歲 → 禁用'},{k:'swell',label:'過敏性水腫 → 禁用'}],
+    make(v){ const who=v.k==='kid'?'10 歲男童':'48 歲男子'; return {who,call:'有'+who+'心臟停頓。',v:{hr:0,sbp:0,dbp:0,rr:0,spo2:0,avpu:3,gcs:3,rbs:6,pain:0,rhythm:'vf'},
+      steps:[...ARR('街上，路人做緊 CPR。'+(v.k==='swell'?'朋友話佢食海鮮後嘴唇腫、氣促先暈低。':'')),CPRQ(v.k==='kid'?10:48),
+        S('AED','AED','需要電擊，已電擊。','LMA Supreme 幾時插最好？',['AED Protocol 空檔，例如電擊後 2 分鐘 CPR 內，用不多於 30 秒完成','分析期間','等到院先插','停 CPR 5 分鐘插'],'喺 AED Protocol 空檔使用；現場需要電擊時，要喺 2 分鐘 CPR 內用不多於 30 秒完成整個程序（包括開始 BVM）。'),
+        S('AW','LMA 適用症',v.k==='kid'?'10 歲。':v.k==='swell'?'懷疑上呼吸道過敏性水腫。':'≥ 12 歲、心臟驟停。','可唔可以用 LMA Supreme？',v.k==='go'?['可以','唔可以','只限 18 歲以上','要醫生批准']:['唔可以（禁忌），繼續 OPA／NPA + BVM','可以','用細一碼','用 #5'],'禁忌：< 12 歲；上呼吸道腫脹（膿瘡、血腫、過敏性水腫、腫瘤、吸入性損傷）、結構破壞、阻塞（異物、會厭炎、牙關緊閉、回湧）。'),
+        ...(v.k==='go'?[S('AW','尺碼同灌氣','成年男子。','#4 灌氣幾多？',['45 ml','30 ml','80 ml','15 ml'],'#3 30 ml；#4 45 ml；#5 45 ml。'),
+          S('AW','之後','LMA 插好。','移動病人時要注意？',['用一隻手固定 LMA；無論成功與否都要填 LMA Supreme 表格','唔使固定','拔出嚟再插','唔使填表']," 移動病人時一手固定 LMA；不論是否成功插入都要填寫表格。")]:[]),
+        LG('Moving CPR 上車。')],
+      hosp:H(null,[who+'，心臟停頓','VF 已電擊','持續 CPR',v.k==='go'?'LMA Supreme #4（45 ml）':'OPA + BVM（LMA 禁忌）'])}; } });
+  L.push({id:'combi',ic:'🔧',cat:'停',title:'食道氣管組合管',en:'Combitube',
+    vars:[{k:'eso',label:'插入食道（正常）'},{k:'tra',label:'插入氣管 → 用 #2 白管'},{k:'gag',label:'嘔吐反射完整 → 禁用'}],
+    make(v){ return {who:'62 歲男子（5 尺 7 吋）',call:'有 62 歲男子心臟停頓。',v:{hr:0,sbp:0,dbp:0,rr:0,spo2:0,avpu:3,gcs:3,rbs:6,pain:0,rhythm:'asys'},
+      steps:[...ARR('住宅，家人做緊 CPR。'),CPRQ(62),
+        S('AW','幾時用 Combitube','LMA Supreme 插唔入，口腔不斷回湧。','可唔可以考慮 Combitube？',v.k==='gag'?['唔可以：病人仍有嘔吐反射（禁忌），用 OPA／NPA + BVM','可以','一定要用','改用 LT']:['可以：LMA 失敗或口腔不斷回湧時','唔可以','一定要先用 Combitube','到院先用'],'Combitube：LMA Supreme 插入失敗或未能插入、或口腔不斷回湧。禁忌：身高 < 4 尺、上呼吸道阻塞、異物、會厭炎、聲門水腫、食道疾病、腐蝕性物質、嘔吐反射完整。'),
+        ...(v.k==='gag'?[]:[S('AW','揀尺碼','5 尺 7 吋（約 170 cm）。','用咩尺碼？',['Small adult：白 12 ml、藍 85 ml','Adult：白 15 ml、藍 100 ml','唔建議使用','任何尺碼'],'4–6 尺 (122–183 cm) small adult：白 12 ml、藍 85 ml；> 6 尺 adult：白 15 ml、藍 100 ml；< 4 尺唔建議。'),
+          S('AW','#1 藍管通氣',v.k==='tra'?'#1 藍管入氣：肺部冇空氣，胃部有咕嚕聲（胃脹）。':'#1 藍管入氣：兩邊肺有入氣聲、胸口起伏，胃冇聲。','點做？',v.k==='tra'?['改用 #2 短透明（白）管通氣','繼續 #1','拔出唔再用','加大藍波']:['繼續用 #1 藍管通氣，繼續 CPR','改 #2 白管','拔出','停 CPR'],'#1 藍管入氣時肺部冇空氣而胃部有 → 可能插入咗氣道，測試 #2 白管；肺胃都冇聲而頂手 → 可能太深，放氣拔出 2–3 cm 再試；都唔得就移除改 OPA。')]),
+        LG('Moving CPR 上車。')],
+      hosp:H(null,['62 歲男，心臟停頓','Asystole，LMA 失敗、回湧','持續 CPR',v.k==='gag'?'OPA + BVM（嘔吐反射完整，冇用 Combitube）':'Combitube small adult，經 '+(v.k==='tra'?'#2 白管':'#1 藍管')+'通氣'])}; } });
+  L.push({id:'dnacpr',ic:'📄',cat:'停',title:'不作心肺復甦術命令',en:'DNACPR Order',
+    vars:[{k:'valid',label:'命令有效及適用'},{k:'choke',label:'哽塞（非自然因由）→ 不適用'},{k:'expired',label:'命令過期'},{k:'dispute',label:'家屬指已口頭撤銷'}],
+    make(v){ const T={valid:['78 歲伯伯，腦轉移腫瘤，喺屋企被發現心跳驟停','家人出示 DNACPR Order（表格二），正本、填寫簽署齊全，仍在效力期內。'],choke:['70 多歲伯伯食湯圓時突然捻住喉嚨，之後冇反應','家人話佢係末期肺癌，出示有效 DNACPR Order。'],expired:['85 歲伯伯，阿茲海默症，心跳驟停','有醫生簽發嘅 DNACPR Order，但效力期已過。'],dispute:['88 歲伯伯，晚期 COPD，喺床上冇反應','兒子出示有效嘅 DNACPR Order（表格一）；女兒哭著話「阿爸上個禮拜同我講佢想繼續生存，已經反口！」']}[v.k];
+      const noCPR=v.k==='valid'; return {who:{valid:'78 歲伯伯',choke:'76 歲伯伯',expired:'85 歲伯伯',dispute:'88 歲伯伯'}[v.k],call:T[0]+'。',v:{hr:0,sbp:0,dbp:0,rr:0,spo2:0,avpu:3,gcs:3,rbs:6,pain:0,rhythm:'asys'},
+      steps:[S('RSE','到場',T[0]+'。'+T[1],'到場見到有人出示 DNACPR Order，點分工？',['分工合作：一人檢查病人呼吸脈搏，一人查核命令','全部人睇份文件先','即刻 CPR 唔理文件','叫家屬出去'],'流程：到場已出示命令 → 分工合作：檢查病人呼吸脈搏、查核命令。'),
+        S('CAB','檢查呼吸脈搏','冇呼吸、冇脈搏。','冇脈搏，下一步？',['查核命令是否「有效」及「適用」','即刻停止所有處理','叫警察','等醫生'],'見到命令 + 命令有效及適用 + 冇懷疑 = 不須施救。',{reveal:['hr','rr']}),
+        S('HX','查核命令',T[1],'呢份命令點判斷？',noCPR?['有效及適用：不作 CPR，送最近醫院並通知留位，安慰家屬','無效：照做 CPR','要搜查病人身上有冇其他文件','叫家屬自己決定']:v.k==='choke'?['不適用：哽塞屬非自然因由，要施救','有效適用，唔使救','要先等警察確認','叫家屬決定']:v.k==='expired'?['無效：已過效力期，要施救','有效，唔使救','過期一日冇所謂','叫醫生延期']:['有理由懷疑已撤銷：立即施救，詳細記錄現場情況','跟文件，唔使救','叫兩位家屬投票','等律師'],'有效：訂明表格正本或核證副本、妥為填寫簽署、效力期未過（最長一年）、冇撤銷。適用：心肺停頓唔係非自然因由或傷害所致。「如有懷疑，救人第一」。'),
+        noCPR?LG('不作 CPR。','之後點做？',['將病人送往最近醫院並通知醫院留位','留低病人喺屋企','叫殯儀','繼續 CPR'],'命令有效及適用 → 不作心肺復甦術，將病人送往最近醫院並通知醫院留位。')
+        :S('CPR','開始心肺復甦','開始 CPR。','之後點做？',['繼續 CPR + AED，送最近醫院並通知留位','做 5 分鐘就停','唔使送院','等家屬同意'],'命令無效或不適用 → 開始 CPR，將病人送往最近醫院並通知醫院留位。'),
+        ...(noCPR?[]:[LG('Moving CPR 上車。')])],
+      hosp:H(null,['長者，心跳驟停',T[1],'冇呼吸脈搏',noCPR?'DNACPR Order 有效及適用，冇做 CPR':'命令'+(v.k==='choke'?'不適用（非自然因由）':v.k==='expired'?'無效（過期）':'有懷疑已撤銷')+'，已做 CPR'])}; } });
+  /* ================= 創傷 ================= */
+  L.push({id:'hat',ic:'🩹',cat:'傷',title:'止血帶',en:'Haemostatic Arterial Tourniquet',
+    vars:[{k:'leg',label:'大腿大出血 → HAT'},{k:'groin',label:'腹股溝出血 → 唔可以用 HAT'},{k:'second',label:'第一條止唔到血'}],
+    make(v){ return {who:'35 歲男工人',call:'工廠有工人被機器割傷，大量出血。',v:{hr:128,sbp:88,dbp:54,rr:24,spo2:95,avpu:0,gcs:15,rbs:6,pain:8,rhythm:'tachy'},
+      steps:[...BB({rse:'機器已關、環境安全；'+(v.k==='groin'?'腹股溝':'左大腿')+'大量噴血。',rseQ:{q:'見到危及生命嘅大出血，即刻要？',o:['盡快止血：直接加壓','先量血壓','先填表','先問病史'],a:0,why:'嚴重出血要盡快處理。'},loc:[0,'清醒，好驚。'],d:[0,'冇撞頭、冇頸痛。'],cab:'橈動脈弱而快 128 次；呼吸 24 次。',o2:['nrm','SpO₂ 95%。',98],rbs:'直接加壓都止唔到血。',skin:'蒼白、濕冷。',shock:1,dec:[1,'危及生命嘅出血、休克。']}),
+        S('BLEED','評估止血帶',v.k==='groin'?'出血位喺腹股溝（交界處）。':'大腿中段傷口，直接壓力止唔到血；傷口上方有足夠空間。','可唔可以用 HAT？',v.k==='groin'?['唔可以：交界處冇安全位置，改用止血敷料 (HD)','可以紮喺腹股溝','紮喺腰','紮喺膝頭']:['可以：危及生命肢體出血、直接加壓無效、有安全空間','唔可以','要醫生批准','只可以紮喺膝頭'],'HAT 適用：危及生命／嚴重肢體出血 + 直接壓力無效 + 有足夠安全空間（頭、頸、軀幹或任何關節都唔係安全位置）。'),
+        v.k==='groin'?S('BLEED','止血敷料','可以識別明顯出血點。','HD 點用？',['將止血敷料按壓入傷口接觸出血點，按壓最少 3 分鐘，尾部留喺傷口外','鋪喺表面就得','填入腹腔','唔使按'],'交界處（頸、腋、腹股溝）出血用 HD 特別有用；按壓最少 3 分鐘；尾部留外提醒醫護。',{set:{hr:118}})
+        :S('BLEED','紮止血帶位置','傷口喺大腿中段。','止血帶紮喺邊？',['傷口近端（向心臟方向）≥ 5 cm，盡量靠近傷口，離關節 ≥ 5 cm','直接紮喺傷口上','傷口遠端','紮喺膝頭'],'≥ 5 cm 近端（唔係遠端）、盡可能靠近傷口；離關節 ≥ 5 cm；唔好直接紮喺傷口；要夠緊阻止動脈流動。',{set:{hr:116}}),
+        ...(v.k==='second'?[S('BLEED','第一條止唔到血','第一條紮好，仍然出血。','點做？',['喺第一條旁邊並排紮第二條；仍止唔到就考慮止血敷料','放鬆第一條','紮喺遠端','唔使理'],'第二條可並排靠近第一條；太近關節就紮喺關節上方肢體段；再止唔到就考慮止血敷料。')]:[]),
+        S('TX','記錄同其他','出血已控制。','仲要做咩？',['記錄止血帶位置同時間（eAJR）並交接；留意 Hypovolemia／TXA／創傷中心、適當止痛','唔使記錄','放鬆止血帶睇吓','冰敷'],'將使用止血帶嘅位置和時間記錄到 eAJR，交接時通知醫護人員。'),
+        LG('上車床。')],
+      hosp:H(null,['35 歲男，機器割傷'+(v.k==='groin'?'腹股溝':'左大腿'),'危及生命出血，直接加壓無效；休克','BP 88／54 · HR 128 → '+(v.k==='groin'?118:116),v.k==='groin'?'止血敷料按壓 3 分鐘':'HAT'+(v.k==='second'?' × 2':'')+'（時間已記錄）'+'、NRM'])}; } });
+  L.push({id:'hd',ic:'🧻',cat:'傷',title:'止血敷料',en:'Haemostatic Dressing',
+    vars:[{k:'neck',label:'頸部出血'},{k:'chest',label:'胸腔大傷口睇唔到出血點'},{k:'eye',label:'眼球傷口 → 禁用'}],
+    make(v){ const pos={neck:'頸側',chest:'胸口',eye:'眼'}[v.k]; return {who:'28 歲男子',call:'有 28 歲男子被玻璃割傷'+pos+'，大量出血。',v:{hr:122,sbp:94,dbp:58,rr:24,spo2:95,avpu:0,gcs:15,rbs:6,pain:7,rhythm:'tachy'},
+      steps:[...BB({rse:'餐廳，玻璃碎已清理。',loc:[0,'清醒。'],d:[0,'冇跌倒。'],cab:'橈動脈 122 次；呼吸 24 次。',o2:['nrm','SpO₂ 95%。',98],rbs:pos+'傷口大量出血，直接加壓未能控制。',skin:'蒼白。',shock:1,dec:[1,'危及生命出血。']}),
+        S('BLEED','評估止血敷料',v.k==='neck'?'頸側傷口，可以識別出血點，止血帶唔可以用。':v.k==='chest'?'胸口大傷口，睇唔到確切出血點。':'出血位喺眼球。','可唔可以用 HD？',v.k==='neck'?['可以：交界處出血、可識別出血點','唔可以','用止血帶紮頸','鋪紗布就得']:['唔可以（禁忌），用一般方法處理','可以塞入去','可以鋪滿','用止血帶'],'HD 禁忌：眼球、大腦、脊椎等結構；胸腹大傷口睇唔到確切出血點（唔好盲目包紮）。'),
+        ...(v.k==='neck'?[S('BLEED','使用','準備好。','點用？',['換一副乾淨手套，將敷料按入傷口接觸出血點，按壓最少 3 分鐘，尾部留外','鋪喺表面','按 30 秒','唔使手套'],'按壓最少 3 分鐘；尾部留外；空包裝交醫護，記錄用咗幾多袋。',{set:{hr:112}})]:[]),
+        LG('上車床。')],
+      hosp:H(null,['28 歲男，玻璃割傷'+pos,'大量出血，直接加壓未能控制','BP 94／58 · HR 122'+(v.k==='neck'?' → 112':''),v.k==='neck'?'止血敷料按壓 3 分鐘（用咗 1 袋）':'直接加壓（HD 禁忌）'])}; } });
+  L.push({id:'tpod',ic:'🦴',cat:'傷',title:'骨盆固定帶',en:'T-POD',
+    vars:[{k:'supine',label:'仰臥病人'},{k:'prone',label:'俯臥病人'},{k:'kid',label:'< 23 kg 小童 → 禁用'}],
+    make(v){ const who=v.k==='kid'?'5 歲男童（18 kg）':'40 歲女子'; return {who,call:'有'+who+'被私家車撞到，盤骨好痛。',v:{hr:118,sbp:96,dbp:60,rr:24,spo2:96,avpu:0,gcs:15,rbs:6,pain:8,rhythm:'tachy'},
+      steps:[...BB({rse:'交通意外現場，警察已封路。病人'+(v.k==='prone'?'伏喺地上。':'仰臥。'),loc:[0,'清醒。'],d:[1,'被車撞，背痛。'],cab:'橈動脈 118 次；呼吸 24 次。',o2:['nrm','SpO₂ 96%。',98],rbs:'輕按盆骨有觸痛，下肢無力。',rbsQ:{q:'盆骨創傷要注意咩？',o:['可能有嚴重內出血，盡量少移動盆骨','用力搖盤骨檢查','叫病人企起','冇大問題'],a:0,why:'盆骨創傷可能有嚴重內出血，死亡率高；盡量少移動盆骨。'},skin:'蒼白。',shock:1,dec:[1,'嚴重創傷。']}),
+        S('SPL','T-POD 適用症',v.k==='kid'?'18 kg。':'MOI 同表面徵狀懷疑骨盆受傷。','可唔可以用 T-POD？',v.k==='kid'?['唔可以：< 50 磅 (23 kg) 係禁忌','可以','剪細啲用','用兩條']:['可以','唔可以','要醫生批准','只限男性'],'T-POD 適用：MOI 及表面徵狀有骨盆受傷跡象；禁忌：< 50 磅 (23 kg)。'),
+        ...(v.k==='kid'?[]:[S('SPL','位置',v.k==='prone'?'病人俯臥。':'病人仰臥，褲袋冇雜物。','T-POD 點放？',v.k==='prone'?['先上板（Load 上板）先落 T-POD','直接喺俯臥狀態綁','反轉病人再綁','唔使綁']:['腰帶上邊對準髂嵴或喺大轉子中心，中間留 6–8 吋空位，兩邊滑輪慢慢收緊','綁喺腰','綁喺膝頭','綁到最緊唔使留空位'],'3/4 prone 或 full prone 要上板先落 T-POD；腰帶對準大轉子中心，修剪後中間留 6–8 吋，裝滑輪慢慢收緊，記錄日期時間，再用彈性制動帶固定下肢。')]),
+        LG('用剷床上車。')],
+      hosp:H(null,[who+'，被私家車撞','盆骨觸痛，懷疑內出血','BP 96／60 · HR 118',v.k==='kid'?'剷床、少移動盆骨（T-POD 禁忌）':'T-POD（時間已記錄）、NRM'])}; } });
+  L.push({id:'sager',ic:'🦵',cat:'傷',title:'牽引夾板',en:'Sager Traction Splint',
+    vars:[{k:'closed',label:'閉合性中段股骨骨折'},{k:'open',label:'開放性骨折'},{k:'upper',label:'上 1/3 骨折'}],
+    make(v){ return {who:'30 歲男子（70 kg ≈ 154 磅）',call:'有電單車司機大腿變形。',v:{hr:112,sbp:118,dbp:74,rr:22,spo2:97,avpu:0,gcs:15,rbs:6,pain:9,rhythm:'tachy'},
+      steps:[...BB({rse:'路面，警察封路。',loc:[0,'清醒。'],d:[0,'戴頭盔、冇頸痛，NEXUS 評估後唔需要制動。'],cab:'橈動脈 112 次；呼吸 22 次。',o2:['nrm','SpO₂ 97%（重大創傷）。',99],rbs:'右大腿'+(v.k==='upper'?'上 1/3':'中段')+(v.k==='open'?'開放性':'閉合性')+'骨折，大腿明顯變形、縮短。',skin:'正常。',dec:[1,'長骨骨折。']}),
+        S('SPL','檢查','準備用 Sager。','用夾板前要做咩？',['用手／沙包穩定肢體、展露包紮傷口、檢查遠端血液循環及神經功能（大 check）','直接拉','唔使檢查','先叫病人郁'],'先穩定、展露、包紮，再大 check。'),
+        S('SPL','牽引力',v.k==='closed'?'閉合性中段骨折。':v.k==='open'?'開放性骨折。':'上 1/3 骨折。','用幾多牽引力？',v.k==='closed'?['體重 10%（約 15 磅），但最多 10 磅 → 10 磅','15 磅','5 磅','20 磅']:['最多 5 磅','10 磅','體重 10%','15 磅'],'閉合性中段：體重 10%，最大 10 磅；開放性骨折或關節損傷、上／下 1/3：最多 5 磅。'),
+        S('SPL','之後','夾板裝好。','仲要做咩？',['複查遠端血液循環和神經功能，用剷床上車，檢查磅數升降唔超過 10%','唔使再查','放鬆夾板','叫病人企起'],'固定後複查（大 check），上剷床後再查磅數同循環。',{set:{pain:6}}),
+        LG('用剷床上車。')],
+      hosp:H(null,['30 歲男，電單車意外','右大腿'+(v.k==='upper'?'上 1/3':'中段')+(v.k==='open'?'開放性':'閉合性')+'骨折','BP 118／74 · HR 112','Sager '+(v.k==='closed'?'10 磅':'5 磅')+'、NRM'])}; } });
+  L.push({id:'spinal',ic:'🦴',cat:'傷',title:'脊柱處理',en:'Spinal Management',
+    vars:[{k:'walk',label:'清醒可自行走動、冇頸痛'},{k:'old',label:'≥ 65 歲'},{k:'drunk',label:'醉酒'},{k:'fall',label:'由 6 米以上墮下'}],
+    make(v){ const who={walk:'25 歲男子',old:'70 歲婆婆',drunk:'35 歲男子',fall:'40 歲工人'}[v.k]; return {who,call:{walk:'有私家車追尾，司機自己落咗車。',old:'有 70 歲婆婆喺樓梯跌落嚟。',drunk:'有醉酒男子跌落樓梯。',fall:'有工人由 7 米高棚架墮下。'}[v.k],v:{hr:96,sbp:128,dbp:80,rr:20,spo2:97,avpu:0,gcs:15,rbs:6,pain:4,rhythm:'sinus'},
+      steps:[...BB({rse:'現場安全。',loc:[0,v.k==='drunk'?'清醒但滿身酒味。':'清醒。'],d:[1,'根據 MOI 懷疑脊柱受傷。'],cab:'橈動脈 96 次；呼吸 20 次。',o2:['room','SpO₂ 97%。'],rbs:'冇明顯傷勢。',skin:'正常。',dec:[0,'冇危及生命嘅情況。']}),
+        S('SPL','NEXUS：能否自行走動',v.k==='walk'?'病人警覺、清醒、可靠，自己行到救護車旁，冇頸痛。':'病人唔可以自行走動。','下一步？',v.k==='walk'?['無需脊柱制動，送院（持續頸痛先考慮頸套、平放擔架）','完整脊柱制動','叫佢跑兩步','上脊椎板']:['檢查有冇危及生命情況，冇就按經改良 NEXUS 準則逐項評估','叫佢自己行','即刻全套制動唔使評估','唔使理'],'可以自行走動：持續頸痛先考慮頸套並平放；否則無需制動。不能：先排除危及生命情況，再按經改良 NEXUS 準則。'),
+        ...(v.k==='walk'?[]:[S('SPL','經改良 NEXUS 準則',{old:'70 歲。',drunk:'醉酒。',fall:'由 7 米高處墮下。'}[v.k],'點處理？',['完整的脊柱制動','無需制動','叫佢行吓','只上頸套']," NEXUS：< 12 或 ≥ 65 歲、神經缺損、脊柱觸痛／變形、清醒程度下降、中毒／醉酒、轉移注意力嘅傷、同車廂有死亡、被拋出車外、成人墮下 > 6 米（小童 > 3 米或身高兩倍）→ 完整脊柱制動。")]),
+        LG('上車。')],
+      hosp:H(null,[who,'MOI 懷疑脊柱受傷','生命表徵穩定',v.k==='walk'?'無需脊柱制動':'完整脊柱制動'])}; } });
+  L.push({id:'burn',ic:'🔥',cat:'傷',title:'燒傷敷料',en:'Burn Kit',
+    vars:[{k:'scald',label:'熱水燙傷 5%'},{k:'chem',label:'化學品燒傷'},{k:'face',label:'面部燒傷 → 吸入性損傷'},{k:'big',label:'面積 > 15%'}],
+    make(v){ const D={scald:['熱水燙傷右手臂，約 5%，有水泡','5%'],chem:['工廠化學品濺到前臂','3%'],face:['廚房火警，面部燒傷、鼻毛燒焦','4%'],big:['火警，胸腹同雙手燒傷約 25%','25%']}[v.k]; return {who:'45 歲男子',call:'有 45 歲男子燒傷。',v:{hr:110,sbp:128,dbp:80,rr:v.k==='face'?26:20,spo2:v.k==='face'?93:98,avpu:0,gcs:15,rbs:6,pain:8,rhythm:'sinus'},
+      steps:[...BB({rse:D[0]+'；危險已排除。',loc:[0,'清醒。'],d:[0,'冇跌倒。'],cab:'橈動脈 110 次；呼吸 '+(v.k==='face'?'26 次，聲沙':'20 次')+'。',o2:v.k==='face'||v.k==='big'?['nrm','SpO₂ '+(v.k==='face'?'93%':'98%')+'。',98]:['room','SpO₂ 98%，冇呼吸困難。'],rbs:'燒傷面積約 '+D[1]+'（九則計算法）。',rbsQ:{q:'估算燒傷面積用咩方法？',o:['九則計算法（Rule of Nines）','睇痛唔痛','量體溫','唔使估'],a:0,why:'成人用九則計算法，嬰兒小童另有比例。'},skin:'紅、水泡。',dec:[v.k==='face'||v.k==='big'?1:0,v.k==='big'?'嚴重燒傷。':v.k==='face'?'懷疑吸入性損傷。':'局部燒傷。']}),
+        S('TX','冷水治療',v.k==='chem'?'化學品燒傷。':'燒傷後 5 分鐘。','點沖？',v.k==='chem'?['先用大量清水沖洗化學品，之後先用燒傷敷料','直接蓋燒傷敷料','用冰水','唔使沖']:['即場沖約 10 分鐘（燒傷後 10 分鐘內），唔好超過 10 分鐘','沖 30 分鐘','用冰','唔使沖'],'情況許可即場沖洗約 10 分鐘；唔可超過 10 分鐘以免體溫過低；化學品先沖水後用敷料（石灰可用大量清水）。'),
+        S('TX','燒傷敷料',v.k==='big'?'燒傷約 25%。':v.k==='face'?'面部燒傷。':'一／二級燒傷 '+D[1]+'。','點用 Burnkit？',v.k==='big'?['唔可以全部蓋：Burnkit 唔可以覆蓋多過 15%，防體溫過低','全身蓋晒','用濕毛巾包住全身','唔使理']:v.k==='face'?['可以用，但唔好完全覆蓋口鼻；當吸入性損傷處理，俾高濃度氧氣','蓋晒成塊面','唔使氧氣','用冰敷']:['用燒傷敷料，唔好弄穿水泡','刺穿水泡先蓋','塗牙膏','唔使包紮'],'Burnkit 只適用於一或二級燒傷；唔可覆蓋多於 15% 體表面積；唔好完全覆蓋口鼻；避免弄穿水泡；化學品未沖淨唔可以敷。'),
+        LG('上車床。')],
+      hosp:H(null,['45 歲男，'+D[0],'燒傷約 '+D[1]+(v.k==='face'?'，懷疑吸入性損傷':''),'HR 110 · SpO₂ '+(v.k==='face'?'93% → 98%':'98%'),'冷水沖洗、'+(v.k==='big'?'局部敷料（≤ 15%）、保暖':'燒傷敷料')+(v.k==='face'||v.k==='big'?'、NRM':'')])}; } });
+  L.push({id:'hypot',ic:'🥶',cat:'傷',title:'低溫症',en:'Hypothermia',
+    vars:[{k:'imm',label:'浸水受寒'},{k:'cold',label:'冷凍受寒（山上）'},{k:'frost',label:'凍傷'}],
+    make(v){ const D={imm:['有人遇溺，救起後全身濕透發冷','碼頭'],cold:['行山人士喺山頂迷路一晚，好凍','大帽山'],frost:['行山人士手指冰冷麻木、轉灰白','大帽山']}[v.k]; return {who:'50 歲男子',call:D[0]+'。',v:v.k==='frost'?{hr:88,sbp:132,dbp:82,rr:16,spo2:97,avpu:0,gcs:15,rbs:5.6,pain:5,rhythm:'sinus'}:{hr:56,sbp:104,dbp:66,rr:12,spo2:94,avpu:1,gcs:13,rbs:5,pain:3,rhythm:'brady'},
+      steps:[...BB({rse:D[1]+'，風大、氣溫低。',loc:v.k==='frost'?[0,'清醒。']:[1,'講嘢含糊、動作唔協調。'],d:[0,'冇跌倒。'],cab:v.k==='frost'?'橈動脈 88 次、規則；呼吸 16 次。':'脈搏慢而唔規則，56 次；呼吸 12 次。',o2:v.k==='frost'?['room','SpO₂ 97%（用耳珠夾，手指凍讀數唔準）。']:['nc','SpO₂ 94%（指尖凍，讀數可能唔準）。',95],rbs:v.k==='frost'?'左手手指灰白、冇知覺。':'全身冰冷，'+(v.k==='imm'?'衣服濕透。':'衣著單薄。'),skin:v.k==='frost'?'左手手指灰白、冰冷、硬實；其他位置正常。':'蒼白、冰冷。',skinQ:v.k==='frost'?{q:'手指灰白、冰冷、硬實冇知覺，係？',o:['凍傷','燙傷','過敏','瘀傷'],a:0,why:'凍傷：皮膚灰白／蠟黃、冰冷、硬實、麻痺。要慢慢回暖，唔可以搓。'}:{q:'低溫症常見表現？',o:['面色蒼白、皮膚冰冷、說話含糊、脈搏慢而不規律','潮紅發熱','大量出汗','皮膚出疹'],a:0,why:'體溫過低：蒼白微涼、說話含糊、動作失協調，後期昏迷、皮膚冰冷、肌肉僵硬、脈搏緩慢不規律。'},dec:v.k==='frost'?[0,'清醒、生命表徵穩定，局部凍傷。']:[1,'低溫。']}),
+        v.k==='frost'?S('TX','凍傷處理','手指凍傷。','點處理？',['利用體溫慢慢回暖（例如放入對側腋下），除下戒指，唔好搓、唔好用熱水袋','用熱水袋直接焗','用力搓暖','吸煙暖身'],'凍傷：逐漸回暖，用自身體溫；唔可用熱水袋或近火爐；唔可搓揉按摩；除去戒指或緊身衣物；勸阻吸煙。')
+        :S('TX','保暖',v.k==='imm'?'衣服濕透。':'衣著單薄。','點處理？',v.k==='imm'?['脫去濕衣、擦乾，用 Hypothermia Wrap 程序包裹','加多幾件衫蓋住濕衫','用熱水袋直接貼身','搓暖手腳']:['提供遮蔽，用毛氈包裹（包埋頭但唔阻礙呼吸）','用熱水袋貼身','搓揉按摩','俾佢飲酒'],'切勿直接加熱、搓揉按摩或過度增加衣物；Hypothermia Wrap：脫濕衣 → 保溫毯 → 紅毯 → Hot Pack（放嘔吐袋、膠紙固定紅毯外）→ 第二張紅毯 → 救護袋床。'),
+        S('TX','Hot Pack 注意','準備 Hot Pack。','點用 Hot Pack？',['放入嘔吐袋，唔可以直接接觸皮膚，最少隔一張紅毯，每 10–20 分鐘更換','直接貼皮膚','用完留返下次用','爆咗照用'],'Hot Pack 必須放入嘔吐袋；與皮膚最少隔一張紅毯；每 10–20 分鐘更換；一次性；破裂要換整袋，接觸皮膚即用清水沖。'),
+        LG('上車床。',null,['LOAD & GO，途中持續以毛氈包裹；就算睇落似死亡都要繼續復甦直至醫生確認','脫晒毛氈','唔使送院','開冷氣'],'嚴重受寒可能看似死亡，救護人員必須持續急救與復甦，直至醫生確認死亡。')],
+      hosp:H(null,['50 歲男，'+D[0],v.k==='frost'?'左手手指凍傷':'低溫：說話含糊、脈搏慢',v.k==='frost'?'HR 88 · SpO₂ 97%':'HR 56 · SpO₂ 94%',v.k==='frost'?'體溫回暖、除戒指':'Hypothermia Wrap、Hot Pack'])}; } });
+  /* ================= 器材／準則 ================= */
+  L.push({id:'ecg12',ic:'📈',cat:'準',title:'十二導聯心電圖',en:'12-Lead ECG',
+    vars:[{k:'stemi',label:'有 STEMI 訊號'},{k:'gcs',label:'GCS ≦ 13 → 禁忌'},{k:'female',label:'女性病人私隱'},{k:'fail',label:'傳輸失敗'}],
+    make(v){ const fem=v.k==='female'; return {who:fem?'60 歲女子':'64 歲男子',call:'有'+(fem?'60 歲女子':'64 歲男子')+'胸口痛。',v:{hr:92,sbp:134,dbp:84,rr:20,spo2:96,avpu:v.k==='gcs'?1:0,gcs:v.k==='gcs'?12:15,rbs:6,pain:7,rhythm:'sinus'},
+      steps:[...BB({rse:'住宅，環境安全。',loc:v.k==='gcs'?[1,'答非所問。']:[0,'清醒。'],d:[0,'冇跌倒。'],cab:'橈動脈 92 次；呼吸 20 次。',o2:['room','SpO₂ 96%，冇呼吸困難。'],rbs:'冇傷勢。',skin:'冒汗。',dec:[1,'胸痛。']}),
+        S('TX','12-Lead ECG 適用症',v.k==='gcs'?'≥ 12 歲、心源性胸痛，但 GCS 12。':'≥ 12 歲、心源性胸痛、生命表徵穩定。','可唔可以做？',v.k==='gcs'?['唔可以：GCS ≦ 13 係禁忌','可以','做一半','到院先做']:['可以，先講原因同取得口頭同意','唔使問就做','唔可以','只喺醫院做'],'禁忌：心臟驟停、無法處理氣道／呼吸、GCS ≦ 13、SBP < 90（或回流 > 2 秒）、RR < 10 或 > 29。病人唔同意就照常運送，唔好拖延。'),
+        ...(v.k==='gcs'?[]:[fem?S('TX','女性病人','女性病人。','點做先尊重私隱？',['先接好電纜再貼電極、病人自己遮住乳房、唔好用手摸搵位置、貼完即覆蓋、做完請病人自己除 C1–C6','叫佢除晒衫','男同事用手搵肋骨位','唔使理私隱']," 女性病人特別注意事項：盡量減少暴露同身體接觸。")
+          :S('TX','電極位置','準備貼電極。','C1 貼喺邊？',['第 4 肋間隙，右側胸骨旁','第 5 肋間隙，左腋中線','左鎖骨下','右肋緣'],'C1 第 4 肋間右胸骨旁；C2 第 4 肋間左胸骨旁；C3 C2 同 C4 之間；C4 第 5 肋間左鎖骨中線；C5 C4 同 C6 之間；C6 第 5 肋間左腋中線。'),
+          S('TX','傳送',v.k==='fail'?'傳輸失敗。':v.k==='stemi'?'傳輸成功，出現「STEMI」訊號。':'傳輸成功，冇 STEMI。','之後點做？',v.k==='stemi'?['致電接收醫院急症室，通知已傳送 ECG 及正運送危重病人（身份證、救護車編號、預計到達時間、手機號碼）','唔使通知','叫病人自己打俾醫生','重做 10 次']:v.k==='fail'?['記錄原因，繼續運送同監察，唔好因 ECG 耽誤治療','留喺現場一直重試','停止所有治療','唔使記錄']:['保留 R、L、F、N 監察電極，移除 C1–C6，繼續監察同送院','除晒所有電極','停止監察','叫病人自己行'],'任何情況唔得因 12-Lead ECG 耽誤治療；有 STEMI 要致電接收醫院；e-AJR 要記錄有冇 STEMI、有冇送出、有冇通知醫院、有冇交 CCPP 表格 (FSG 343)。')]),
+        LG('上車床。')],
+      hosp:H(null,[(fem?'60 歲女':'64 歲男')+'，胸口痛','心源性胸痛'+(v.k==='gcs'?'，GCS 12':''),'BP 134／84 · HR 92',v.k==='gcs'?'冇做 12-Lead（GCS ≦ 13）':'12-Lead ECG'+(v.k==='stemi'?'：STEMI，已通知醫院':v.k==='fail'?'：傳輸失敗，已記錄':'')+'、CCPP 表格'])}; } });
+  L.push({id:'stroke',ic:'🧠',cat:'準',title:'院前中風通報及分流',en:'Pre-hospital Stroke',
+    vars:[{k:'notify',label:'符合 → 通報'},{k:'hypo',label:"H'stix ≦ 4 → 先處理低血糖"},{k:'late',label:'超過 4 小時 → 唔使評估'}],
+    make(v){ const r=v.k==='hypo'?3.1:6.4; return {who:'68 歲男子',call:'有 68 歲男子突然右手無力、講嘢唔清。',v:{hr:88,sbp:168,dbp:96,rr:18,spo2:97,avpu:0,gcs:14,rbs:r,pain:0,rhythm:'sinus'},
+      steps:[...BB({rse:'住宅，環境安全。',loc:[0,'清醒，講嘢含糊。'],d:[0,'冇跌倒。'],cab:'橈動脈 88 次；呼吸 18 次。',o2:['room','SpO₂ 97%。'],rbs:'右手右腳無力、口角歪。',skin:'正常。',dec:[1,'突發單邊無力。']}),
+        S('HX','病發時間',v.k==='late'?'家人話佢琴晚瞓前（約 9 小時前）仲正常，今朝先發現。':'太太話 1 小時前食飯時突然發生。','院前中風評估適用症係？',['突發單邊肢體無力或語言障礙，及病發／最後正常時間 4 小時內','任何頭暈','只要血壓高','24 小時內'],'不符合任何條件就唔使評估（唔使交表）。'),
+        S('HS',"檢查 H'stix","H'stix："+r+' mmol/L',"點處理？",v.k==='hypo'?['先按 Glycemia Protocol 處理低血糖，再做中風評估','照做中風通報','唔使理血糖','俾 ASA']:['已排除低血糖 (> 4.0)，繼續評估','先俾糖水','俾 Glucagon','停止評估'],"通報條件包括已排除血糖過低 (H'stix > 4.0)；應先處理血糖過低才進行中風評估。",{reveal:['rbs']}),
+        VS('BP 168／96 · HR 88 · RR 18 · SpO₂ 97% · GCS 14'),
+        v.k==='notify'?S('TX','FAST-ED','面部單側下垂、一邊手抬唔起、講到 1 樣動物、雙眼偏向一面但提示下望到另一面、知道手無力。','FAST-ED 總分係？',['5 分','2 分','9 分','0 分'],'F 1 + A 2（一邊完全唔能抬高）+ S 1（只講出 0–1 樣）+ E 1 + D 0 = 5。通報條件：≥ 18 歲、非長期臥床、SBP > 100 及 GCS ≥ 8、H\'stix > 4。')
+        :S('TX','決定',v.k==='late'?'已超過 4 小時。':"H'stix 3.1。",'需唔需要院前中風通報？',v.k==='late'?['唔需要：病發超過 4 小時，如常送院','需要','需要並分流','叫家人決定']:['暫時唔可以：先處理低血糖再評估','需要即刻通報','唔使理','送私家醫院'],'唔符合條件 → 如常送院。'),
+        v.k==='notify'?S('CALL','通報',HOSP()+'屬區。','點做？',['直接致電院前中風通報電話，強調係院前中風通報，提供資料，到院後交表','唔使通報','叫控制室傳話','到院先講'],'被評定有機會中風及適合溶栓嘅病人，主管應盡快通知所屬醫院急症室並盡快送院；到院提交表格。'):LG('上車床。'),
+        ...(v.k==='notify'?[LG('上車床。')]:[])],
+      hosp:H(null,['68 歲男，突發右邊無力、講嘢含糊','病發 '+(v.k==='late'?'約 9 小時前':'1 小時前')+"；H'stix "+r,'BP 168／96 · GCS 14',v.k==='notify'?'FAST-ED 5 分，已院前中風通報':v.k==='hypo'?'先處理低血糖':'超過 4 小時，如常送院'])}; } });
+  L.push({id:'trauma',ic:'🏥',cat:'準',title:'創傷分流',en:'Trauma Diversion',
+    vars:[{k:'gcs',label:'GCS 12 → 創傷中心'},{k:'arrest',label:'心臟驟停 → 最就近醫院'},{k:'fall',label:'由 8 米墮下'},{k:'minor',label:'冇高危因素 → 屬區醫院'}],
+    make(v){ const D={gcs:['電單車撞車，頭部受傷','GCS 12',12],arrest:['被車撞，冇呼吸脈搏','心臟驟停',3],fall:['工人由 8 米高墮下','GCS 15',15],minor:['單車跌倒擦傷手肘','GCS 15',15]}[v.k]; return {who:'成年男子',call:D[0]+'。',v:{hr:v.k==='arrest'?0:100,sbp:v.k==='arrest'?0:122,dbp:v.k==='arrest'?0:78,rr:v.k==='arrest'?0:20,spo2:v.k==='arrest'?0:97,avpu:v.k==='arrest'?3:v.k==='gcs'?1:0,gcs:D[2],rbs:6,pain:5,rhythm:v.k==='arrest'?'asys':'sinus'},
+      steps:[S('RSE','到場',D[0]+'。','創傷分流第一條問題係？',['病人係咪心臟驟停','傷口有幾長','病人住邊','有冇買保險'],'創傷分流：心臟驟停 → 最就近醫院；氣道／呼吸未能有效處理 → 最就近醫院。'),
+        S('LOC','評估',D[1]+'。','呢個情況屬於？',v.k==='arrest'?['心臟驟停 → 最就近醫院','創傷中心','屬區醫院','私家醫院']:v.k==='gcs'?['GCS 3–13 → 創傷中心','屬區醫院','最就近醫院','唔使送院']:['GCS 14–15 → 繼續查看其他準則','即刻創傷中心','最就近醫院','唔使送院'],'GCS 3–13 → 創傷中心；14–15 繼續查看收縮壓、呼吸頻率、墮下高度、高風險致傷過程同受傷部位。',{reveal:['avpu']}),
+        ...(v.k==='arrest'||v.k==='gcs'?[]:[S('HOSP','繼續查看',v.k==='fall'?'由 8 米高處墮下；SBP 122、RR 20。':'SBP 122、RR 20；冇墮下、冇拋出車外、冇槍傷、冇槤枷胸、冇兩條或以上股骨／脛骨骨折、冇斷肢、冇穿透性傷、冇癱瘓、冇盤骨骨折、冇 ≥ 20% 燒傷。','送邊？',v.k==='fall'?['創傷中心（成人由 6 米以上墮下）','屬區醫院','最就近醫院','私家醫院']:['屬區醫院','創傷中心','最就近醫院','唔使送院'],'成人墮下 > 6 米、小童 > 3 米或身高兩倍 → 創傷中心；全部準則都唔符合 → 屬區醫院。')]),
+        LG('上車。',HOSP()==='屯門醫院'?'新界西嘅創傷中心係邊間？':'新界東嘅創傷中心係邊間？',HOSP()==='屯門醫院'?['屯門醫院','博愛醫院','天水圍醫院','明愛醫院']:['威爾斯親王醫院','沙田醫院','北區醫院','大埔那打素醫院'],'創傷中心：瑪麗、東區尤德夫人那打素、伊利沙伯、瑪嘉烈、屯門、威爾斯親王。')],
+      hosp:H(null,['成年男子，'+D[0],D[1],v.k==='arrest'?'持續 CPR':'生命表徵穩定',{gcs:'送創傷中心',arrest:'送最就近醫院',fall:'送創傷中心（> 6 米墮下）',minor:'送屬區醫院'}[v.k]])}; } });
+  L.push({id:'lvad',ic:'🔋',cat:'準',title:'左心室輔助器',en:'LVAD',
+    vars:[{k:'stable',label:'摸唔到脈搏但清醒'},{k:'arrest',label:'冇脈搏、GCS 111、RR 0'}],
+    make(v){ const ar=v.k==='arrest'; return {who:'55 歲男子（裝有 LVAD）',call:'有裝有 LVAD 嘅 55 歲男子'+(ar?'暈低冇反應。':'頭暈。'),v:{hr:ar?0:84,sbp:ar?0:84,dbp:0,rr:ar?0:18,spo2:ar?0:95,avpu:ar?3:0,gcs:ar?3:15,rbs:6,pain:0,rhythm:ar?'vf':'sinus'},
+      steps:[S('RSE','到場','屋企，太太話佢裝咗 LVAD，有使用手冊同瑪麗醫院電話。','接觸 LVAD 病人要注意咩？',['系統控制器同電線唔可以分開，唔好牽拉扭轉，剪衫小心電線，避免弄濕','可以拔電線方便搬','唔使理部機','淋水降溫'],'任何情況下系統控制器及電線均不能分開；處理時不可牽拉或扭轉電線。'),
+        S('CAB','摸脈搏',ar?'摸唔到脈搏；GCS 1-1-1；冇呼吸（瀕死呼吸）。':'摸唔到脈搏，但病人清醒、對答正常。','點判斷？',ar?['心臟驟停（冇脈搏 + GCS 111 + RR 0）→ CPR + AED，通知 CTSD of QMH','LVAD 病人正常摸唔到脈，唔使理','只俾氧','等醫生']:['LVAD 提供連續血流，極難摸到脈搏，唔代表心臟停頓','即刻 CPR','即刻 AED','叫警察'],'LVAD 病人心臟驟停定義：冇脈搏、GCS = 111、RR = 0（瀕死呼吸）。',{reveal:['hr','rr']}),
+        ...(ar?[CPRQ(55)]:[S('VS','量維生指數','血壓計量唔到穩定讀數。','LVAD 病人用咩取代量血壓？',['遠端血液回流灌注：> 2 秒取代 SBP < 90；≦ 2 秒取代 SBP ≧ 90','唔使量','量體溫','量血糖'],'LVAD：[遠端血液回流灌注] 取代 [量度血壓]。',{reveal:['spo2']})]),
+        S('CALL','通知',ar?'已開始 CPR。':'準備送院。','要通知邊個？',['正前往嘅 A&E 及瑪麗醫院心胸外科（如屬瑪麗醫院病人）','唔使通知','通知病人公司','通知電視台'],'通知正前往嘅 A&E 及瑪麗醫院（如屬瑪麗醫院病人）；LVAD 電話 2255 5808／5807／5837。'),
+        LG('上車，控制器同電池一齊帶。')],
+      hosp:H(null,['55 歲男，裝有 LVAD',ar?'冇脈搏、GCS 111、RR 0':'摸唔到脈搏但清醒',ar?'持續 CPR':'回流灌注 ≦ 2 秒',ar?'CPR + AED，已通知 QMH CTSD':'已通知 A&E 及瑪麗醫院'])}; } });
+  // DECISION：穩定 = 冇生命危險；行到 Protocol 一律屬不穩定 → 有藥幫到就喺現場俾埋藥先上車，冇藥就立即上車
+  const DRUG=new Set(['asa','ntg','salb','ipra','d10','ns','thia','gluc','nalox','charc','mida','jext','piri','trama','txa','olz','penth','adr','amio']);
+  function decFix(l,m){ const i=m.steps.findIndex(x=>x.k==='DEC'); if(i<0) return m;
+    const used=[]; for(const x of m.steps.slice(i+1)){ if(x.k==='LG') break; if(typeof SIMTOOLS==='undefined') break; SIMTOOLS.need(x,l.id).forEach(g=>g.forEach(id=>{ if(DRUG.has(id)&&!used.includes(id)) used.push(id); })); if(/處理低血糖/.test((x.q&&x.q.o[0])||'')&&!used.includes('d10')) used.push('d10'); }
+    const names=used.map(id=>SIMTOOLS.T[id][1]); const drug=used.length>0;
+    const A='不穩定：現場有藥幫到佢 → 喺現場先俾藥，之後先上車', B='不穩定：現場冇藥幫到佢 → 立即上車 (LOAD & GO)', C='穩定：冇生命危險，可以喺現場慢慢詳細檢查', D='穩定：唔使送院';
+    const old=m.steps[i], why='穩定 = 冇生命危險。行到 Protocol 嘅病人全部屬於不穩定，要諗吓有冇藥幫到佢：有就喺現場俾埋藥先上車；冇就立即上車走。'+(drug?'今次可以喺現場用：'+names.join('、')+'。':'今次現場冇藥可以幫到佢，處理完必要嘅氣道、呼吸、止血就上車。');
+    m.steps[i]={k:'DEC',act:'決定：穩定定不穩定？有冇藥幫到佢？',find:'初步評估完成：'+String(old.find||'').replace(/[、，]?生命表徵穩定/g,'').replace(/穩定/g,'').replace(/[，、：]\s*。$/,'。'),q:{q:'病人屬於穩定定不穩定？下一步點做？',o:drug?[A,B,C,D]:[B,A,C,D],a:0,why},e:{q:'行到 Protocol 嘅病人屬於？下一步？',o:drug?[A,B,C]:[B,A,C],a:0,why}};
+    m.decDrug=drug;
+    // 冇藥俾：救命處理（止血、氣道、固定、保溫、燒傷降溫）做完就上車，其餘（病史、維生指數、血糖、ECG、通報…）搬去車上做
+    if(!drug){ const j=m.steps.findIndex((x,n)=>n>i&&x.k==='LG'); if(j>i+1){ const KEEP=new Set(['tq','hd','gauze','splint','sager','tpod','collar','board','burn','water','foil','wrap','hotpack','bvm','opa','npa','suction','lt','lma','combi','aed','accm']);
+      const mid=m.steps.slice(i+1,j), stay=[], move=[];
+      mid.forEach(x=>{ const ids=typeof SIMTOOLS!=='undefined'?SIMTOOLS.need(x,l.id).flat():[]; (['BLEED','AW','CPR','AED','SPL'].includes(x.k)||ids.some(id=>KEEP.has(id))?stay:move).push(x); });
+      if(move.length){ move.forEach(x=>{ x.act='（車上）'+x.act; }); m.steps=[...m.steps.slice(0,i+1),...stay,m.steps[j],...m.steps.slice(j+1)]; m.hosp=[...move,...m.hosp]; } } }
+    // 上車之後嘅步驟一律喺車上做
+    { const j=m.steps.findIndex((x,n)=>n>i&&x.k==='LG'); if(j>=0&&j<m.steps.length-1){ const after=m.steps.slice(j+1); after.forEach(x=>{ if(!/^（車上）/.test(x.act||'')) x.act='（車上）'+x.act; }); m.steps=m.steps.slice(0,j+1); m.hosp=[...after,...m.hosp]; } }
+    return m; }
+  L.forEach((l,i)=>{ l.lv=i; const mk=l.make; l.make=v=>decFix(l,mk.call(l,v)); });
+  return L;
+})();
+
+/* ---------- 🎬 現場模擬動畫：救護員動作、器材道具、病人呼吸／抽搐／CPR、對白氣泡、電影鏡頭 ---------- */
+const SIMAN=(()=>{
+  const V=(x,y,z)=>new THREE.Vector3(x,y,z);
+  // 病人（躺平）group 本地座標：頭 z≈-0.9、胸 z≈-0.2、盆骨 z≈0.6、腳 z≈1.1；正面向上 y≈1.0
+  const PT={head:V(0,0.55,-0.9),face:V(0,1.12,-0.82),mouth:V(0,1.06,-0.66),neck:V(0,0.78,-0.45),chest:V(0,1.02,-0.2),belly:V(0,1.0,0.3),pelvis:V(0,0.98,0.6),armL:V(0.62,0.66,-0.05),wristL:V(0.62,0.84,0.25),armR:V(-0.62,0.66,-0.05),thighL:V(0.21,0.62,0.92),thighR:V(-0.21,0.62,0.92),shinR:V(-0.21,0.6,1.1),shinL:V(0.21,0.6,1.1)};
+  const pw=k=>patient.localToWorld(PT[k].clone());
+  const C=()=>crew.userData;
+  const onP=[], onG=[];   // 病人身上（跟病人上車）／地上（離開現場就收走）
+  let WHO='', MARKS=null; const MK_Y={armL:0.13,armR:0.13,thighL:0.2,thighR:0.2}; const honor=()=>{ const w=WHO; const age=+((w.match(/(\d+)\s*歲/)||[])[1]||40), f=/女|婆|太|孕|媽/.test(w); if(age<12||/童|嬰/.test(w)) return '小朋友'; if(age>=65) return f?'婆婆':'伯伯'; return f?'小姐':'先生'; };
+  function setCase(sc){ WHO=(sc&&sc.who)||''; MARKS=(sc&&sc.marks)||null; CASE=sc||null; }
+  let act=null, at=0, cpr=false, ventOn=false, shockAt=-1, jolt=0, camA=0.6, focus='chest', fx=[];
+  const mat=(c,o={})=>{ const m=new THREE.MeshStandardMaterial({color:c,roughness:o.r??0.5,metalness:o.m??0,transparent:!!o.op,opacity:o.op??1,emissive:o.e||0,depthWrite:o.op?false:true}); return m; };
+  function onPat(geo,m,k,dx=0,dy=0,dz=0,rx=0,ry=0,rz=0,name){ const p=PT[k]; const o=add(geo,m,patient,p.x+dx,p.y+dy,p.z+dz,false); o.rotation.set(rx,ry,rz); o.userData.sim=name||1; onP.push(o); return o; }
+  function onGround(geo,m,k,side,fwd,y,name){ const P=pw(k), a=patient.rotation.y; const rx=Math.cos(a), rz=-Math.sin(a), fx_=Math.sin(a), fz=Math.cos(a);   // patient 本地 x 方向同 z 方向（世界）
+    const o=add(geo,m,scene,P.x+rx*side+fx_*fwd,y,P.z+rz*side+fz*fwd); o.rotation.y=a; o.userData.sim=name||1; onG.push(o); return o; }
+  const has=n=>onP.concat(onG).find(o=>o.userData.sim===n);
+  /* ----- 對白氣泡 ----- */
+  function bubble(target,text,dur=2.6,color='#ffffff'){ if(!text) return; const c=document.createElement('canvas'); c.width=512; c.height=128; const g=c.getContext('2d');
+    g.font='800 40px "PingFang HK","Noto Sans TC","Microsoft JhengHei",sans-serif'; const w=Math.min(500,g.measureText(text).width+48);
+    g.fillStyle='rgba(12,16,24,.88)'; rr(g,(512-w)/2,10,w,84,22); g.fill(); g.beginPath(); g.moveTo(240,92); g.lineTo(272,92); g.lineTo(256,118); g.fill();
+    g.fillStyle=color; g.textAlign='center'; g.textBaseline='middle'; g.fillText(text,256,53,480);
+    const s=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false,transparent:true})); s.scale.set(2.6,0.65,1); s.renderOrder=20; scene.add(s);
+    fx.push({o:s,t:0,d:dur,f:(o,k)=>{ const p=typeof target==='function'?target():target; o.position.copy(p).add(V(0,0.35+k*0.25,0)); o.material.opacity=k<0.85?1:(1-k)/0.15; }}); }
+  const crewHead=c=>()=>c.getWorldPosition(V()).add(V(0,c.position.y>-0.2?3.1:2.7,0));
+  const patHead=()=>pw('head').add(V(0,1.0,0));
+  /* ----- 救護員位置 ----- */
+  function place(c,wp,lookAt,kneel=true){ const L=crew.worldToLocal(wp.clone()); c.position.set(L.x,kneel?-0.38:0,L.z); const yaw=Math.atan2(lookAt.x-wp.x,lookAt.z-wp.z); c.rotation.set(0,yaw-crew.rotation.y,0); }
+  const off=(k,side,fwd)=>{ const P=pw(k), a=patient.rotation.y; return V(P.x+Math.cos(a)*side+Math.sin(a)*fwd,0.15,P.z-Math.sin(a)*side+Math.cos(a)*fwd); };
+  function posCrew(){ const {c1,c2}=C(); place(c1,off('head',0,-1.15),pw('head')); place(c2,off('chest',1.25,0.15),pw('chest')); crew.userData.st.visible=false; }
+  function restore(){ const {c1,c2,st}=C(); c1.position.set(0,0,2.3); c1.rotation.set(0,Math.PI,0); c2.position.set(0,0,-2.3); c2.rotation.set(0,0,0); [c1,c2].forEach(c=>c.userData.arms.forEach(a=>{ a.rotation.set(-0.8,0,0); })); st.visible=true; P().rotation.z=0; P().position.set(0,0.5,1.2); torso().scale.set(1,1,1); }
+  const P=()=>patient.userData.p; const torso=()=>P().children[0];
+  /* ----- 道具 ----- */
+  const ECGT=(()=>{ const cv=document.getElementById('simEcg'); return cv?new THREE.CanvasTexture(cv):null; })();
+  const G={
+    o2cyl(){ if(has('cyl')) return; const g=new THREE.Group(); g.userData.sim='cyl'; const P0=off('head',-0.9,-0.4); g.position.copy(P0); g.position.y=0; scene.add(g); onG.push(g);
+      add(cyl(0.12,0.12,0.9,14),mat(0x2e8b57,{m:0.4,r:0.3}),g,0,0.45,0); add(cyl(0.12,0.08,0.12,14),mat(0xf2f2f2),g,0,0.96,0); add(cyl(0.03,0.03,0.12,8),mat(0x9aa1a9,{m:0.8}),g,0,1.08,0); },
+    mask(type){ onP.filter(o=>o.userData.sim==='mask'||o.userData.sim==='nc'||o.userData.sim==='res').forEach(o=>{ o.parent.remove(o); }); for(let i=onP.length-1;i>=0;i--) if(['mask','nc','res'].includes(onP[i].userData.sim)) onP.splice(i,1);
+      if(type==='none') return; G.o2cyl();
+      if(type==='nc'){ onPat(new THREE.TorusGeometry(0.34,0.018,6,24),mat(0xe8f4ff,{op:0.9}),'face',0,0.02,0.05,Math.PI/2,0,0,'nc'); return; }
+      const m=onPat(new THREE.SphereGeometry(0.3,16,10,0,Math.PI*2,0,Math.PI/2),mat(type==='ven'?0x8fd3ff:0x9ee6b8,{op:0.55}),'face',0,0.0,0.05,0,0,0,'mask'); m.scale.set(1,0.7,1.1);
+      if(type==='nrm') onPat(sph(0.22),mat(0x9ee6b8,{op:0.6}),'chest',0.25,0.1,-0.15,0,0,0,'res'); },
+    bvm(){ if(has('bvm')) return; const b=onPat(sph(0.24),mat(0x2f6fe8,{op:0.85}),'face',0,0.42,-0.3,0,0,0,'bvm'); b.scale.set(1,1,1.6); G.mask('mask'); },
+    monitor(){ if(has('mon')) return; const g=new THREE.Group(); g.userData.sim='mon'; const P0=off('chest',-1.15,-0.3); g.position.set(P0.x,0.15,P0.z); g.rotation.y=Math.atan2(pw('chest').x-P0.x,pw('chest').z-P0.z); scene.add(g); onG.push(g);
+      add(rbox(0.7,0.5,0.28,0.05),mat(0x3b4250,{r:0.6}),g,0,0.26,0); if(ECGT){ const s=add(new THREE.PlaneGeometry(0.56,0.32),new THREE.MeshBasicMaterial({map:ECGT,toneMapped:false}),g,0,0.3,0.145,false); s.userData.ecg=1; }
+      add(rbox(0.7,0.08,0.28,0.03),mat(0xe85d04),g,0,0.02,0); },
+    cuff(){ if(has('cuff')) return; onPat(cyl(0.17,0.17,0.26,14),mat(0x1f3b73),'armL',0,0.1,0,0.8,0,0,'cuff'); onPat(new THREE.BoxGeometry(0.1,0.08,0.12),mat(0xd62828),'wristL',0,0.05,0.12,0,0,0,'clip'); },
+    pads(){ if(has('pad')) return; [[-0.2,-0.42],[0.25,0.05]].forEach(([x,z])=>onPat(rbox(0.26,0.03,0.34,0.02),mat(0xf6f6f6),'chest',x,0.01,z,0,0,0,'pad'));
+      const g=new THREE.Group(); g.userData.sim='aedbox'; const P0=off('chest',-1.0,0.4); g.position.set(P0.x,0.15,P0.z); g.rotation.y=patient.rotation.y; scene.add(g); onG.push(g);
+      add(rbox(0.55,0.18,0.45,0.05),mat(0x2e9e4f),g,0,0.09,0); add(new THREE.CircleGeometry(0.07,16),new THREE.MeshBasicMaterial({color:0xffd166}),g,0,0.185,0,false).rotation.x=-Math.PI/2; },
+    electrodes(){ if(has('elec')) return; for(let i=0;i<6;i++) onPat(cyl(0.05,0.05,0.02,10),mat(0xffffff),'chest',-0.15+i*0.07,0.02,-0.05+Math.abs(i-2.5)*0.04,0,0,0,'elec'); [[-0.35,-0.5],[0.35,-0.5],[-0.3,0.7],[0.3,0.7]].forEach(([x,z])=>onPat(cyl(0.05,0.05,0.02,10),mat([0xd62828,0xffd166,0x2e9e4f,0x222222][onP.length%4]),'chest',x,-0.02,z,0,0,0,'elec')); G.monitor(); },
+    ivbag(){ if(has('iv')) return; const g=new THREE.Group(); g.userData.sim='iv'; const P0=off('armL',0.55,0); g.position.set(P0.x,0,P0.z); scene.add(g); onG.push(g);
+      add(cyl(0.025,0.025,1.9,8),mat(0xb8bec6,{m:0.7}),g,0,0.95,0); add(rbox(0.26,0.38,0.08,0.04),mat(0xcfe8ff,{op:0.7}),g,0,1.7,0.06);
+      const W=pw('wristL'), top=V(P0.x,1.5,P0.z); const geo=new THREE.BufferGeometry().setFromPoints([top,V((top.x+W.x)/2,0.9,(top.z+W.z)/2),W]); const l=new THREE.Line(geo,new THREE.LineBasicMaterial({color:0xddeeff})); l.userData.sim='ivl'; scene.add(l); onG.push(l);
+      onPat(rbox(0.12,0.04,0.16,0.02),mat(0xf2f2f2),'wristL',0,0.06,0,0,0,0,'ivsite'); },
+    tourniquet(k){ onPat(cyl(0.2,0.2,0.12,14),mat(0x15171a),k,0,0,-0.12,Math.PI/2,0,0,'tq'); onPat(new THREE.BoxGeometry(0.08,0.06,0.16),mat(0xd62828),k,0,0.2,-0.12,0,0,0,'tq'); },
+    gauze(k){ onPat(rbox(0.3,0.08,0.3,0.03),mat(0xf6f6f6),k,0,0.12,0,0,0,0,'gz'); },
+    splint(sager){ const k='shinR'; onPat(new THREE.BoxGeometry(0.06,0.12,0.9),mat(sager?0xb8bec6:0xff8c1a,{m:sager?0.6:0}),k,0.17,0,-0.05,0,0,0,'spl'); onPat(new THREE.BoxGeometry(0.06,0.12,0.9),mat(sager?0xb8bec6:0xff8c1a),k,-0.17,0,-0.05,0,0,0,'spl');
+      [-0.3,0.1].forEach(z=>onPat(cyl(0.2,0.2,0.06,12),mat(0x1f3b73),k,0,0,z,Math.PI/2,0,0,'spl')); },
+    tpod(){ onPat(cyl(0.56,0.56,0.28,20,1,true),mat(0x15171a),'pelvis',0,-0.45,0,Math.PI/2,0,0,'tpod'); },
+    collar(){ if(has('collar')) return; onPat(cyl(0.3,0.3,0.2,16),mat(0xf28c28),'neck',0,-0.25,0,Math.PI/2,0,0,'collar'); },
+    foil(){ if(has('foil')) return; onPat(rbox(1.15,0.36,2.0,0.15),mat(0xd7dde4,{m:0.9,r:0.2}),'belly',0,-0.38,0,0,0,0,'foil'); },
+    marks(k){ if(has('marks')) return; const y=MK_Y[k]??0.13, ox=k==='thighL'?-0.05:0, oz=k==='thighL'?-0.18:0.08;
+      onPat(new THREE.CircleGeometry(0.13,18),mat(0x6d4a7a,{op:0.55}),k,ox,y,oz,-Math.PI/2,0,0,'marks');
+      [[-0.06,-0.07],[0.02,-0.03],[0.07,0.05],[-0.04,0.04],[0.01,0.1],[0.08,-0.08],[-0.08,0.09]].forEach(([x,z])=>onPat(sph(0.026),mat(0x5a0f12),k,ox+x,y+0.006,oz+z,0,0,0,'marks')); },
+    burn(){ onPat(rbox(0.3,0.06,0.5,0.03),mat(0xe8f7ff),'armR',0,0.12,0.1,0,0,0,'bd'); },
+    accm(){ if(has('accm')) return; const o=onPat(rbox(0.7,0.35,0.35,0.06),mat(0x3a3f47),'chest',0,0.32,0,0,0,0,'accm'); onPat(new THREE.BoxGeometry(0.06,0.6,0.32),mat(0x3a3f47),'chest',0.38,0,0,0,0,0,'accm'); onPat(new THREE.BoxGeometry(0.06,0.6,0.32),mat(0x3a3f47),'chest',-0.38,0,0,0,0,0,'accm'); }
+  };
+  /* ----- 病人眼皮、眉頭、反應（LOC 互動用） ----- */
+  let FACE=null; const eye={open:true,force:null,ft:0,frown:0,flinch:0};
+  function face(){ if(FACE) return FACE; const p=P(); const eyes=p.children.filter(m=>m.geometry&&m.geometry.parameters&&m.geometry.parameters.radius===0.08&&Math.abs(m.position.y-2.15)<0.01);
+    const skin=M(C_SKIN()), dk=M(0x2a1d14); const lids=[], lines=[], brows=[];
+    eyes.forEach(e=>{ lids.push(add(sph(0.1),skin,p,e.position.x,e.position.y,e.position.z+0.02,false)); const l=add(new THREE.BoxGeometry(0.17,0.025,0.03),dk,p,e.position.x,e.position.y-0.01,e.position.z+0.11,false); lines.push(l);
+      const b=add(new THREE.BoxGeometry(0.2,0.045,0.04),dk,p,e.position.x,e.position.y+0.17,e.position.z+0.03,false); b.rotation.z=e.position.x>0?-0.35:0.35; brows.push(b); });
+    FACE={lids,lines,brows}; setEyes(true); return FACE; }
+  const C_SKIN=()=>(typeof C!=='undefined'&&C.skin)||0xffd7b5;
+  function setEyes(open){ const F=FACE; if(!F) return; F.lids.forEach(o=>o.visible=!open); F.lines.forEach(o=>o.visible=!open); }
+  function faceTick(dt,avpu){ if(!FACE) return; let open=Math.round(avpu)===0; if(eye.force!=null){ eye.ft-=dt; open=eye.force; if(eye.ft<=0) eye.force=null; }
+    if(open&&((performance.now()/1000)%4.2)<0.12) open=false;   // 眨眼
+    setEyes(open); eye.frown=Math.max(0,eye.frown-dt); FACE.brows.forEach(b=>b.visible=eye.frown>0);
+    if(eye.flinch>0){ eye.flinch-=dt; const k=Math.sin(Math.min(1,eye.flinch)*Math.PI); P().userData.arms.forEach((a,i)=>a.rotation.x=-0.8-k*0.9); P().rotation.z=Math.sin(eye.flinch*20)*0.03; } }
+  function react(kind,avpu){ face(); const a=Math.round(avpu);   // 回傳反應文字
+    if(kind==='observe'){ act='observe'; at=0; return a===0?'open':'closed'; }
+    if(kind==='voice'){ act='shout'; at=0; bubble(crewHead(C().c1),honor()+'！聽唔聽到我講嘢？',2.4);
+      if(a===0){ setTimeout(()=>bubble(patHead,'聽到……',2.2,'#ffd98a'),900); return 'A'; }
+      if(a===1){ setTimeout(()=>{ eye.force=true; eye.ft=3.5; bubble(patHead,'嗯……乜嘢事……',2.4,'#ffd98a'); },900); return 'V'; }
+      return 'none'; }
+    if(kind==='pain'){ act='squeeze'; at=0; bubble(crewHead(C().c1),'（擠壓斜方肌）',2.2);
+      if(a<=1){ setTimeout(()=>{ eye.force=true; eye.ft=3; eye.frown=2; eye.flinch=1.2; bubble(patHead,'哎！好痛！做咩呀？',2.4,'#ffd98a'); },900); return 'over'; }
+      if(a===2){ setTimeout(()=>{ eye.force=true; eye.ft=1.2; eye.frown=2.2; eye.flinch=1.4; bubble(patHead,'呃……（皺眉、縮手）',2.4,'#ffd98a'); },1000); return 'P'; }
+      return 'none'; }
+  }
+  /* ----- 由步驟估動畫類型 ----- */
+  function kindOf(c,Q){ const ans=Q&&Q.o?Q.o[Q.a]:'', T=(c.act||'')+' '+(c.find||'')+' '+ans, k=c.k;
+    if(k==='CPR') return 'cpr'; if(k==='AED') return /唔需要電擊|不需要電擊|唔需電擊/.test(c.find)?'aedno':/電擊/.test(T)?'aed':'aedno';
+    if(k==='AW'){ const A=c.act||''; return /^唔可以/.test(ans)?'no':/ACCM/.test(T)?'accm':/Combitube/.test(A)?'aw:combi':/LTS|LT-D/.test(A)?'aw:lt':/LMA/.test(A)?'aw:lma':'bvm'; } if(k==='RSE') return 'look'; if(k==='LOC') return 'tap'; if(k==='D') return /頭鎖/.test(ans)?'headlock':'askd';
+    if(k==='CAB') return /CPR/.test(ans)&&/冇脈搏|摸唔到脈搏/.test(c.find)?'pulse':/BVM/.test(ans)?'bvm':'pulse';
+    if(k==='O2') return /BVM|膠囊/.test(ans)?'o2:bvm':/不能回吸|NRM/.test(ans)?'o2:nrm':/文氏/.test(ans)?'o2:ven':/鼻插喉|簡單面罩/.test(ans)?'o2:nc':'o2:none';
+    if(k==='RBS') return 'sweep'; if(k==='SKIN') return 'skin'; if(k==='VS') return 'vitals'; if(k==='HS') return 'gluco'; if(k==='HX') return 'talk'; if(k==='DEC') return 'dec';
+    if(k==='CALL'||k==='HOSP') return 'radio'; if(k==='LG') return 'ready'; if(k==='RE'||k==='MIST') return 'handover';
+    if(k==='BLEED') return /止血帶|HAT|第一條|第二條/.test((c.act||'')+' '+ans)&&!/止血敷料/.test(c.act||'')&&!/^唔可以|改用止血敷料|止血敷料按壓|按入傷口/.test(ans)?'tq':'press';
+    if(k==='SPL') return /^無需|^檢查有冇危及/.test(ans)?'nexus':/T-POD|上板|大轉子/.test(T)?'tpod':/Sager|牽引|磅/.test(T)?'sager':/脊柱制動|頸套/.test(ans)?'collar':'splint';
+    if(/^唔可以|^唔使|^未可以|^唔需要|^暫時唔可以/.test(ans)) return 'no';
+    if(/Penthrox|綠哨子/.test(T)&&!/唔可以/.test(ans)) return 'whistle';
+    if(/Hot Pack|保溫|毛氈/.test(T)) return 'foil';
+    if(/NTG|脷底/.test(ans)) return 'spray'; if(/puff|Salbutamol|Ventolin|Atrovent|儲霧/.test(ans)) return 'mdi';
+    if(/ACCM|30:2、深度/.test(T)) return 'accm';
+    if(/口服|ASA|阿士匹靈|活性炭|200 mg，只俾一劑|50 g/.test(ans)) return 'pill';
+    if(/Adrenaline|Amiodarone|Thiamine|3-way|IV|IO\b/.test(ans)&&!/肌肉注射|Jext|EpiPen/.test(ans)) return 'iv';
+    if(/肌肉注射|IM\b|Jext|EpiPen|Midazolam|Naloxone|Glucagon|Piriton|Tramadol|Olanzapine|股外肌/.test(ans)) return 'jab';
+    if(/\d+ mg（\d/.test(ans)) return 'iv';
+    if(/D10W|NS |NS$|IV|IO|Full Rate|ml／hr|500 ml|100 mg／1 ml|Adrenaline|Amiodarone|Thiamine|一次注射/.test(ans)) return 'iv';
+    if(/ECG|心電圖|電極|肋間/.test(T)) return 'ecg';
+    if(/FiO|氧氣|SpO₂/.test(ans)) return 'o2:mask';
+    if(/保溫|毛氈|Hot Pack|Hypothermia|包裹/.test(ans)) return 'foil'; if(/腋下|回暖/.test(ans)) return 'warm';
+    if(/沖洗|燒傷敷料|沖約/.test(ans)) return 'burn'; if(/夾板|固定骨折/.test(ans)) return 'splint';
+    return 'kit'; }
+  const LINES={look:'現場安全，可以埋位！',tap:'先生！聽唔聽到我講嘢？',headlock:'唔好郁，我幫你固定頭部',askd:'有冇跌親？條頸痛唔痛？',pulse:'檢查脈搏同呼吸',bvm:'幫佢灌氣！',sweep:'快速檢查全身',skin:'睇吓皮膚……',dec:'',nexus:'逐項評估 NEXUS',mdi:'用儲霧器，慢慢吸',warm:'用體溫慢慢回暖，唔好搓','aw:lt':'插 LT 喉，接 BVM','aw:lma':'插 LMA，接 BVM','aw:combi':'插 Combitube，試 #1 藍管',vitals:'量血壓、血氧',gluco:'篤一篤手指驗血糖',talk:'可唔可以講吓發生咩事？',radio:'控制，A188 通報……',ready:'準備上車床！',handover:'醫生，交接病人',no:'呢個情況唔可以用',whistle:'含住綠哨子慢慢吸',spray:'張開口，脷底噴一下',pill:'嚟，食咗佢',jab:'打針喇，忍一忍',iv:'吊鹽水／打藥',ecg:'貼電極做心電圖',kit:'準備器材',cpr:'一、二、三、四……',aed:'所有人離開病人！',aedno:'AED 分析中，唔好掂病人',tq:'止血帶收緊！',press:'用力壓住傷口',splint:'固定好隻腳',sager:'牽引夾板拉緊',tpod:'T-POD 收緊',collar:'戴頸套',foil:'包好保暖',burn:'沖水、蓋燒傷敷料',accm:'ACCM 開機'};
+  const FOC={mdi:'head',nexus:'neck','aw:lt':'head','aw:lma':'head','aw:combi':'head',warm:'armR',tap:'head',headlock:'head',askd:'head',bvm:'head','o2:bvm':'head','o2:nrm':'head','o2:nc':'head','o2:ven':'head','o2:mask':'head',spray:'head',whistle:'head',pill:'head',talk:'head',gluco:'armL',vitals:'armL',iv:'armL',jab:'thighL',tq:'thighL',press:'neck',splint:'shinR',sager:'shinR',tpod:'pelvis',collar:'neck',sweep:'belly',cpr:'chest',aed:'chest',aedno:'chest',ecg:'chest',accm:'chest',burn:'armR',foil:'belly'};
+  /* ----- 播放 ----- */
+  function clearBubbles(){ fx.forEach(f=>scene.remove(f.o)); fx.length=0; }
+  const SAFE=new Set(['dec','nexus','look','tap','headlock','askd','pulse','sweep','skin','vitals','gluco','talk','radio','ready','handover','cpr','aed','aedno','ecg']);
+  // 問題出現：救護員就位、做評估動作（唔會預先揭曉答案）
+  const ALIAS={'aw:lt':'bvm','aw:lma':'bvm','aw:combi':'bvm',mdi:'spray',warm:'press',dec:'talk',nexus:'askd'};
+  const ansOf=Q=>Q&&Q.o?Q.o[Q.a]:'';
+  function lineQ(k,c){ const out=avpuNow>=2;
+    if(k==='tap') return honor()+'！聽唔聽到我講嘢？';
+    if(k==='talk') return out?'旁邊有冇人知發生咩事？':'可唔可以講吓發生咩事？';
+    if(k==='askd') return out?'佢有冇跌親、撞親頭？':LINES.askd;
+    if(k==='dec') return '穩定定唔穩定？';
+    if(k==='skin'){ const f=(c.find||'').replace(/[。．]$/,''), a=f.split(/[；、，]/)[0]; if(/針孔/.test(f)){ const w=/大腿/.test(f)?'大腿':'手臂'; setTimeout(()=>bubble(crewHead(C().c1),w+'有好多針孔！',2.6),1500); } return a?'皮膚：'+a.slice(0,10):LINES.skin; }
+    if(SAFE.has(k)) return LINES[k];
+    return (c.act||'').replace(/：.*$/,'').slice(0,14); }
+  function lineA(k,c,Q){ const a=ansOf(Q), out=avpuNow>=2;
+    if(k==='o2:none') return 'SpO₂ 正常，暫時唔使氧'; if(k==='o2:bvm') return 'BVM 輔助通氣，接 15 L 氧'; if(k==='o2:nc') return out?'戴鼻插喉':'幫你戴鼻插喉'; if(k.startsWith('o2')) return out?'戴氧氣罩':'幫你戴氧氣罩';
+    if(k==='no') return a.split('，')[0].slice(0,22)||LINES.no;
+    if(k==='kit') return '';
+    if(k==='jab'){ const d=(a.match(/Naloxone|Glucagon|Midazolam|Jext|EpiPen|Piriton|Chlorpheniramine|Tramadol|Olanzapine/)||[])[0]; return out?'肌肉注射'+(d?' '+d:''):(d?d+'，':'')+'打針喇，忍一忍'; }
+    if(k==='iv'){ const d=(a.match(/Adrenaline|Amiodarone|Thiamine|D10W|TXA|NS/)||[])[0]; if(!d) return /IO/.test(a)?'鑽 IO 建立通道':'建立 IV 通道'; return d==='NS'?'吊 NS 鹽水':d==='D10W'?'吊 D10W':'IV 推 '+d+'，沖管'; }
+    if(k==='pill'&&out) return '準備口服藥';
+    return LINES[k]; }
+  function quoteBubble(c){ const f=c.find||''; const re=/「([^」]{2,24})」/g; let m, n=0;
+    while((m=re.exec(f))){ const ctx=f.slice(Math.max(0,m.index-10),m.index); if(!/話|講|答|喊|嗌|問|：/.test(ctx)) continue;
+      const sp=(ctx.match(/(兒子|女兒|家人|旁人|太太|丈夫|老婆|老公|媽媽|爸爸|朋友|同事|職員|途人)/)||[])[1]; const txt=m[1], d=700+n*1600; n++;
+      if(sp&&bystander&&bystander.visible) setTimeout(()=>bubble(()=>bystander.position.clone().add(V(0,2.7,0)),sp+'：'+txt,3,'#bde0ff'),d);
+      else if(!sp) setTimeout(()=>bubble(patHead,txt,2.8,'#ffd98a'),d); } }
+  function play(c,Q,hosp){ const k=kindOf(c,Q); at=0; focus=FOC[k]||(k==='skin'&&MARKS?MARKS:'chest'); if(!manual) camA=bestAngle(camA); clearBubbles();
+    const {c1,c2}=C(); const who=['tap','headlock','askd','bvm','talk','spray','whistle','pill','radio'].includes(k)||k.startsWith('o2')?c1:c2;
+    if(hosp){ bubble(crewHead(c1),c.k==='MIST'?'醫生，交接病人：MIST':'重新評估病人',3); act=null; return; }
+    posCrew(); const safe=SAFE.has(k); act=safe?(ALIAS[k]||k):(k==='no'?'talk':'kit');
+    bubble(crewHead(who),lineQ(k,c),3); quoteBubble(c);
+    if(k==='vitals'){ G.cuff(); G.monitor(); } if(k==='aed'||k==='aedno') G.pads(); if(k==='ecg') G.electrodes(); if(k==='gluco') G.monitor();
+    pend={c,Q,k}; }
+  // 答完：做處理（道具、藥物、電擊……）
+  let pend=null;
+  function apply(){ if(!pend) return; const {c,Q,k}=pend; pend=null; const {c1,c2}=C(); act=ALIAS[k]||k; at=0;
+    if(!SAFE.has(k)){ const line=lineA(k,c,Q); if(line) clearBubbles(); bubble(crewHead(['bvm','spray','mdi','whistle','pill','aw:lt','aw:lma','aw:combi'].includes(k)||k.startsWith('o2')?c1:c2),line,2.8); }
+    if(k==='cpr') cpr=true; if(k==='o2:bvm'||k==='bvm'||k.startsWith('aw:')){ G.bvm(); ventOn=true; }
+    if(k.startsWith('o2:')&&k!=='o2:bvm') G.mask(k.slice(3)==='mask'?'mask':k.slice(3));
+    if(k==='aed') shockAt=0.6; if(k==='iv') G.ivbag();
+    if(k==='tq'){ const T=(c.find||'')+(c.act||''); G.tourniquet(/小腿/.test(T)?'shinL':'thighL'); } if(k==='press'){ const T=c.find||''; G.gauze(/頸/.test(T)?'neck':/腹股溝/.test(T)?'pelvis':/胸/.test(T)?'chest':'thighL'); }
+    if(k==='splint') G.splint(false); if(k==='sager') G.splint(true); if(k==='tpod') G.tpod(); if(k==='collar') G.collar();
+    if(k==='foil') G.foil(); if(k==='burn') G.burn(); if(k==='accm'){ G.accm(); cpr=true; }
+    if(c.set&&c.set.rhythm&&c.set.rhythm!=='vf'&&c.set.rhythm!=='asys') cpr=false; }
+  /* ----- 每格 ----- */
+  let avpuNow=0;
+  function tick(dt,t,rr,rhythm,hosp,avpu){ const {c1,c2}=C(); at+=dt; avpuNow=avpu??0;
+    if(hosp){ for(let i=fx.length-1;i>=0;i--){ const f=fx[i]; f.t+=dt; f.f(f.o,f.t/f.d); if(f.t>=f.d){ scene.remove(f.o); fx.splice(i,1); } } return; }
+    const A1=c1.userData.arms, A2=c2.userData.arms; const set=(A,a,b)=>{ A[0].rotation.x=a; A[1].rotation.x=b; };
+    // 病人：呼吸／抽搐／CPR 按壓
+    const tor=torso(), p=P(); p.rotation.z=0; p.position.set(0,0.5,1.2);
+    if(rhythm==='noise'){ p.rotation.z=Math.sin(t*38)*0.05; p.position.y=0.5+Math.abs(Math.sin(t*31))*0.05; p.userData.arms.forEach((a,i)=>a.rotation.x=-0.8+Math.sin(t*40+i)*0.5); } else if(!(eye.flinch>0)) p.userData.arms.forEach(a=>a.rotation.x=-0.8);
+    const breath=rr>0&&!cpr?Math.max(0,Math.sin(t*(rr/60)*Math.PI*2))*0.06:0;
+    let comp=0; if(cpr){ const ph=(t*1.85)%1; comp=ph<0.45?Math.sin(ph/0.45*Math.PI)*0.14:0; }
+    tor.scale.set(1+breath*0.5,1,1+breath-comp);
+    if(jolt>0){ jolt-=dt; p.position.y=0.5+Math.max(0,jolt)*0.6; }
+    faceTick(dt,avpuNow);
+    // 救護員
+    c1.position.y=-0.38; c2.position.y=-0.38;
+    if(cpr){ c2.position.y=-0.38-comp*0.6; set(A2,-1.25-comp,-1.25-comp); place(c2,off('chest',0.95,-0.05),pw('chest')); c2.position.y=-0.32-comp*0.9; }
+    if(ventOn||act==='bvm'){ const bv=onP.find(o=>o.userData.sim==='bvm'); const sq=(t%(cpr?3.2:6))<0.7; if(bv) bv.scale.set(sq?0.75:1,sq?0.75:1,1.6*(sq?0.85:1)); set(A1,-1.3,-1.3+(sq?0.25:0)); }
+    const k=act, w=Math.sin(at*6);
+    if(k==='look'){ c1.rotation.y+=Math.sin(at*1.6)*0.01; c2.rotation.y-=Math.sin(at*1.6)*0.01; c1.position.y=0; c2.position.y=0; set(A1,-0.4,-0.4); }
+    else if(k==='tap'){ set(A1,-1.1+w*0.25,-0.8); }
+    else if(k==='observe'){ set(A1,-0.6,-0.6); c1.position.y=-0.38+Math.sin(at*1.5)*0.04; }
+    else if(k==='shout'){ set(A1,-1.0+Math.sin(at*7)*0.3,-1.0-Math.sin(at*7)*0.3); c1.position.y=-0.32; }
+    else if(k==='squeeze'){ const sq=Math.min(1,at/0.6); set(A1,-1.5-sq*0.25,-1.5-sq*0.25); c1.position.y=-0.3-Math.sin(at*10)*0.02*(at<2?1:0); }
+    else if(k==='headlock'||k==='askd'){ set(A1,-1.25,-1.25); }
+    else if(k==='pulse'){ set(A2,-1.2,-0.9); c1.rotation.x=0; set(A1,-1.0,-1.0); }
+    else if(k==='sweep'){ const u=(at%2.4)/2.4; place(c2,off('chest',1.25,-0.9+u*1.9),pw('chest')); set(A2,-1.2,-1.2+Math.sin(at*8)*0.1); }
+    else if(k==='skin'||k==='gluco'||k==='vitals'||k==='iv'||k==='ecg'||k==='kit'||k==='burn'||k==='press'||k==='tq'||k==='splint'||k==='sager'||k==='tpod'||k==='collar'||k==='foil'){ set(A2,-1.15+w*0.12,-1.0-w*0.12); if(!ventOn&&!cpr) set(A1,-0.9,-0.9); }
+    else if(k==='jab'){ const ph=Math.min(1,at/1.2); set(A2,-1.6+ph*0.6,-0.8); }
+    else if(k==='spray'||k==='pill'||k==='whistle'){ set(A1,-1.3+Math.sin(at*3)*0.1,-0.7); }
+    else if(k==='talk'||k==='no'){ set(A2,-0.7+Math.sin(at*4)*0.15,-0.6); }
+    else if(k==='radio'){ c1.position.y=0; set(A1,-2.7,-0.6); }
+    else if(k==='aed'||k==='aedno'){ if(!cpr) set(A2,-1.0,-1.0); if(k==='aed'&&shockAt>0){ shockAt-=dt; set(A2,-0.3,-0.3); c2.position.y=0; if(shockAt<=0){ shockAt=-1; jolt=0.25; flash(); } } }
+    tfxTick(dt);
+    // 道具：監測器螢幕
+    if(ECGT) ECGT.needsUpdate=true;
+    // 對白氣泡
+    for(let i=fx.length-1;i>=0;i--){ const f=fx[i]; f.t+=dt; f.f(f.o,f.t/f.d); if(f.t>=f.d){ scene.remove(f.o); f.o.material.map.dispose(); f.o.material.dispose(); fx.splice(i,1); } } }
+  // 電擊閃光
+  const FL=document.createElement('div'); FL.style.cssText='position:fixed;inset:0;background:#fff;opacity:0;pointer-events:none;z-index:29;transition:opacity .35s'; document.body.append(FL);
+  const PL=new THREE.PointLight(0xbfe4ff,0,12,2); scene.add(PL);
+  function flash(){ FL.style.transition='none'; FL.style.opacity='0.85'; requestAnimationFrame(()=>{ FL.style.transition='opacity .45s'; FL.style.opacity='0'; }); PL.position.copy(pw('chest')).add(V(0,1,0)); PL.intensity=6; setTimeout(()=>PL.intensity=0,160); vib([60,30,60]); try{ if(actx){ const o=actx.createOscillator(), g=actx.createGain(); o.type='sawtooth'; o.frequency.setValueAtTime(90,actx.currentTime); g.gain.setValueAtTime(0.08,actx.currentTime); g.gain.exponentialRampToValueAtTime(0.0001,actx.currentTime+0.3); o.connect(g); g.connect(master||actx.destination); o.start(); o.stop(actx.currentTime+0.3); } }catch(e){} }
+  /* ----- 電影鏡頭：圍住動作位置慢慢轉 ----- */
+  let zoom=1, manual=false, inpOn=false, panX=0, panZ=0, panning=false, lastA=0, pm=null; const pts=new Map(); let pd=0;
+  function doPan(dx,dy){ const s=0.012*zoom, ca=Math.cos(lastA), sa=Math.sin(lastA); panX+=-ca*dx*s+(-sa)*dy*s; panZ+=sa*dx*s+(-ca)*dy*s; const L=Math.hypot(panX,panZ); if(L>3.5){ panX*=3.5/L; panZ*=3.5/L; } manual=true; }
+  function resetView(){ zoom=1; panX=panZ=0; manual=false; try{ camA=bestAngle(); }catch(e){} if(S.camDrag){ S.camDrag.yaw=0; S.camDrag.pitch=0; } }
+  const inScene=()=>document.body.classList.contains('simScene');
+  function initInput(){ if(inpOn||typeof R==='undefined') return; inpOn=true; const dom=R.domElement;
+    dom.addEventListener('wheel',e=>{ if(!inScene()) return; e.preventDefault(); zoom=Math.max(0.6,Math.min(1.45,zoom*(e.deltaY>0?1.07:1/1.07))); manual=true; },{passive:false});
+    dom.addEventListener('contextmenu',e=>{ if(inScene()) e.preventDefault(); });
+    dom.addEventListener('pointerdown',e=>{ pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(!inScene()) return; manual=true; if(e.button===1||e.button===2||e.shiftKey){ panning=true; pm={x:e.clientX,y:e.clientY}; if(S.camDrag) S.camDrag.on=false; } if(pts.size===2){ const [p1,p2]=[...pts.values()]; pd=Math.hypot(p1.x-p2.x,p1.y-p2.y); pm={x:(p1.x+p2.x)/2,y:(p1.y+p2.y)/2}; if(S.camDrag) S.camDrag.on=false; } });
+    dom.addEventListener('pointermove',e=>{ if(!pts.has(e.pointerId)) return; pts.set(e.pointerId,{x:e.clientX,y:e.clientY}); if(panning&&pts.size===1&&inScene()&&pm){ doPan(e.clientX-pm.x,e.clientY-pm.y); pm={x:e.clientX,y:e.clientY}; } if(pts.size===2&&inScene()){ if(S.camDrag) S.camDrag.on=false; const [p1,p2]=[...pts.values()], d=Math.hypot(p1.x-p2.x,p1.y-p2.y), mx=(p1.x+p2.x)/2, my=(p1.y+p2.y)/2; if(pm){ doPan(mx-pm.x,my-pm.y); } pm={x:mx,y:my}; if(pd>10&&d>10) zoom=Math.max(0.6,Math.min(1.45,zoom*pd/d)); pd=d; } });
+    ['pointerup','pointercancel','pointerleave'].forEach(ev=>dom.addEventListener(ev,e=>{ pts.delete(e.pointerId); if(!pts.size){ panning=false; pm=null; } else if(pts.size===1) pm=null; }));
+    addEventListener('keydown',e=>{ if(!inScene()) return; const m={ArrowLeft:[-30,0],ArrowRight:[30,0],ArrowUp:[0,-30],ArrowDown:[0,30]}[e.key]; if(m&&e.shiftKey){ doPan(m[0],m[1]); e.preventDefault(); } }); }
+  // 揀一個冇樓宇、冇救護車擋住、避開救護員嘅鏡頭方向
+  function clearAt(a,r){ const F=pw('chest'); for(let k=0.15;k<=1.0001;k+=0.05){ const x=F.x+Math.sin(a)*r*k, z=F.z+Math.cos(a)*r*k; if(typeof cellAt==='function'&&(cellAt(x,z)&2)) return false; if(typeof amb!=='undefined'&&amb.visible&&Math.hypot(x-amb.position.x,z-amb.position.z)<3.2) return false; if(k>0.3&&typeof bystander!=='undefined'&&bystander.visible&&Math.hypot(x-bystander.position.x,z-bystander.position.z)<1.4) return false; } return true; }
+  function bestAngle(prefer){ const pa=patient.rotation.y, base=pa-Math.PI/2; const C=[0,0.35,-0.35,0.7,-0.7,1.05,-1.05,1.4,-1.4,1.8,-1.8,2.3,-2.3,Math.PI].map(d=>base+d);
+    if(prefer!=null){ const near=C.slice().sort((x,y)=>Math.abs(Math.atan2(Math.sin(x-prefer),Math.cos(x-prefer)))-Math.abs(Math.atan2(Math.sin(y-prefer),Math.cos(y-prefer)))); if(clearAt(prefer,7)) return prefer; for(const a of near) if(clearAt(a,7)) return a; }
+    for(const a of C) if(clearAt(a,7)) return a; return base; }
+  function cam(t){ const D=S.camDrag||{yaw:0,pitch:0}; const F=pw(focus).add(V(panX,0,panZ)), a=camA+(manual?0:Math.sin(t*0.12)*0.18)+D.yaw; lastA=a; const pz=Math.max(0.45,Math.min(1.6,1+D.pitch*0.7)), r=(focus==='head'?5.6:6.8)*zoom/Math.sqrt(pz), h=(focus==='head'?8.2:7.8)*zoom*pz; return {p:V(F.x+Math.sin(a)*r,h,F.z+Math.cos(a)*r),l:V(F.x+Math.sin(a)*1.4,0.2,F.z+Math.cos(a)*1.4)}; }
+  // 現場道具（按個案）
+  function sceneProps(list){ const spots=[[-1.5,-0.6],[-1.6,0.5],[-1.2,1.3],[1.6,1.4],[-1.9,-1.3],[1.7,-1.5]]; let i=0;
+    const nx=()=>spots[(i++)%spots.length];
+    const grp=(name,build,k='chest',y=0.16)=>{ const [sd,fw]=nx(); const g=new THREE.Group(); build(g); const P=pw(k), a=patient.rotation.y; g.position.set(P.x+Math.cos(a)*sd+Math.sin(a)*fw,y,P.z-Math.sin(a)*sd+Math.cos(a)*fw); g.rotation.y=a+Math.random()*2; g.userData.sim='prop'; scene.add(g); onG.push(g); return g; };
+    const B={
+      syringe:g=>{ const b=add(cyl(0.035,0.035,0.3,10),mat(0xeef6ff,{op:0.8}),g,0,0.04,0); b.rotation.z=Math.PI/2; const n=add(cyl(0.006,0.006,0.12,6),mat(0xb8bec6,{m:0.8}),g,0.21,0.04,0); n.rotation.z=Math.PI/2; const p=add(cyl(0.02,0.02,0.08,8),mat(0xff8c1a),g,-0.18,0.04,0); p.rotation.z=Math.PI/2; },
+      bottle:g=>{ add(cyl(0.07,0.07,0.22,14),mat(0x8a4b12,{op:0.85}),g,0,0.11,0); add(cyl(0.045,0.045,0.05,12),mat(0xf2f2f2),g,0,0.245,0); },
+      pillbox:g=>{ add(new THREE.BoxGeometry(0.22,0.05,0.12),mat(0xffffff),g,0,0.03,0); add(new THREE.BoxGeometry(0.22,0.02,0.12),mat(0x4f8ef7),g,0,0.065,0); },
+      inhaler:g=>{ add(new THREE.BoxGeometry(0.06,0.14,0.05),mat(0x2f6fe8),g,0,0.07,0); add(new THREE.BoxGeometry(0.06,0.05,0.08),mat(0x2f6fe8),g,0,0.02,0.05); },
+      insulin:g=>{ const p=add(cyl(0.025,0.025,0.2,10),mat(0xff8c1a),g,0,0.03,0); p.rotation.z=Math.PI/2; },
+      glucometer:g=>{ add(new THREE.BoxGeometry(0.1,0.03,0.16),mat(0x2a2f38),g,0,0.02,0); add(new THREE.BoxGeometry(0.07,0.005,0.06),mat(0x9fe8ff,{e:0x113344}),g,0,0.037,-0.03); },
+      plate:g=>{ add(cyl(0.2,0.17,0.03,20),mat(0xffffff),g,0,0.02,0); [[0.05,0.03],[-0.06,-0.02],[0.01,-0.07]].forEach(([x,z])=>{ const t=add(new THREE.TorusGeometry(0.035,0.015,6,10,Math.PI*1.4),mat(0xff7f50),g,x,0.05,z); t.rotation.x=Math.PI/2; }); },
+      helmet:g=>{ add(new THREE.SphereGeometry(0.2,16,10,0,Math.PI*2,0,Math.PI/2),mat(0x15171a,{r:0.3}),g,0,0,0); add(new THREE.BoxGeometry(0.22,0.06,0.02),mat(0x335577,{op:0.6}),g,0,0.1,0.19); },
+      bucket:g=>{ add(cyl(0.17,0.14,0.28,16),mat(0x9fb0c3),g,0,0.14,0); },
+      stove:g=>{ add(cyl(0.2,0.16,0.18,16),mat(0x3a2a22),g,0,0.09,0); [0,1,2,3,4].forEach(j=>add(sph(0.04),mat(0x331111,{e:0xff3300}),g,Math.cos(j)*0.08,0.19,Math.sin(j)*0.08)); },
+      kettle:g=>{ add(sph(0.14),mat(0xc0c6ce,{m:0.7}),g,0,0.13,0); const sp=add(cyl(0.02,0.03,0.14,8),mat(0xc0c6ce,{m:0.7}),g,0.15,0.16,0); sp.rotation.z=-1; },
+      glass:g=>{ for(let j=0;j<6;j++){ const t=add(new THREE.BoxGeometry(0.08+Math.random()*0.06,0.01,0.05),mat(0xcfefff,{op:0.5}),g,(Math.random()-0.5)*0.5,0.01,(Math.random()-0.5)*0.5); t.rotation.y=Math.random()*3; } },
+      towel:g=>{ add(new THREE.BoxGeometry(0.5,0.05,0.35),mat(0x4f8ef7),g,0,0.025,0); },
+      bag:g=>{ add(rbox(0.36,0.42,0.2,0.06),mat(0x2e7d4f),g,0,0.21,0); add(new THREE.BoxGeometry(0.3,0.04,0.02),mat(0x15171a),g,0,0.36,0.11); },
+      chair:g=>{ add(new THREE.BoxGeometry(0.4,0.05,0.4),mat(0x8a5a3c),g,0,0.42,0); [[-0.17,-0.17],[0.17,-0.17],[-0.17,0.17],[0.17,0.17]].forEach(([x,z])=>add(new THREE.BoxGeometry(0.04,0.42,0.04),mat(0x6a442c),g,x,0.21,z)); add(new THREE.BoxGeometry(0.4,0.4,0.04),mat(0x8a5a3c),g,0,0.64,-0.18); },
+      lvadbag:g=>{ add(rbox(0.26,0.16,0.12,0.03),mat(0x15171a),g,0,0.08,0); add(new THREE.BoxGeometry(0.1,0.01,0.06),mat(0x3ddc6a,{e:0x0a4020}),g,0,0.165,0); }
+    };
+    list.forEach(n=>{ if(n==='blood'){ const o=onGround(new THREE.CircleGeometry(0.55,24),mat(0x5a0a0a,{op:0.78,r:0.2}),CASE&&CASE.id==='hd'?'neck':'thighL',0.5,0,0.135,'prop'); o.rotation.x=-Math.PI/2; return; }
+      if(B[n]) grp(n,B[n]); }); }
+  function enter(){ initInput(); try{ const d=CASE&&typeof SIMNOTES!=='undefined'&&SIMNOTES.get(CASE); if(d&&d.props) sceneProps(d.props); }catch(e){} zoom=1; manual=false; if(S.camDrag){ S.camDrag.yaw=0; S.camDrag.pitch=0; } panX=panZ=0; posCrew(); camA=bestAngle(); face(); if(MARKS) G.marks(MARKS); }
+  function leaveScene(){ occClear(); tfx.forEach(f=>scene.remove(f.o)); tfx.length=0; restore(); act=null; ventOn=false; cpr=false; onG.forEach(o=>{ scene.remove(o); }); onG.length=0; fx.forEach(f=>scene.remove(f.o)); fx.length=0; }
+  function clear(){ if(FACE){ setEyes(true); FACE.brows.forEach(b=>b.visible=false); } eye.force=null; eye.frown=0; eye.flinch=0; leaveScene(); onP.forEach(o=>o.parent&&o.parent.remove(o)); onP.length=0; }
+  function focusOn(k){ focus=k; }
+  // 🧰 工具列：用工具 → 道具 + 動作 + 對白
+  let CASE=null;
+  const TOOLACT={spo2:'vitals',bp:'vitals',gluco:'gluco',torch:'tap',steth:'pulse',thermo:'vitals',ecg:'ecg',nc:'o2:nc',mask:'o2:mask',nrm:'o2:nrm',ven:'o2:ven',bvm:'bvm',opa:'bvm',npa:'bvm',suction:'kit',lt:'bvm',lma:'bvm',combi:'bvm',
+    aed:'aedno',accm:'accm',io:'iv',asa:'pill',ntg:'spray',salb:'spray',ipra:'spray',d10:'pill',ns:'iv',ivset:'iv',thia:'iv',gluc:'jab',nalox:'jab',charc:'pill',mida:'jab',jext:'jab',piri:'jab',trama:'jab',txa:'iv',olz:'jab',penth:'whistle',adr:'iv',amio:'iv',
+    tq:'tq',hd:'press',gauze:'press',splint:'splint',sager:'sager',tpod:'tpod',collar:'collar',board:'kit',burn:'burn',water:'burn',foil:'foil',wrap:'foil',hotpack:'foil',ppe:'kit',chair:'kit',phone:'radio'};
+  // 工具動畫：細模型由救護員手飛去病人身體位置 → 做動作（推針、噴、聽、照）→ 留低道具
+  const tfx=[];
+  const MINI={
+    syringe:()=>{ const g=new THREE.Group(); add(cyl(0.035,0.035,0.24,10),mat(0xeef6ff,{op:0.85}),g,0,0,0); add(cyl(0.006,0.006,0.1,6),mat(0xb8bec6,{m:0.8}),g,0,-0.17,0); const pl=add(cyl(0.02,0.02,0.1,8),mat(0xff8c1a),g,0,0.16,0); g.userData.pl=pl; return g; },
+    clip:()=>{ const g=new THREE.Group(); add(new THREE.BoxGeometry(0.12,0.09,0.14),mat(0xd62828),g,0,0,0); return g; },
+    cuff:()=>{ const g=new THREE.Group(); const c=add(cyl(0.16,0.16,0.24,14),mat(0x1f3b73),g,0,0,0); c.rotation.x=0.8; add(sph(0.07),mat(0x15171a),g,0.2,0.1,0); return g; },
+    meter:()=>{ const g=new THREE.Group(); add(new THREE.BoxGeometry(0.1,0.03,0.16),mat(0x2a2f38),g,0,0,0); add(new THREE.BoxGeometry(0.07,0.01,0.06),mat(0x9fe8ff,{e:0x225566}),g,0,0.02,-0.03); return g; },
+    torch:()=>{ const g=new THREE.Group(); const b=add(cyl(0.03,0.03,0.2,10),mat(0x2a2f38,{m:0.5}),g,0,0,0); b.rotation.x=Math.PI/2; const cone=add(new THREE.ConeGeometry(0.12,0.4,16,1,true),mat(0xfff6c0,{op:0.35,e:0xfff2a0}),g,0,0,0.3); cone.rotation.x=-Math.PI/2; g.userData.cone=cone; return g; },
+    steth:()=>{ const g=new THREE.Group(); add(cyl(0.06,0.06,0.03,14),mat(0xb8bec6,{m:0.8}),g,0,0,0); add(new THREE.TorusGeometry(0.16,0.012,6,20,Math.PI),mat(0x15171a),g,0,0.18,0); return g; },
+    thermo:()=>{ const g=new THREE.Group(); add(new THREE.BoxGeometry(0.05,0.16,0.04),mat(0xffffff),g,0,0,0); add(new THREE.BoxGeometry(0.04,0.04,0.01),mat(0x9fe8ff,{e:0x225566}),g,0,0.03,0.025); return g; },
+    pads:()=>{ const g=new THREE.Group(); add(rbox(0.22,0.02,0.3,0.01),mat(0xf6f6f6),g,-0.14,0,0); add(rbox(0.22,0.02,0.3,0.01),mat(0xf6f6f6),g,0.14,0,0); return g; },
+    mask:()=>{ const g=new THREE.Group(); add(sph(0.13),mat(0x9ee6b8,{op:0.7}),g,0,0,0); return g; },
+    bvm:()=>{ const g=new THREE.Group(); const b=add(sph(0.2),mat(0x2f6fe8,{op:0.85}),g,0,0,0); b.scale.set(1,1,1.6); add(sph(0.11),mat(0x9ee6b8,{op:0.7}),g,0,0,-0.32); return g; },
+    tube:()=>{ const g=new THREE.Group(); const t=add(new THREE.TorusGeometry(0.14,0.025,8,16,Math.PI),mat(0xf2f2f2,{op:0.9}),g,0,0,0); t.rotation.y=Math.PI/2; return g; },
+    bag:()=>{ const g=new THREE.Group(); add(rbox(0.2,0.3,0.06,0.03),mat(0xcfe8ff,{op:0.75}),g,0,0,0); return g; },
+    cup:()=>{ const g=new THREE.Group(); add(cyl(0.06,0.05,0.12,12),mat(0xffffff,{op:0.8}),g,0,0,0); return g; },
+    pill:()=>{ const g=new THREE.Group(); add(sph(0.04),mat(0xffffff),g,0,0,0); return g; },
+    inhaler:()=>{ const g=new THREE.Group(); add(new THREE.BoxGeometry(0.06,0.14,0.05),mat(0x2f6fe8),g,0,0,0); add(new THREE.BoxGeometry(0.06,0.05,0.08),mat(0x2f6fe8),g,0,-0.06,0.05); return g; },
+    whistle:()=>{ const g=new THREE.Group(); const w=add(cyl(0.035,0.035,0.2,10),mat(0x3ddc6a),g,0,0,0); w.rotation.x=Math.PI/2; return g; },
+    tq:()=>{ const g=new THREE.Group(); const t=add(new THREE.TorusGeometry(0.17,0.04,8,18),mat(0x15171a),g,0,0,0); t.rotation.x=Math.PI/2; add(new THREE.BoxGeometry(0.06,0.04,0.14),mat(0xd62828),g,0.18,0.03,0); return g; },
+    gauze:()=>{ const g=new THREE.Group(); add(rbox(0.26,0.06,0.26,0.02),mat(0xf6f6f6),g,0,0,0); return g; },
+    splint:()=>{ const g=new THREE.Group(); add(new THREE.BoxGeometry(0.06,0.1,0.7),mat(0xff8c1a),g,-0.15,0,0); add(new THREE.BoxGeometry(0.06,0.1,0.7),mat(0xff8c1a),g,0.15,0,0); return g; },
+    collar:()=>{ const g=new THREE.Group(); const c=add(cyl(0.22,0.22,0.16,16,1,true),mat(0xf28c28),g,0,0,0); c.rotation.x=Math.PI/2; return g; },
+    foil:()=>{ const g=new THREE.Group(); add(new THREE.BoxGeometry(0.6,0.02,0.5),mat(0xd7dde4,{m:0.9,r:0.2}),g,0,0,0); return g; },
+    drill:()=>{ const g=new THREE.Group(); add(rbox(0.1,0.16,0.08,0.02),mat(0x2a7de1),g,0,0,0); add(cyl(0.01,0.01,0.12,6),mat(0xb8bec6,{m:0.8}),g,0,-0.13,0); return g; },
+    box:()=>{ const g=new THREE.Group(); add(rbox(0.4,0.2,0.3,0.04),mat(0x3a3f47),g,0,0,0); return g; },
+    phone:()=>{ const g=new THREE.Group(); add(rbox(0.07,0.14,0.02,0.01),mat(0x15171a),g,0,0,0); return g; },
+    glove:()=>{ const g=new THREE.Group(); add(rbox(0.1,0.16,0.04,0.02),mat(0x6aa9ff),g,-0.07,0,0); add(rbox(0.1,0.16,0.04,0.02),mat(0x6aa9ff),g,0.07,0,0); return g; },
+    board:()=>{ const g=new THREE.Group(); add(rbox(0.5,0.05,1.6,0.04),mat(0xffcf5a),g,0,0,0); return g; }
+  };
+  // [模型, 身體位置, 動作]
+  const TFX={spo2:['clip','wristL'],bp:['cuff','armL','pump'],gluco:['meter','wristL','poke'],torch:['torch','face','light'],steth:['steth','chest','circle'],thermo:['thermo','head'],ecg:['pads','chest'],
+    nc:['mask','face'],mask:['mask','face'],nrm:['mask','face'],ven:['mask','face'],bvm:['bvm','face','squeeze'],opa:['tube','mouth'],npa:['tube','mouth'],suction:['tube','mouth','suck'],lt:['tube','mouth','push'],lma:['tube','mouth','push'],combi:['tube','mouth','push'],
+    aed:['pads','chest'],accm:['box','chest'],io:['drill','shinL','drill'],ivset:['bag','wristL'],ns:['bag','wristL'],d10:['cup','mouth','tilt'],asa:['pill','mouth'],charc:['cup','mouth','tilt'],
+    ntg:['inhaler','mouth','puff'],salb:['inhaler','mouth','puff'],ipra:['inhaler','mouth','puff'],penth:['whistle','mouth','puff'],
+    thia:['syringe','wristL','push'],adr:['syringe','wristL','push'],amio:['syringe','wristL','push'],txa:['syringe','wristL','push'],
+    gluc:['syringe','thighL','push'],nalox:['syringe','thighL','push'],mida:['syringe','thighL','push'],jext:['syringe','thighL','push'],piri:['syringe','thighL','push'],trama:['syringe','thighL','push'],olz:['syringe','thighL','push'],
+    tq:['tq','thighL','twist'],hd:['gauze','thighL','press'],gauze:['gauze','thighL','press'],splint:['splint','shinR'],sager:['splint','shinR'],tpod:['tq','pelvis','twist'],collar:['collar','neck'],board:['board','belly'],
+    burn:['gauze','armR'],water:['cup','armR','pour'],foil:['foil','belly'],wrap:['foil','belly'],hotpack:['gauze','belly'],ppe:['glove','crew'],chair:['box','crew'],phone:['phone','crew']};
+  function spawnDrop(pos,col,vy){ const o=add(sph(0.025),mat(col,{op:0.8}),scene,pos.x+(Math.random()-0.5)*0.1,pos.y,pos.z+(Math.random()-0.5)*0.1,false); tfx.push({o,t:0,d:0.7,f:(o,k)=>{ o.position.y+=vy*0.016; o.material.opacity=0.8*(1-k); }}); }
+  function toolAnim(id,part,done){ const sp=TFX[id]||['gauze','chest']; const {c1,c2}=C(); const front=['face','mouth','head'].includes(part||sp[1]); const cr=front?c1:c2;
+    const g=MINI[sp[0]](); const SC=({syringe:2.6,pill:3,cup:2.2,inhaler:2.4,whistle:2.4,phone:2.4,thermo:2.2,clip:2,meter:2,drill:2,glove:2,torch:1.8})[sp[0]]||1.6; g.scale.setScalar(SC); scene.add(g); const tgtPart=part||sp[1];
+    const from=cr.getWorldPosition(V()).add(V(0,1.3,0)), to=tgtPart==='crew'?cr.getWorldPosition(V()).add(V(0,2.3,0)):pw(tgtPart).add(V(0,0.5,0));
+    g.position.copy(from); let fired=false; const mode=sp[2];
+    tfx.push({o:g,t:0,d:2.3,keep:1,f:(o,k)=>{ const T=k*2.3;
+      if(T<0.8){ const u=T/0.8; o.position.lerpVectors(from,to,u); o.position.y+=Math.sin(u*Math.PI)*0.5; }
+      else if(T<1.9){ const u=(T-0.8)/1.1; o.position.copy(to);
+        if(mode==='push'){ o.position.y=to.y-Math.min(1,u*2)*0.14; if(o.userData.pl) o.userData.pl.position.y=0.16-Math.min(1,u*1.5)*0.09; }
+        else if(mode==='puff'&&Math.random()<0.35) spawnDrop(to,0xffffff,0.6);
+        else if(mode==='pour'&&Math.random()<0.6) spawnDrop(to,0x7ec8ff,-1.2);
+        else if(mode==='suck'&&Math.random()<0.2) spawnDrop(to,0xeeeecc,0.3);
+        else if(mode==='circle'){ o.position.x=to.x+Math.cos(u*9)*0.18; o.position.z=to.z+Math.sin(u*9)*0.18; o.position.y=to.y-0.1; }
+        else if(mode==='light'){ o.lookAt(pw('face')); if(o.userData.cone) o.userData.cone.visible=Math.sin(u*30)>-0.6; }
+        else if(mode==='pump'||mode==='squeeze'){ const s=SC*(1+Math.abs(Math.sin(u*14))*0.15); o.scale.set(s,s,s); }
+        else if(mode==='press'||mode==='poke'){ o.position.y=to.y-0.08-Math.abs(Math.sin(u*8))*0.04; }
+        else if(mode==='twist'){ o.rotation.y=u*6; }
+        else if(mode==='drill'){ o.rotation.y=u*30; o.position.y=to.y-u*0.1; }
+        else if(mode==='tilt'){ o.rotation.z=-u*1.2; if(Math.random()<0.3) spawnDrop(to,0xfff2a0,-0.8); }
+        else o.position.y=to.y-u*0.12;
+        if(!fired&&u>0.5){ fired=true; try{ done&&done(); }catch(e){} } }
+      else { const u=(T-1.9)/0.4; o.scale.setScalar(SC*Math.max(0.01,1-u)); } }});
+    focus=tgtPart==='crew'?focus:tgtPart; }
+  // 擋住鏡頭嘅細物件（燈柱、路牌、樹）暫時隱藏
+  const occ=new Set(), occI=new Map(); let occT=0; const RCs=new THREE.Raycaster();
+  const ours=o=>{ for(let x=o;x;x=x.parent){ if(x===patient||x===crew||(typeof amb!=='undefined'&&x===amb)||(x.userData&&x.userData.sim)) return true; } return false; };
+  function occTick(){ const now=performance.now(); if(now-occT<200) return; occT=now; const CM=window.__cam; if(!CM) return;
+    const tgt=pw(focus).add(V(0,0.6,0)), from=CM.position.clone(), dir=tgt.clone().sub(from), L=dir.length(); if(L<1) return; dir.normalize(); RCs.set(from,dir); RCs.far=L-0.6;
+    let hits=[]; try{ hits=RCs.intersectObjects(scene.children,true); }catch(e){} const cur=new Set();
+    for(const h of hits){ const o=h.object; if(!o.isMesh||ours(o)) continue;
+      if(o.isInstancedMesh){ if(h.instanceId==null) continue; const key=o.uuid+':'+h.instanceId; if(!occI.has(key)){ const m=new THREE.Matrix4(); o.getMatrixAt(h.instanceId,m); const z=m.clone().multiply(new THREE.Matrix4().makeScale(0.0001,0.0001,0.0001)); o.setMatrixAt(h.instanceId,z); o.instanceMatrix.needsUpdate=true; occI.set(key,{o,i:h.instanceId,m,t:now}); } else occI.get(key).t=now; continue; } const g=o.geometry; if(!g) continue; if(!g.boundingSphere) g.computeBoundingSphere(); const sc=o.getWorldScale(V()); if(g.boundingSphere.radius*Math.max(sc.x,sc.y,sc.z)>7) continue; cur.add(o); }
+    occ.forEach(o=>{ if(!cur.has(o)){ o.visible=true; occ.delete(o); } }); cur.forEach(o=>{ if(o.visible){ o.visible=false; occ.add(o); } });
+    occI.forEach((v,k)=>{ const P=new THREE.Vector3().setFromMatrixPosition(v.m).applyMatrix4(v.o.matrixWorld); const q=P.clone().sub(from), tt=Math.max(0,Math.min(L,q.dot(dir))), dd=q.sub(dir.clone().multiplyScalar(tt)); dd.y=0; if(dd.length()<1.2) v.t=now; if(now-v.t>800){ v.o.setMatrixAt(v.i,v.m); v.o.instanceMatrix.needsUpdate=true; occI.delete(k); } }); }
+  function occClear(){ occ.forEach(o=>o.visible=true); occ.clear(); occI.forEach(v=>{ v.o.setMatrixAt(v.i,v.m); v.o.instanceMatrix.needsUpdate=true; }); occI.clear(); }
+  function tfxTick(dt){ occTick(); for(let i=tfx.length-1;i>=0;i--){ const f=tfx[i]; f.t+=dt; f.f(f.o,Math.min(1,f.t/f.d)); if(f.t>=f.d){ scene.remove(f.o); tfx.splice(i,1); } } }
+  function useTool(id,text){ const {c1,c2}=C(); const k=TOOLACT[id]||'kit', vk=CASE&&CASE.vk, cid=CASE&&CASE.id;
+    const front=['o2:nc','o2:mask','o2:nrm','o2:ven','bvm','spray','whistle','pill','tap','radio'].includes(k);
+    if(!document.body.classList.contains('simScene')) return;
+    act=ALIAS[k]||k; at=0;
+    const woundPart=cid==='hd'?(CASE.varK==='neck'?'neck':CASE.varK==='chest'?'chest':'face'):cid==='hat'&&CASE.varK==='groin'?'pelvis':'thighL';
+    const part=(id==='hd'||id==='gauze')?woundPart:(id==='burn'||id==='water')?(cid==='burn'&&CASE.varK==='face'?'face':'armR'):null;
+    const build=()=>{ if(id==='spo2'){ if(!has('clip')) onPat(new THREE.BoxGeometry(0.1,0.08,0.12),mat(0xd62828),'wristL',0,0.05,0.12,0,0,0,'clip'); G.monitor(); }
+      if(id==='bp'){ G.cuff(); G.monitor(); } if(id==='gluco') G.monitor(); if(id==='ecg') G.electrodes();
+      if(k.startsWith('o2:')) G.mask(k.slice(3)); if(['bvm','lt','lma','combi'].includes(id)){ G.bvm(); ventOn=true; }
+      if(id==='aed') G.pads(); if(id==='accm'){ G.accm(); cpr=true; }
+      if(['ivset','ns','io'].includes(id)) G.ivbag();
+      if(id==='tq') G.tourniquet('thighL');
+      if(id==='hd'||id==='gauze') G.gauze(woundPart==='face'?'head':woundPart);
+      if(id==='splint') G.splint(false); if(id==='sager') G.splint(true); if(id==='tpod') G.tpod(); if(id==='collar') G.collar(); if(id==='burn') G.burn(); if(['foil','wrap','hotpack'].includes(id)) G.foil(); };
+    toolAnim(id,part,build);
+    bubble(crewHead(front?c1:c2),text,2.6); }
+  return {resetView,useTool,setCase,react,focusOn,play,apply,tick,cam,enter,leaveScene,clear,bubble,get cpr(){ return cpr; },_k:kindOf};
+})();
+
+/* ---------- 🧰 現場模擬：救護器材／藥物工具列（分類、每步需要嘅工具、讀數） ---------- */
+const SIMTOOLS=(()=>{
+  // kind: a=評估（隨時用、唔扣分） d=器材（用咗會留喺病人身上） m=藥物（每次用都要再揀）
+  const CAT=[['assess','🩺 評估'],['air','🫁 氣道／氧氣'],['cpr','⚡ 復甦'],['drug','💊 藥物'],['trauma','🩹 創傷'],['other','📦 其他']];
+  const T={
+    spo2:['☝️','血氧機 SpO₂','assess','a'], bp:['💪','血壓計','assess','a'], gluco:['🩸','血糖機 H\'stix','assess','a'], torch:['🔦','電筒（睇瞳孔）','assess','a'],
+    steth:['🎧','聽筒','assess','a'], thermo:['🌡️','體溫計','assess','a'], ecg:['📈','DM 機 12 導程','assess','d'],
+    nc:['👃','鼻插喉','air','d'], mask:['😷','簡單面罩','air','d'], nrm:['🫧','NRM 不能回吸面罩','air','d'], ven:['🎚️','文氏面罩','air','d'], bvm:['🎈','BVM 膠囊活門面罩','air','d'],
+    opa:['🦷','OPA 口咽氣道','air','d'], npa:['👃','NPA 鼻咽氣道','air','d'], suction:['🌀','抽痰機','air','d'], lt:['🟥','LTS-D 喉管','air','d'], lma:['🟩','LMA Supreme','air','d'], combi:['🟦','Combitube','air','d'],
+    aed:['⚡','AED／DM 電擊片','cpr','d'], accm:['🤖','ACCM 胸外按壓機','cpr','d'], io:['🪛','IO 骨內注射鑽','cpr','d'],
+    asa:['💊','ASA 阿士匹靈','drug','m'], ntg:['💨','NTG 脷底噴劑','drug','m'], salb:['🌬️','Ventolin (Salbutamol)','drug','m'], ipra:['🌬️','Atrovent (Ipratropium)','drug','m'],
+    d10:['🧃','D10W 葡萄糖水','drug','m'], ns:['💧','0.9% NS 鹽水','drug','d'], ivset:['🩻','IV 套裝（3-way）','drug','d'], thia:['💉','Thiamine','drug','m'], gluc:['💉','Glucagon','drug','m'],
+    nalox:['💉','Naloxone','drug','m'], charc:['⚫','活性炭','drug','m'], mida:['💉','Midazolam','drug','m'], jext:['💉','Jext／EpiPen','drug','m'], piri:['💉','Piriton','drug','m'],
+    trama:['💉','Tramadol','drug','m'], txa:['💉','TXA 傳明酸','drug','m'], olz:['💉','Olanzapine','drug','m'], penth:['🟢','Penthrox 綠哨子','drug','m'],
+    adr:['💉','Adrenaline 1 mg','drug','m'], amio:['💉','Amiodarone','drug','m'],
+    tq:['🎗️','HAT 止血帶','trauma','m'], hd:['🧻','止血敷料 (HD)','trauma','d'], gauze:['🩹','敷料繃帶','trauma','d'], splint:['🦴','真空夾板','trauma','d'], sager:['🦿','Sager 牽引夾板','trauma','d'],
+    tpod:['🎽','T-POD 骨盆帶','trauma','d'], collar:['🧣','頸套','trauma','d'], board:['🛏️','剷床／脊椎板','trauma','d'], burn:['🧊','燒傷敷料 Burnkit','trauma','d'], water:['🚿','清水（沖洗）','trauma','m'],
+    foil:['🥡','保溫毯','trauma','d'], wrap:['🧥','紅毯／毛氈','trauma','d'], hotpack:['🔥','Hot Pack','trauma','d'],
+    ppe:['🧤','PPE／N95','other','d'], chair:['🪑','搬運椅','other','d'], phone:['📞','電話（通報／HKPIC）','other','m']
+  };
+  const NO=/^(唔可以|唔使|未可以|唔需要|暫時唔可以|冇|唔應)/;
+  // 呢啲題目係問知識，唔係叫你即刻做
+  const KNOW=/係？$|係邊|係咪|幾耐|代表|提示|要諗起|要留意咩|仲要留意|仲可以考慮|適用症|邊一類|點判斷|邊間|邊個|口訣|次序|包括|取代|幾時|條件|要注意咩|有咩效果/;
+  // 回傳需要嘅工具：[[可選 id…], …]，每組揀一樣
+  function need(c,lv){ if(!c||!c.q||c.k==='MIST') return []; const ans=c.q.o[0]||'', act=c.act||'', q=c.q.q||'', T2=act+' '+ans, g=[];
+    if(c.tools) return c.tools;
+    if(lv==='burn'&&/唔可以全部蓋/.test(ans)) return [['burn'],['foil']];
+    if(c.k==='LG') return [];
+    if(c.k==='CALL') return [['phone']];
+    if(NO.test(ans)) return [];
+    const add=(...ids)=>{ if(!g.some(x=>x.join()===ids.join())) g.push(ids); };
+    switch(c.k){
+      case 'VS': if(!/回流灌注/.test(ans)) { add('bp'); add('spo2'); } return g;
+      case 'HS': add('gluco'); return g;
+      case 'O2': add('spo2'); if(/BVM/.test(ans)) add('bvm'); else if(/NRM|不能回吸/.test(ans)) add('nrm'); else if(/文氏/.test(ans)) add('ven'); else if(/鼻插喉|簡單面罩/.test(ans)) add('nc','mask'); return g;
+      case 'CAB': if(/OPA/.test(ans)) add('opa','npa'); if(/BVM|Bag/.test(ans)) add('bvm'); if(/Suction|SuctioN|抽吸/.test(ans)) add('suction'); if(/OxygeN|俾氧/.test(ans)) add('nrm','mask','nc'); return g;
+      case 'RBS': if(/瞳孔/.test(c.find||'')) add('torch'); return g;
+      case 'CPR': add('bvm'); return g;
+      case 'AED': add('aed'); return g;
+      case 'AW': if(/ACCM|continuous/.test(T2)) return g; add(lv==='lt'?'lt':lv==='lma'?'lma':lv==='combi'?'combi':'bvm'); return g;
+    }
+    if(lv==='accm'&&c.k==='TX'&&/^可以/.test(ans)) add('accm');
+    if(lv==='burn'&&/^可以用/.test(ans)) add('burn');
+    if(lv==='ecg12'&&/貼電極/.test(ans)) add('ecg');
+    if(KNOW.test(q)&&!/點處理|點做|點俾|劑量/.test(q)) return g;
+    if(/ASA|阿士匹靈/.test(T2)&&/200 mg/.test(ans)) add('asa');
+    if(/NTG/.test(T2)&&/0\.4 mg|第 2 劑/.test(ans)) add('ntg');
+    if(/嘗試使用 Penthrox/.test(ans)) add('penth');
+    if(/puffs/.test(ans)) add(/Atrovent|Ipratropium/.test(act)?'ipra':'salb');
+    if(/Ventolin/.test(ans)) add('salb');
+    if(/口服 D10W|再口服|飲 D10W/.test(ans)) add('d10');
+    if(/IV D10W/.test(ans)){ add('ivset'); add('d10'); }
+    if(/^Thiamine/.test(ans)) add('thia');
+    if(/NS |NS$|^NS|500 ml Full Rate|100 ml／hr|500 ml／hr/.test(ans)&&!/D10W/.test(ans)){ add('ivset'); add('ns'); }
+    if(/Glucagon/.test(ans)&&/mg/.test(ans)) add('gluc');
+    if(/Naloxone/.test(ans)&&/mg/.test(ans)) add('nalox');
+    if(/活性炭/.test(ans)&&/50 g/.test(ans)) add('charc');
+    if(/Midazolam/.test(T2)&&/mg/.test(ans)||lv==='fit'&&/^\d.*mg（/.test(ans)||/俾 1st Midazolam/.test(ans)) add('mida');
+    if(/Jext|EpiPen/.test(ans)&&/mg|第二支/.test(ans)) add('jext');
+    if(lv==='ana'&&/Piriton|Chlorphen/.test(act)&&/mg/.test(ans)) add('piri');
+    if(/Tramadol/.test(act)&&/mg/.test(ans)) add('trama');
+    if(/每分鐘 100 mg|剩下劑量/.test(ans)) add('txa');
+    if(/Olanzapine/.test(act)&&/mg/.test(ans)) add('olz');
+    if(/3 ml，Only One Dose/.test(ans)) add('penth');
+    if(lv==='adr'&&/1 mg（10 ml）|第一劑 Adrenaline|第 2 劑 Adrenaline/.test(ans)) add('adr');
+    if(/骨內注射|\(IO\)/.test(ans)) add('io');
+    if(lv==='amio'&&/300 mg|150 mg/.test(ans)&&!/條件/.test(act)) add('amio');
+    if(/Amiodarone 1st 300/.test(ans)) add('amio');
+    if(/12 導聯|12-Lead|肋間/.test(ans)) add('ecg');
+    if(c.k==='BLEED'&&/止血帶|並排紮|近端/.test(ans)) add('tq');
+    if(/止血敷料|敷料按入|按壓入傷口/.test(ans)&&!/Burnkit|燒傷|考慮/.test(ans)) add('hd');
+    if(/夾板固定/.test(ans)) add('splint');
+    if(lv==='sager'&&c.k==='SPL'&&/磅|複查/.test(ans)) add('sager');
+    if(/腰帶|兩邊滑輪|先上板/.test(ans)) add('tpod');
+    if(/先上板/.test(ans)) add('board');
+    if(/完整的脊柱制動/.test(ans)){ add('collar'); add('board'); }
+    if(/沖約|大量清水沖洗/.test(ans)) add('water');
+    if(/燒傷敷料|Burnkit|局部敷料/.test(ans)&&!/唔可以/.test(ans)) add('burn');
+    if(/Hypothermia Wrap|保溫毯/.test(ans)){ add('foil'); add('wrap'); }
+    if(/毛氈包裹/.test(ans)) add('wrap');
+    if(/放入嘔吐袋/.test(ans)) add('hotpack');
+    if(/^致電|^直接致電/.test(ans)) add('phone');
+    if(/ACCM|30:2、深度/.test(ans)&&lv==='accm') add('accm');
+    if(/PPE|N95/.test(ans)) add('ppe');
+    return g; }
+  // 評估工具嘅讀數（入門、專業都可以隨時用）
+  function reading(id,sc,v){ const l=sc.id, r=v.rhythm, dead=r==='vf'||r==='asys'||(r==='pea'&&!v.hr);
+    switch(id){
+      case 'spo2': return dead?'SpO₂：冇波形':(l==='o2'&&sc.varK==='co'?'SpO₂ '+Math.round(v.spo2)+'%（一氧化碳中毒，讀數唔可信）':'SpO₂ '+Math.round(v.spo2)+'%');
+      case 'bp': return dead?'BP：量唔到':(l==='lvad'?'BP：量唔到穩定讀數（LVAD）':'BP '+Math.round(v.sbp)+'／'+Math.round(v.dbp||v.sbp*0.62));
+      case 'gluco': return "H'stix "+(+v.rbs).toFixed(1)+' mmol/L';
+      case 'torch': return l==='narc'?'瞳孔：兩邊針孔狀 (Pin point)':l==='stroke'?'瞳孔：等大，雙眼偏向一邊':dead?'瞳孔：放大、對光冇反應':v.avpu>=2?'瞳孔：等大，對光反應遲緩':'瞳孔：等大、對光有反應';
+      case 'steth': return l==='resp'?(sc.varK==='copd'?'肺音：兩邊有喘鳴，入氣減少':'肺音：兩邊有喘鳴'):l==='ana'?(sc.varK==='ac'?'肺音：清晰，冇喘鳴':'肺音：有喘鳴'):l==='combi'&&sc.varK==='tra'?'#1 藍管：肺冇聲，胃有咕嚕聲':dead?'冇呼吸音':l==='burn'&&sc.varK==='face'?'肺音：清；聲沙，有喘鳴風險':'肺音：兩邊清晰、入氣平均';
+      case 'thermo': return 'T '+(l==='hypot'&&sc.varK!=='frost'?'32.4':l==='olz'?'39.8':l==='hypovol'&&sc.varK==='heat'?'38.6':l==='o2'&&sc.varK==='gen'?'38.4':'36.8')+' °C';
+      case 'ecg': return dead?(r==='vf'?'ECG：VF':r==='asys'?'ECG：Asystole（直線）':'ECG：有電流、冇脈搏 (PEA)'):'ECG：'+(r==='brady'?'竇性心動過緩':r==='tachy'?'竇性心動過速':r==='noise'?'雜訊（抽搐中）':'竇性心律')+' '+Math.round(v.hr);
+    } return ''; }
+  return {CAT,T,need,reading};
+})();
+
+/* ---------- 📋 現場模擬：個案細節（SAMPLE、現場道具）、注意事項、個案卡 ---------- */
+const SIMNOTES=(()=>{
+  // SAMPLE：S 徵狀 · A 敏感 · M 藥物 · P 病歷 · L 最後進食 · E 經過；props：現場 3D 道具；safe：行動注意事項
+  const D={
+    chest:k=>({S:'胸口中間壓住咁痛 8／10，傳去左手，出冷汗、有啲氣促',A:'冇藥物敏感',M:k==='nontg'?'降血壓藥、降膽固醇藥':'Isordil（NTG）、降血壓藥'+(k==='asa24'?'；今朝自己食咗一粒阿士匹靈':''),P:'高血壓、三年前心絞痛',L:'兩個鐘前食咗早餐',E:'行樓梯上二樓時開始痛，坐低休息 20 分鐘都唔減',props:['chair','pillbox'],
+      safe:['病人可能隨時心臟驟停：AED 擺喺身邊，電擊片準備好。','用 NTG 前一定要量 BP，並問 72 小時內有冇用壯陽藥。','唔好俾病人自己行落樓，用搬運椅。']}),
+    resp:k=>({S:'氣促、講嘢斷斷續續、有喘鳴',A:'冇藥物敏感',M:k==='copd'?'Ventolin、Atrovent、家用氧氣':'Ventolin 噴劑'+(k==='glau'?'、青光眼眼藥水':''),P:k==='copd'?'COPD、長期食煙':'哮喘'+(k==='preg'?'；懷孕 28 星期':''),L:'午餐',E:'今日天氣轉凍，氣促慢慢加劇，自己噴咗 2 下 Ventolin 冇改善',props:['inhaler'],
+      safe:['讓病人坐直、身向前傾，唔好強迫佢瞓低。','COPD 病人氧氣目標 88–92%，唔好一下俾太高濃度。','留意病人愈嚟愈眼瞓、講唔到嘢：可能呼吸衰竭，要準備 BVM。']}),
+    hypo:k=>({S:k==='high'?'口乾、多尿、神志不清':'神志不清、冒冷汗、手震',A:'冇藥物敏感',M:'胰島素（Insulin）、Metformin',P:'糖尿病 15 年',L:k==='high'?'今日食咗好多甜嘢':'今朝打完針冇食早餐',E:'家人發現佢答非所問',props:['insulin','glucometer'],
+      safe:['唔清醒病人唔可以餵嘢食，會哽塞。','IV 前要確認靜脈通暢，D10W 外滲會傷組織。','血糖改善後都要送院，長效胰島素可能令血糖再跌。']}),
+    glucagon:k=>({S:'暈暈沉沉、冒汗、講嘢含糊',A:'冇藥物敏感',M:'胰島素'+(k==='pheo'?'、Phenoxybenzamine（嗜咯細胞瘤）':''),P:'糖尿病'+(k==='pheo'?'、嗜咯細胞瘤':''),L:'今朝冇食嘢',E:'朋友見佢喺公園長櫈坐咗好耐冇反應',props:['insulin'],
+      safe:['IV 試 3 次都唔得先考慮 Glucagon。','Glucagon 生效要 10–15 分鐘，期間保持氣道暢通、側臥防嘔吐。']}),
+    narc:k=>({S:'昏迷、呼吸好慢好淺、鼻鼾聲',A:'不詳',M:k==='young'?'（阿爺嘅美沙酮）':'不詳',P:k==='young'?'冇':'旁人話佢有吸毒',L:'不詳',E:k==='young'?'家人話佢可能誤飲咗阿爺放喺枱面嘅美沙酮':'旁人發現佢喺後樓梯坐低之後慢慢瞓低',props:k==='young'?['bottle']:['syringe','syringe','bottle'],
+      safe:['小心地上針筒，唔好徒手執，用利器收集箱。','Naloxone 之後病人可能突然醒、好激動或者嘔吐，預備抽痰同保持距離。','Naloxone 作用可能短過麻醉藥，就算醒咗都一定要送院。']}),
+    charcoal:k=>({S:'暫時冇明顯不適',A:'冇藥物敏感',M:'撲熱息痛（Panadol）',P:'抑鬱症',L:'晚飯',E:k==='late'?'約 3 小時前食咗 20 粒撲熱息痛':'約 1 小時前食咗 20 粒撲熱息痛',props:['bottle','pillbox'],
+      safe:['藥樽、藥袋帶埋上車交俾醫院。','病人有自殺念頭：唔好留低佢一個人，留意現場有冇其他危險物品。','清醒程度一旦下降就唔可以俾活性炭。']}),
+    fit:k=>({S:'全身抽搐、口有分泌物',A:'冇藥物敏感',M:'抗癲癇藥（今日冇食）',P:'癲癇',L:'午餐',E:'朋友見佢喺巴士站突然倒地抽搐，已經大約 3 分鐘',props:['bag'],
+      safe:['唔好塞嘢入病人口，唔好強行按住手腳。','移開附近硬物，保護頭部。','記錄抽搐開始、停止同用藥時間。','抽搐停咗之後擺復原臥式，預備抽痰。']}),
+    ana:k=>({S:'全身出疹、嘴唇腫、'+(k==='ac'?'頭暈':'喉嚨緊、氣促'),A:'對蝦敏感（以前出過疹）',M:k==='own'?'自己嘅 EpiPen × 2':'冇長期用藥',P:'食物敏感',L:'15 分鐘前食咗蝦',E:'食完蝦幾分鐘開始痕、出疹，之後頭暈',props:['plate'],
+      safe:['血壓低就瞓平、抬高雙腳；氣促就坐起，唔好突然企起身。','病情可以好快轉差，就算好返都要送院觀察。','記錄每支 Jext／EpiPen 嘅時間，用過嘅交俾醫院。']}),
+    hypovol:k=>({S:k==='bleed'?'大腿大量出血、頭暈':k==='heat'?'頭暈、大量出汗':'虛弱、頭暈',A:'冇藥物敏感',M:'冇',P:k==='dehyd'?'高血壓':'冇',L:k==='heat'?'朝早食咗少少，水飲得少':'嘔吐後冇食嘢',E:k==='bleed'?'電單車撞欄跌落地':k==='heat'?'炎熱天時行咗 4 個鐘山':'嘔吐肚瀉兩日',props:k==='bleed'?['helmet','blood']:k==='heat'?['bag']:['bucket'],
+      safe:['大量出血先止血，止血比打 IV 更重要。','唔好喺現場拖延打 IV，儘早送院。','病人瞓平保暖，防體溫過低。']}),
+    tramadol:k=>({S:'右小腿劇痛 9／10、變形',A:'冇藥物敏感',M:k==='epi'?'抗癲癇藥':'冇',P:k==='epi'?'癲癇':'冇',L:'午餐',E:'喺屋苑樓梯踩空跌倒',props:[],
+      safe:['用藥前排除 CHEAP PAIN 禁忌。','打完針 15 分鐘內留意反胃、頭暈、血壓下降。','上夾板前後檢查遠端循環神經。']}),
+    txa:k=>({S:'下半身劇痛、好虛弱',A:'冇藥物敏感',M:'冇',P:'冇',L:'早餐',E:(k==='late'?'約 4 小時前':'約 40 分鐘前')+'喺地盤被重物壓住下半身',props:['helmet','blood'],
+      safe:['懷疑盆骨骨折：盡量少移動，用剷床。','TXA 慢慢推，每分鐘 100 mg，太快會低血壓。','途中留意抽搐同心搏停止。']}),
+    olz:k=>({S:'情緒激動、大叫、揮拳、全身出汗',A:'不詳',M:'不詳',P:'旁人話佢有精神病',L:'不詳',E:'喺街大叫揮拳，途人報警',props:[],
+      safe:['安全第一：保持距離，等警員到場先接近。','制服時唔好壓住胸口同頸，防窒息。','用藥後持續監察呼吸、SpO₂ 同體溫。']}),
+    penthrox:k=>({S:'右腳踝腫痛 8／10',A:'冇藥物敏感',M:'冇',P:k==='kidney'?'慢性腎病':k==='preg'?'懷孕 20 星期':'冇',L:k==='bp'?'朝早食咗少少，行咗 5 個鐘冇點飲水':'午餐',E:'行山落樓梯級時扭傷腳踝',props:['bag'],
+      safe:['病人自己握住 Penthrox 吸，唔好替佢按住。','救護員自己唔好吸到：車上開窗通風。','用搬運椅落山，小心路面濕滑。']}),
+    o2:k=>({S:k==='co'?'頭痛、嘔吐':k==='para'?'喉嚨痛、嘔吐':'氣促、咳嗽',A:'冇藥物敏感',M:k==='copd'?'Ventolin、Atrovent':'冇',P:k==='copd'?'COPD':'冇',L:'晚餐',E:k==='co'?'喺密閉房燒炭':k==='para'?'飲咗殺草水（百草枯）':'發燒咳嗽三日',props:k==='co'?['stove']:k==='para'?['bottle']:[],
+      safe:k==='co'?['先確保現場通風，移走炭盆先入去。','SpO₂ 讀數唔可信，照俾高濃度氧氣。']:k==='para'?['穿 PPE 同戴 N95。','百草枯病人唔好俾太多氧，會加重肺損傷。']:['按 SpO₂ 調氧，唔好一開就最大。','COPD 病人目標 88–92%。']}),
+    aed:k=>({S:'冇反應、冇呼吸',A:'不詳',M:'不詳',P:k==='child'?'冇':'高血壓',L:'不詳',E:'喺商場突然暈低，旁人即刻做 CPR',props:[],
+      safe:['電擊前大聲講「所有人離開」，確認冇人掂病人。','盡量唔好停 CPR，每 2 分鐘換人按。','小童用小童電擊片或者 50 J。']}),
+    adr:k=>({S:'冇反應、冇呼吸',A:'不詳',M:'降血壓藥',P:'高血壓、糖尿病',L:'晚飯',E:k==='trapped'?'喺廁所暈低，門反鎖':'家人發現佢喺客廳暈低',props:[],
+      safe:['用藥唔可以影響 CPR 質素。','記錄每劑 Adrenaline 時間。','病人被困：唔中斷基本生命支持下可以喺現場用藥。']}),
+    amio:k=>({S:'冇反應、冇呼吸',A:'不詳',M:'不詳',P:'不詳',L:'不詳',E:'喺健身室跑步機上暈低，職員用緊 AED',props:[],
+      safe:['數清楚電擊次數同 Adrenaline 劑數先俾 Amiodarone。','推完要用 NS 沖管。']}),
+    aedp:k=>({S:'冇反應、冇呼吸',A:'不詳',M:'不詳',P:'心臟病',L:'不詳',E:'現場已經用緊其他 AED',props:[],
+      safe:['現場 AED 分析或電擊緊就唔好掂。','關機但唔好撕走電擊片。','之前嘅電擊次數唔計入我哋嘅 AED Protocol。','SAED Corpuls1 冇壞就繼續用佢上車；壞咗（不可在救護車上使用）就轉 DM，SD Card 交救護車主管。']}),
+    accm:k=>({S:'冇反應、冇呼吸',A:'不詳',M:'不詳',P:k==='preg'?'懷孕約 30 星期':'冠心病',L:'不詳',E:'家人發現佢暈低，做緊 CPR',props:[],
+      safe:['安裝 ACCM 唔好停 CPR 超過 10 秒。','搬運時留意 ACCM 位置有冇移位。']}),
+    lt:k=>({S:'冇反應、冇呼吸',A:'不詳',M:'不詳',P:'不詳',L:'不詳',E:k==='corr'?'旁邊有一樽渠水':'家人做緊 CPR',props:k==='corr'?['bottle']:[],
+      safe:['插喉唔好停 CPR 超過 10 秒。','插完聽兩邊肺同胃，接 Filter。']}),
+    lma:k=>({S:'冇反應、冇呼吸',A:k==='swell'?'對海鮮敏感':'不詳',M:'不詳',P:'不詳',L:k==='swell'?'啱啱食完海鮮':'不詳',E:k==='swell'?'食完海鮮嘴唇腫、氣促之後暈低':'喺街暈低，路人做 CPR',props:[],
+      safe:['用一隻手固定 LMA，搬運時特別小心。','不論成功與否都要填 LMA Supreme 表格。']}),
+    combi:k=>({S:'冇反應、冇呼吸、口腔回湧',A:'不詳',M:'不詳',P:'不詳',L:'不詳',E:'家人做緊 CPR',props:[],
+      safe:['用 Combitube 前準備抽痰機。','每次換管都要聽肺同胃確認。']}),
+    dnacpr:k=>({S:'冇反應、冇呼吸',A:'不詳',M:'止痛藥',P:{valid:'腦轉移腫瘤',choke:'末期肺癌',expired:'阿茲海默症',dispute:'晚期 COPD'}[k],L:k==='choke'?'食緊湯圓':'不詳',E:'家人發現冇反應',props:['bed'],
+      safe:['分工：一人檢查病人，一人查核命令。','如有懷疑，救人第一。','尊重家屬情緒，清楚解釋決定。']}),
+    hat:k=>({S:(k==='groin'?'腹股溝':'左大腿')+'大量噴血、頭暈',A:'冇藥物敏感',M:'冇',P:'冇',L:'午餐',E:'被工廠機器割傷',props:['blood'],
+      safe:['確認機器已關先接近。','止血帶紮好要記時間，唔好用衫褲蓋住。','唔好喺關節位紮止血帶。']}),
+    hd:k=>({S:{neck:'頸側',chest:'胸口',eye:'眼'}[k]+'傷口大量出血',A:'冇藥物敏感',M:'冇',P:'冇',L:'晚餐',E:'被玻璃割傷',props:['glass','blood'],
+      safe:['小心玻璃碎，戴好手套。','頸部傷口唔好用環形包紮壓住氣管。','止血敷料用完要記錄用咗幾多袋。']}),
+    tpod:k=>({S:'盤骨好痛、下肢無力',A:'冇藥物敏感',M:'冇',P:'冇',L:'午餐',E:'過馬路被私家車撞到',props:[],
+      safe:['唔好搖盆骨測試穩唔穩定。','用剷床，唔好滾動病人。','記錄上 T-POD 時間。']}),
+    sager:k=>({S:'右大腿劇痛、變形',A:'冇藥物敏感',M:'冇',P:'冇',L:'早餐',E:'電單車意外',props:['helmet'],
+      safe:['除頭盔要兩個人做，保持頸部中線。','牽引前後都要檢查遠端循環神經。']}),
+    spinal:k=>({S:k==='walk'?'頸少少硬':'頸背痛',A:'冇藥物敏感',M:k==='old'?'降血壓藥':'冇',P:k==='old'?'骨質疏鬆':'冇',L:'午餐',E:{walk:'私家車追尾',old:'喺樓梯跌落嚟',drunk:'飲醉酒跌落樓梯',fall:'由 7 米高棚架墮下'}[k],props:k==='drunk'?['bottle']:k==='fall'?['helmet']:[],
+      safe:['評估期間一直保持頭鎖。','醉酒、長者、高處墮下都要完整脊柱制動。']}),
+    burn:k=>({S:'燒傷位好痛',A:'冇藥物敏感',M:'冇',P:'冇',L:'晚餐',E:{scald:'倒熱水時燙傷右手臂',chem:'工廠化學品濺到前臂',face:'廚房火警',big:'火警'}[k],props:k==='scald'?['kettle']:k==='chem'?['bottle']:[],
+      safe:['先確保自己唔會被燒傷或化學品沾到。','除去燒傷位附近首飾，黐住皮膚嘅衫唔好撕。','冷水沖唔好超過 10 分鐘，防體溫過低。']}),
+    hypot:k=>({S:k==='frost'?'左手手指冰冷麻木、轉灰白':'發冷、講嘢含糊',A:'冇藥物敏感',M:'冇',P:'冇',L:k==='cold'?'琴日下晝':'午餐',E:{imm:'跌落海，救起後全身濕透',cold:'喺大帽山迷路一晚',frost:'喺山頂寒風中耽咗幾個鐘'}[k],props:k==='imm'?['towel']:['bag'],
+      safe:['搬動要輕，嚴重低溫病人好容易心律不正。','唔好搓揉手腳，唔好直接加熱。','睇落似死亡都要繼續復甦直至醫生確認。']}),
+    ecg12:k=>({S:'胸口痛',A:'冇藥物敏感',M:'降血壓藥',P:'高血壓',L:'晚餐',E:'坐喺屋企睇電視時開始胸口痛',props:['chair'],
+      safe:['貼電極前講原因、取得同意。','女病人要注意私隱。','傳輸唔成功唔好耽誤送院。']}),
+    stroke:k=>({S:'右手右腳無力、講嘢含糊、口角歪',A:'冇藥物敏感',M:'降血壓藥、薄血藥',P:'高血壓、心房顫動',L:'晚飯',E:k==='late'?'琴晚瞓前仲正常，今朝先發現':'食飯時突然發生',props:['chair'],
+      safe:['記低最後正常時間（Last Known Well）。','唔好俾嘢食或飲，可能吞嚥困難。','無力嗰邊手腳要承托好，防受傷。']}),
+    trauma:k=>({S:{gcs:'頭痛、迷糊',arrest:'冇反應',fall:'背痛',minor:'手肘擦傷'}[k],A:'冇藥物敏感',M:'冇',P:'冇',L:'午餐',E:{gcs:'電單車撞車',arrest:'被車撞',fall:'由 8 米高墮下',minor:'單車跌倒'}[k],props:k==='minor'?['helmet']:[],
+      safe:['交通意外現場：注意來往車輛，警察封路先入。','按創傷分流準則決定送邊間醫院。']}),
+    lvad:k=>({S:k==='arrest'?'冇反應':'頭暈',A:'冇藥物敏感',M:'薄血藥（Warfarin）',P:'心臟衰竭，已裝 LVAD',L:'午餐',E:k==='arrest'?'太太發現佢暈低':'頭暈、乏力半日',props:['lvadbag'],
+      safe:['控制器同電線唔可以分開，唔好牽拉扭轉。','後備電池同控制器一齊帶上車。','剪衫時小心電線，唔好整濕部機。']})
+  };
+  const get=sc=>{ const f=D[sc.id]; return f?f(sc.varK):null; };
+  // 每一步嘅注意事項：先睇用咩工具，再睇步驟
+  const TT={asa:'用藥前核對 5R（啱病人、藥物、劑量、途徑、時間），問清楚有冇敏感同 SAPHBUS。',ntg:'噴之前量 BP；病人坐低或者躺低，噴喺脷底唔好吞；每劑相隔 5 分鐘，最多 3 噴。',
+    salb:'用儲霧器：搖勻、噴一下、慢慢深吸 4–6 啖；之後再評估氣促同喘鳴。',ipra:'有青光眼病歷要閉眼、用紗布遮眼；懷孕、< 12 歲禁用。',d10:'俾糖水前確認病人清醒、可以安全吞嚥；一口一口慢慢飲。',
+    ivset:'IV 前核對鹽水／糖水有效期同清澈度；接駁 3-way，留意有冇外滲。',ns:'Full Rate 期間密切留意氣促、肺音，防肺積水；按收縮壓調速度。',thia:'Thiamine 經 3-way 慢慢落藥，之後沖管。',
+    gluc:'Glucagon 要先溶解；IM 打大腿外側；IMI 禁忌就改 SC；生效要 10–15 分鐘。',nalox:'Naloxone 作用可能短過麻醉藥；病人可能突然醒、激動或者嘔吐，預備抽痰。',charc:'俾之前確認清醒、可以吞嚥、2 小時內，並經 HKPIC 醫生批准；記錄飲用份量。',
+    mida:'Midazolam 會抑制呼吸，打完要預備 BVM；記錄抽搐開始同用藥時間。',jext:'Jext 打大腿前外側，可以隔褲打，停留 10 秒；記錄時間，用過嘅交俾醫院。',piri:'Piriton 會令人眼瞓；4 小時內用過抗組織胺唔好再俾。',
+    trama:'打完 Tramadol 留意反胃、頭暈、低血壓；預備嘔吐袋。',txa:'TXA 每分鐘 100 mg 慢慢推，太快會低血壓；記錄開始時間。',olz:'要有足夠警員協助先注射；用藥後持續監察呼吸、血壓同體溫。',
+    penth:'病人自己握住吸，唔好留佢無人看管；車上開窗通風；只得一劑。',adr:'Adrenaline 每 3–5 分鐘一次，推完用 NS Full Rate 沖管 10 秒；記錄每劑時間。',amio:'Amiodarone 推完要沖管；記錄電擊同用藥次數。',
+    io:'IO 位置：脛骨近端內側；確認嗰隻腳冇骨折、冇感染先鑽。',opa:'OPA 尺寸由口角量到耳珠；有嘔吐反射就改用 NPA。',bvm:'BVM 每次擠到胸口剛好起伏就夠，太大力會令胃脹、嘔吐。',suction:'每次抽痰唔好超過 10–15 秒，抽完即刻俾氧。',
+    nrm:'NRM 開 15 L，等儲氣袋脹滿先戴上。',ven:'文氏面罩由 FiO₂ 0.24 開始，按 SpO₂ 每 1–2 分鐘調整。',nc:'鼻插喉 1–4 L；SpO₂ 仍然低就轉面罩。',
+    lt:'插喉唔好停 CPR 超過 10 秒；插完聽兩邊肺同胃，接 Filter。',lma:'插 LMA 喺電擊後 2 分鐘 CPR 空檔做，唔好超過 30 秒。',combi:'每次換管都要聽肺同胃確認位置。',
+    aed:'電擊前大聲講「所有人離開」，確認冇人掂病人、氧氣喉唔喺胸口附近。',accm:'安裝 ACCM 唔好停 CPR 超過 10 秒，裝好檢查按壓位置。',ecg:'貼電極前講原因、取得同意，注意私隱；傳輸失敗唔好耽誤送院。',
+    tq:'止血帶紮好要記時間，唔好用衫褲蓋住；交接時講清楚位置同時間。',hd:'止血敷料要按入傷口接觸出血點，按壓最少 3 分鐘；唔好用喺眼球、胸腔、腹腔大傷口。',
+    splint:'上夾板前後都要檢查遠端脈搏、感覺同活動（大 check）。',sager:'牽引前後檢查遠端循環神經；牽引力唔好超過上限。',tpod:'唔好由盆骨上方滾動病人；記錄上 T-POD 時間。',
+    collar:'戴頸套前量好尺寸，全程保持頭部中線位置。',board:'上板用多人同步，聽一個人口令。',burn:'Burnkit 唔好覆蓋多過 15%，唔好弄穿水泡。',water:'冷水沖唔好超過 10 分鐘，防體溫過低。',
+    foil:'由頭包到腳但唔好阻礙呼吸；搬動要輕。',wrap:'包埋個頭，因為頭部散熱最多。',hotpack:'Hot Pack 唔可以直接貼皮膚，每 10–20 分鐘換。',phone:'通報時講清楚：救護車編號、病人資料、預計到達時間、聯絡電話。',ppe:'先保護自己：手套、保護衣、N95。'};
+  const KT={RSE:'戴手套等 PPE；留意交通、火、電、化學品、針筒等危險；危險未排除唔好埋位。',LOC:'AVPU 次序：先觀察 → 大聲叫 → 擠壓斜方肌；記低時間，途中重複評估。',
+    D:'有 MOI 或頸背痛就先用頭鎖，唔好叫病人郁頸試痛；之後用 NEXUS 評估。',CAB:'摸脈搏同睇呼吸唔好超過 10 秒；呼吸太慢太淺或者發紺就要即刻 BVM。',
+    O2:'SpO₂ 開機半分鐘後先準；手指凍、一氧化碳中毒、貧血、低血壓時讀數唔可信。',RBS:'約 30 秒由頭到腳；要展露傷處，但注意私隱同保暖。',SKIN:'同時睇顏色、摸溫度同濕度；蒼白濕冷要諗休克。',
+    DEC:'穩定 = 冇生命危險；行到 Protocol 一律屬不穩定。有藥幫到佢就喺現場先俾藥再上車；現場冇藥幫到就立即上車 (LOAD & GO)。途中 Q5 量維生指數。',HX:'用 SAMPLE／OPQRST 問；藥物敏感一定要問；藥袋、藥樽帶埋上車。',VS:'不穩定 Q5、穩定 Q15；數值同臨床表現唔夾就再量或者手動確認。',
+    HS:"篤手指前用酒精棉清潔並等乾，第一滴血抹走；讀數 ≦ 4 或 > 20 跟 Glycemia Protocol。",TX:'用任何藥物前核對 5R，問清楚藥物敏感；用藥後再評估效果同副作用。',
+    LG:'上車前確認氣道、出血已處理；綁好安全帶、固定器材；同家屬講清楚送邊間醫院。',RE:'途中重複 LOC → CAB → 維生指數；病情有變就重新跟規程處理，並記錄時間。',
+    CPR:'按壓深度 5–6 cm、每分鐘 100–120 下，每次完全回彈；每 2 分鐘換人按。',AED:'電擊前大聲講「所有人離開」，確認冇人掂病人。',AW:'插高級氣道唔好停 CPR 超過 10 秒；插完確認位置，用 Filter。',
+    BLEED:'戴手套直接加壓係第一步；危及生命出血要先處理，再做其他評估。',SPL:'固定前後都要檢查遠端循環、感覺、活動。',HOSP:'分流：心臟驟停送最就近醫院；符合創傷準則送創傷中心。',CALL:'通報時講清楚：救護車編號、病人資料、預計到達時間、聯絡電話。'};
+  function tip(c,sc){ if(!c||c.k==='MIST') return ''; if(c.tip) return c.tip; const ans=(c.q&&c.q.o[0])||'';
+    if(/^(唔可以|唔使|未可以|唔需要|暫時唔可以)/.test(ans)&&['TX','AW','BLEED','SPL'].includes(c.k)) return '禁忌或者唔符合就唔好用，喺紀錄同交接講清楚原因；改用其他處理方法。';
+    const g=SIMTOOLS.need(c,sc.id); for(const grp of g) for(const id of grp) if(TT[id]&&!['spo2','bp','gluco','torch'].includes(id)) return TT[id];
+    return KT[c.k]||''; }
+  const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  function card(sc){ const d=get(sc)||{}; const rse=(sc.steps.find(s=>s.k==='RSE')||{}).find||'';
+    const why=[...new Set(sc.base.vars.flatMap(v=>{ try{ const m=sc.base.make(v); return [...m.steps,...m.hosp].filter(s=>['TX','AW','BLEED','SPL','CPR','AED'].includes(s.k)&&s.q&&s.q.why).map(s=>s.q.why); }catch(e){ return []; } }))].slice(0,8);
+    return '<h3>📋 '+esc(sc.title)+'（'+esc(sc.en||'')+'）</h3>'+
+      '<p>🚑 '+esc(sc.call)+'</p><p>🧍 病人：'+esc(sc.who)+'</p>'+(rse?'<p>📍 現場：'+esc(rse)+'</p>':'')+
+      (d.S?'<h4>🗒️ SAMPLE 病史</h4><ul><li><b>S 徵狀</b>：'+esc(d.S)+'</li><li><b>A 敏感</b>：'+esc(d.A)+'</li><li><b>M 藥物</b>：'+esc(d.M)+'</li><li><b>P 病歷</b>：'+esc(d.P)+'</li><li><b>L 最後進食</b>：'+esc(d.L)+'</li><li><b>E 經過</b>：'+esc(d.E)+'</li></ul>':'')+
+      (d.safe?'<h4>⚠️ 行動注意事項</h4><ul>'+d.safe.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+
+      (why.length?'<h4>📘 規程重點（ems.homes）</h4><ul>'+why.map(x=>'<li>'+esc(x)+'</li>').join('')+'</ul>':'')+
+      '<p style="color:#8b97a6;font-size:12px">底部 🧰 工具列：入門模式隨時試用；專業模式答完題要揀啱器材先可以繼續，揀錯或者用錯時間會扣分。評估工具（血氧機、血壓計、血糖機、電筒、聽筒、體溫計）隨時用都唔扣分。</p>'; }
+  return {get,tip,card};
+})();
+
+/* ---------- 🩺 現場模擬：跟足救護規程（資料來源：ems.homes）嘅流程骨幹 ----------
+   RSE → LOC → D → CAB → O2 → RBS → SKIN → DECISION → 病史 → 維生指數 → 處理（5R）→ LOAD & GO → 途中重新評估 → MIST 交接
+   兩個難度：入門（市民：有提示、淺白題目）、專業（同事：自己揀下一步、跟規程劑量同適用症／禁忌症）。 */
+const SIM=(()=>{
+  const CH={RSE:['RSE','現場安全'],LOC:['LOC','清醒程度'],D:['D','脊椎'],CAB:['CAB','循環 氣道 呼吸'],O2:['O₂','氧氣'],RBS:['RBS','快速檢查'],SKIN:['SKIN','皮膚'],DEC:['DECISION','決定'],HX:['Hx','病史'],VS:['VS','維生指數'],HS:["H'stix",'血糖'],TX:['5R','處理／用藥'],LG:['LOAD & GO','上車送院'],RE:['RE','途中評估'],MIST:['MIST','交接'],CPR:['CPR','心肺復甦'],AED:['AED','去顫器'],AW:['氣道','高級氣道'],BLEED:['止血','控制出血'],SPL:['固定','固定／制動'],HOSP:['分流','揀醫院'],CALL:['通知','通知醫院']};
+  const AVPU=['A','V','P','U'];
+  // 入門題目（通用）：淺白，3 個選項
+  const EZ={
+    RSE:{q:'救護員到場，第一件事係？',o:['確保現場安全，留意發生咩事','即刻幫病人打針','先影相'],a:0,why:'RSE：先確保自己同其他人安全，留意致傷過程 (MOI)，再接觸病人。'},
+    LOC:{q:'「LOC」係檢查病人嘅咩？',o:['清醒程度（AVPU）','血糖','體溫'],a:0,why:'LOC = Level of Consciousness，用 AVPU：A 清醒、V 對說話有反應、P 對痛楚有反應、U 冇反應。'},
+    D:{q:'流程入面嘅「D」係檢查咩？',o:['脊椎（頸、背有冇受傷）','藥物','醫生'],a:0,why:'問有冇跌倒、撞傷頭頸、頸痛；懷疑脊椎受傷就用頭鎖固定頭部。'},
+    CAB:{q:'CAB 嘅次序係？',o:['循環 → 氣道 → 呼吸','氣道 → 呼吸 → 循環','呼吸 → 循環 → 氣道'],a:0,why:'C 循環（摸脈搏）、A 氣道、B 呼吸。冇脈搏就即刻 CPR。'},
+    O2:{q:'量血液含氧量用咩儀器？',o:['血氧機（SpO₂，夾手指）','體溫計','血壓計'],a:0,why:'SpO₂ 夾手指，開機半分鐘後數據較準；按讀數決定俾唔俾氧、用咩面罩。'},
+    RBS:{q:'快速檢查 (RBS) 大約用幾耐？',o:['約 30 秒','約 10 分鐘','約 1 小時'],a:0,why:'頭、頸、胸、腹、髖、背、下肢、上肢快速檢查，展露傷處盡快處理。'},
+    SKIN:{q:'皮膚蒼白、濕冷可能代表？',o:['血液循環唔好（休克徵狀）','好健康','曬傷'],a:0,why:'休克徵狀：Pale、cool、clammy（蒼白、冷、濕）。'},
+    DEC:{q:'行到 Protocol 嘅病人屬於？',o:['不穩定：有藥幫到就喺現場先俾藥，冇藥就立即上車','穩定：喺現場慢慢檢查一個鐘','穩定：叫佢自己去醫院'],a:0,why:'穩定 = 冇生命危險；行到 Protocol 一律屬不穩定。'},
+    HX:{q:'問病史可以幫救護員？',o:['了解發生咩事、病人背景同用藥','冇用','只係傾偈'],a:0,why:'主要不適、經過、過去病歷、藥物、過敏，都會影響處理同用藥。'},
+    VS:{q:'維生指數包括？',o:['血壓、脈搏、呼吸、血氧','身高、體重','血型'],a:0,why:'不穩定病人每 5 分鐘量一次，穩定病人每 15 分鐘。'},
+    HS:{q:"H'stix 係量咩？",o:['血糖','血壓','體溫'],a:0,why:"H'stix 即係手指篤血驗血糖，單位 mmol/L。"},
+    LG:{q:'「LOAD & GO」係？',o:['上車送院，途中繼續觀察','留喺現場等','返救護站'],a:0,why:'處理好威脅生命嘅問題後就上車送院，途中繼續監察。'},
+    RE:{q:'送院途中救護員要做咩？',o:['重新評估病人、量維生指數','休息','唔使理病人'],a:0,why:'途中密切觀察，病情有變就跟規程再處理。'} };
+  function skinEZ(f){ f=f||'';
+    if(/針孔/.test(f)) return {q:'皮膚發紺，仲有好多針孔同瘀痕，可能代表？',o:['缺氧，加上經常注射藥物','曬傷','好健康'],a:0,why:'發紺（嘴唇、指甲發藍）代表缺氧；多個新舊針孔提示經常注射藥物，常見於手臂、大腿內側。'};
+    if(/發紺/.test(f)) return {q:'嘴唇、指甲發紺（發藍）代表？',o:['缺氧','好健康','曬傷'],a:0,why:'發紺 (Cyanosis) 代表血液含氧量低，要即刻處理氣道、呼吸同氧氣。'};
+    if(/水泡|燒|燙/.test(f)) return {q:'皮膚紅、起水泡，應該點處理？',o:['用清水沖洗降溫，再蓋燒傷敷料','刺穿水泡','塗牙膏'],a:0,why:'燒燙傷要盡快用清涼水沖洗，之後用燒傷敷料覆蓋，唔好刺穿水泡。'};
+    if(/風疹|潮紅|身熱|熱/.test(f)) return {q:'皮膚潮紅、熱，可能代表？',o:['發燒、中暑或者過敏反應','休克','好健康'],a:0,why:'潮紅、熱：可能係發燒、中暑；加埋風疹塊就要諗過敏反應。'};
+    if(/乾/.test(f)) return {q:'皮膚乾、口乾可能代表？',o:['脫水','好健康','發燒退咗'],a:0,why:'皮膚同口腔乾係脫水嘅徵狀。'};
+    if(/蒼白|濕冷|冷汗|冰冷/.test(f)) return EZ.SKIN;
+    return {q:'SKIN 皮膚檢查要睇咩？',o:['顏色、溫度、濕度','髮型','身高'],a:0,why:'睇顏色（蒼白、潮紅、發紺）、摸溫度同濕度。'}; }
+  const SC=SIMLV;
+  /* ===== 狀態 ===== */
+  const st={on:false};
+  const $s=id=>document.getElementById(id);
+  const css=document.createElement('style'); css.textContent=`
+  #simMon,#simBar,#simBox{display:none;position:fixed;z-index:30;font-family:inherit;color:#e8edf3}
+  body.simScene #simMon,body.simScene #simBar,body.simScene #simBox{display:block}
+  body.simScene .btns,body.simScene #mini,body.simScene .top .card,body.simScene #cap,body.simScene #pcKeys,body.simScene #rHud,body.simScene #stabBox,body.simScene #radio,body.simScene #toast{display:none!important}
+  #simMon{left:10px;top:calc(10px + env(safe-area-inset-top));width:min(300px,46vw);box-sizing:border-box;background:#05080ce8;border:1px solid #2a3442;border-radius:8px;padding:6px 8px;box-shadow:0 6px 20px #0008;overflow:hidden}
+  #simMon canvas{display:block;width:100%;height:46px;background:#020403;border-radius:4px}
+  #simMon .g{display:grid;grid-template-columns:repeat(auto-fill,minmax(58px,1fr));gap:2px 6px;margin-top:4px}
+  #simMon .g div{min-width:0;overflow:hidden;font-size:10px;color:#8b97a6;line-height:1.1;white-space:nowrap}#simMon .g b{display:block;font-size:clamp(12px,3.6vw,17px);font-weight:800;font-variant-numeric:tabular-nums;white-space:nowrap;overflow:hidden;text-overflow:clip}
+  #simMon .hr b{color:#3ddc6a}#simMon .bp b{color:#ff6b6b}#simMon .sp b{color:#5ec8ff}#simMon .rr b{color:#ffd166}#simMon .lc b{color:#e8edf3}#simMon .bs b{color:#c792ea}#simMon .pn b{color:#ff9f43}#simMon .tm b{color:#fff}
+  #simBar{left:10px;top:150px;width:96px;overflow-y:auto;overflow-x:hidden;display:none;scrollbar-width:none}#simBar::-webkit-scrollbar{display:none}
+  body.simScene #simBar{display:flex;flex-direction:column;gap:4px}
+  @media (max-width:560px){ #simBar{width:78px} #simBar button{font-size:11px!important;padding:3px 5px!important} #simMon{width:min(250px,64vw);padding:4px 6px} #simMon canvas{height:28px} #simMon .g{grid-template-columns:repeat(4,1fr);gap:1px 4px} #simMon .g div{font-size:9px} #simMon .g b{font-size:12px}
+    #simBox{max-height:40vh!important;padding:8px 10px!important} #simBox .find{font-size:13px!important;padding:5px 7px!important} #simBox .q{font-size:14px!important} #simBox .opts{gap:4px!important} #simBox .opts button{font-size:13px!important;padding:6px 8px!important} #simBox .why{font-size:12px!important} #simGo{font-size:16px!important;padding:10px 22px!important} }
+  #simBar button{flex:none;text-align:left;font:inherit;font-size:12px;font-weight:800;color:#cfd6df;background:#0b0f16d9;border:1px solid #33404f;border-radius:5px;padding:4px 7px;cursor:pointer}
+  #simBar button small{display:block;font-size:9px;font-weight:600;color:#8b97a6}
+  #simBar button.done{background:#123a22;border-color:#2f9e5b;color:#bff5d0}#simBar button.next{border-color:#ffcf5a;box-shadow:0 0 0 2px #ffcf5a55;color:#fff;animation:simP 1s infinite alternate}@keyframes simP{to{box-shadow:0 0 0 5px #ffcf5a22}}
+  #simBar button.bad{animation:simS .3s}@keyframes simS{25%{transform:translateX(-4px)}75%{transform:translateX(4px)}}
+  #simBox{left:0;right:0;margin:0 auto;bottom:calc(var(--simTB,96px) + 64px);width:min(620px,96vw);box-sizing:border-box;max-height:min(56vh,440px);overflow:auto;background:#0b0f16f0;border:1px solid #2f3b4a;border-left:4px solid #ffcf5a;border-radius:8px;padding:10px 12px;box-shadow:0 8px 28px #000a}
+  #simBox h3{margin:0 0 4px;font-size:15px;color:#ffcf5a}#simBox .act{font-size:12px;color:#9fb0c3;margin:0 0 6px}#simBox .find{font-size:14px;line-height:1.45;background:#ffffff0d;border-radius:6px;padding:6px 8px;margin:0 0 8px}
+  #simBox .q{font-size:15px;font-weight:800;margin:6px 0}#simBox .hint{font-size:12px;color:#ffd98a;margin:0 0 6px}
+  #simBox .opts{display:grid;gap:6px}#simBox .opts button{font:inherit;font-size:14px;text-align:left;color:#eef2f7;background:#ffffff0f;border:1px solid #ffffff2a;border-radius:6px;padding:8px 10px;cursor:pointer}
+  #simBox .opts button i{font-style:normal;display:inline-block;min-width:18px;margin-right:6px;padding:0 4px;border:1px solid #ffffff55;border-radius:3px;font-size:11px;text-align:center;color:#ffcf5a}
+  #simBox .opts button.ok{background:#16a34a33;border-color:#4ade80}#simBox .opts button.no{background:#dc262633;border-color:#f87171}#simBox .opts button:disabled{cursor:default}
+  #simBox .why{font-size:13px;line-height:1.45;color:#cfd6df;margin:8px 0 0;padding:6px 8px;border-radius:6px;background:#1d2a3a}
+  #simGo{position:fixed;right:calc(14px + env(safe-area-inset-right));bottom:calc(var(--simTB,96px) + 10px);z-index:70;font:inherit;font-size:18px;font-weight:900;color:#1a1200;background:#ffcf5a;border:0;border-radius:30px;padding:12px 28px;cursor:pointer;box-shadow:0 6px 20px #000a;animation:simGo .8s ease-in-out infinite alternate}@keyframes simGo{from{transform:scale(1);box-shadow:0 0 0 0 #ffcf5aaa,0 6px 20px #000a}to{transform:scale(1.07);box-shadow:0 0 0 10px #ffcf5a00,0 6px 20px #000a}}
+  #simTools{display:none;position:fixed;left:0;right:0;bottom:0;z-index:40;background:#070b11f2;border-top:1px solid #2f3b4a;padding:4px 6px calc(4px + env(safe-area-inset-bottom));font-family:inherit;color:#e8edf3}
+  body.simScene #simTools{display:block}
+  #simTools .tabs{display:flex;gap:4px;overflow-x:auto;scrollbar-width:none;margin-bottom:4px}#simTools .tabs::-webkit-scrollbar,#simTools .items::-webkit-scrollbar{display:none}
+  #simTools .tabs button{flex:none;font:inherit;font-size:12px;font-weight:800;color:#9fb0c3;background:transparent;border:1px solid #2f3b4a;border-radius:14px;padding:3px 10px;cursor:pointer}
+  #simTools .tabs button.on{color:#1a1200;background:#ffcf5a;border-color:#ffcf5a}
+  body.simScene.simHide #simBox{display:none!important}
+  #simTools .tabs .hb{color:#1a1200;background:#9fe8ff;border-color:#9fe8ff}body.simHide #simTools .tabs .hb{background:linear-gradient(100deg,#9fe8ff 30%,#ffffff 50%,#9fe8ff 70%);background-size:250% 100%;animation:simShine 1.8s linear infinite;box-shadow:0 0 10px #9fe8ffaa}body.simHide #simTools .tabs .hb.new{background:linear-gradient(100deg,#ffcf5a 30%,#fff7d6 50%,#ffcf5a 70%);background-size:250% 100%;animation:simShine .9s linear infinite;box-shadow:0 0 14px #ffcf5acc}@keyframes simShine{from{background-position:120% 0}to{background-position:-120% 0}}#simTools .tabs .hb.new{animation:simP 0.8s infinite alternate;background:#ffcf5a;border-color:#ffcf5a}
+  #simTools .tabs .rv{color:#cfd6df}
+  body.simScene #bAEB{display:none!important}
+  body.simScene #bMenu{position:fixed!important;top:calc(10px + env(safe-area-inset-top))!important;right:calc(12px + env(safe-area-inset-right))!important;left:auto!important;bottom:auto!important;z-index:45}
+  #simTools .tabs .card{color:#bde0ff;border-color:#3b82f6;background:#10233d}
+  #simTools .items{display:flex;gap:6px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+  #simTools .items button{flex:none;width:76px;min-height:52px;font:inherit;font-size:11px;line-height:1.15;color:#e8edf3;background:#ffffff0d;border:1px solid #ffffff22;border-radius:8px;padding:4px 3px;cursor:pointer}
+  #simTools .items button b{display:block;font-size:20px;line-height:1.1}
+  #simTools .items button.used{border-color:#2f9e5b;background:#123a22}
+  #simTools .items button.bad{animation:simS .3s;border-color:#f87171}
+  #simTools.want{box-shadow:0 -4px 18px #ffcf5a55;border-top-color:#ffcf5a}
+  #simBox .tneed{font-size:13px;color:#ffd98a;margin:8px 0 0;padding:6px 8px;border:1px dashed #ffcf5a88;border-radius:6px}
+  #simBox .tip{font-size:12.5px;line-height:1.45;color:#ffe2a8;margin:6px 0 0;padding:6px 8px;border-radius:6px;background:#3a2a0a}
+  #simCard{display:none;position:fixed;inset:0;z-index:80;background:#000a;align-items:center;justify-content:center;font-family:inherit}
+  #simCard.on{display:flex}#simCard .in{width:min(560px,94vw);max-height:84vh;overflow:auto;background:#0b0f16;color:#e8edf3;border:1px solid #2f3b4a;border-radius:12px;padding:14px 16px;box-shadow:0 10px 40px #000}
+  #simCard h3{margin:0 0 6px;color:#ffcf5a;font-size:17px}#simCard h4{margin:12px 0 4px;color:#bde0ff;font-size:14px}#simCard p,#simCard li{font-size:13.5px;line-height:1.5;color:#d5dde6}#simCard ul{margin:4px 0;padding-left:18px}
+  #simCard .x{float:right;font:inherit;font-size:14px;font-weight:800;border:0;border-radius:16px;padding:4px 12px;background:#ffcf5a;color:#1a1200;cursor:pointer}
+  #simBox .mist{display:grid;gap:6px}#simBox .mist button b{color:#ffcf5a;margin-right:6px}
+  #simBox .res{font-size:14px;line-height:1.5}#simBox .res .gr{font-size:34px;font-weight:900}#simBox .res ul{margin:6px 0;padding-left:18px;font-size:13px;color:#cfd6df}
+  @media (min-width:900px){ #simBox{left:auto;right:14px;margin:0;width:min(470px,40vw);bottom:calc(var(--simTB,96px) + 70px);max-height:calc(100vh - var(--simTB,96px) - 130px)} }
+  @media (max-height:520px) and (orientation:landscape){ #simBox{left:auto!important;right:8px!important;margin:0!important;width:min(400px,46vw)!important;bottom:calc(var(--simTB,80px) + 66px)!important;max-height:calc(100vh - var(--simTB,80px) - 66px - 50px)!important}
+    #simMon{width:min(230px,30vw)!important;padding:4px 6px!important} #simMon canvas{height:24px!important} #simMon .g{grid-template-columns:repeat(4,1fr)!important;gap:1px 4px!important} #simMon .g div{font-size:9px!important} #simMon .g b{font-size:12px!important}
+    #simTools .items button{min-height:40px;width:68px;font-size:10px} #simTools .items button b{font-size:16px} #simTools .tabs button{font-size:11px;padding:2px 8px} #simBar button{font-size:11px!important;padding:3px 5px!important} #simBar{width:78px} }
+  .simSeg{display:flex;gap:6px;margin:6px 0 10px}.simSeg button{flex:1;font:inherit;font-size:13px;font-weight:800;padding:8px;border-radius:10px;border:2px solid #e3e8ee;background:#fff;color:#334}.simSeg button.on{border-color:#e85d04;background:#fff3e8}.simSeg small{display:block;font-weight:600;font-size:11px;color:#778}
+  .simCase{display:flex;gap:10px;align-items:center;width:100%;text-align:left;font:inherit;padding:10px 12px;margin:0 0 8px;border-radius:12px;border:2px solid #e3e8ee;background:#fff;cursor:pointer}
+  .simCat{margin:12px 0 6px;font-size:14px;color:#334}.simCase .ic{font-size:26px}.simCase b{display:block;font-size:15px}.simCase span{font-size:12px;color:#667}.simCase em{margin-left:auto;font-style:normal;font-weight:900;font-size:13px;color:#e85d04}`; document.head.append(css);
+  const mon=document.createElement('div'); mon.id='simMon'; mon.innerHTML='<canvas id="simEcg" width="300" height="46"></canvas><div class="g"><div class="hr">HR<b id="smHr">--</b></div><div class="bp">BP<b id="smBp">--</b></div><div class="sp">SpO₂<b id="smSp">--</b></div><div class="rr">RR<b id="smRr">--</b></div><div class="lc">LOC<b id="smLc">--</b></div><div class="bs">H\'stix<b id="smBs">--</b></div><div class="pn">痛楚<b id="smPn">--</b></div><div class="tm">時間<b id="smTm">0:00</b></div></div>';
+  const bar=document.createElement('div'); bar.id='simBar'; const box=document.createElement('div'); box.id='simBox'; document.body.append(mon,bar,box);
+  const GO=document.createElement('button'); GO.id='simGo'; GO.style.display='none'; document.body.append(GO);
+  function showGo(t){ GO.textContent=t; GO.style.display='block'; GO.onclick=()=>{ hideGo(); next(); }; }
+  function hideGo(){ GO.style.display='none'; }
+  /* ----- 🧰 工具列（底部）＋ 📋 個案卡 ----- */
+  const TB=document.createElement('div'); TB.id='simTools'; TB.innerHTML='<div class="tabs"></div><div class="items"></div>'; document.body.append(TB);
+  const CARD=document.createElement('div'); CARD.id='simCard'; CARD.innerHTML='<div class="in"></div>'; document.body.append(CARD); CARD.onclick=e=>{ if(e.target===CARD||e.target.classList.contains('x')) CARD.classList.remove('on'); };
+  let tCat='assess';
+  function renderTools(){ const tabs=TB.querySelector('.tabs'), it=TB.querySelector('.items'); tabs.innerHTML='';
+    const hb=document.createElement('button'); hb.className='hb'+(st.newQ&&document.body.classList.contains('simHide')?' new':''); hb.textContent=document.body.classList.contains('simHide')?'📝 顯示題目'+(st.newQ?' •':''):'📝 收埋題目'; hb.onclick=toggleBox; tabs.append(hb);
+    const rv=document.createElement('button'); rv.className='rv'; rv.textContent='🎯 回正'; rv.title='重設視角（拖拉旋轉、Shift／右鍵或雙指拖動平移、滾輪／雙指縮放）'; rv.onclick=()=>SIMAN.resetView(); tabs.append(rv);
+    const cb=document.createElement('button'); cb.className='card'; cb.textContent='📋 個案卡'; cb.onclick=openCard; tabs.append(cb);
+    SIMTOOLS.CAT.forEach(([k,n])=>{ const b=document.createElement('button'); b.textContent=n; if(k===tCat) b.className='on'; b.onclick=()=>{ tCat=k; renderTools(); }; tabs.append(b); });
+    it.innerHTML=''; Object.entries(SIMTOOLS.T).filter(([,t])=>t[2]===tCat).forEach(([id,t])=>{ const b=document.createElement('button'); b.innerHTML='<b>'+t[0]+'</b>'+esc(t[1]); b.dataset.id=id; if(st.used&&st.used.has(id)) b.className='used'; b.onclick=()=>useTool(id,b); it.append(b); });
+    requestAnimationFrame(()=>{ document.documentElement.style.setProperty('--simTB',(TB.offsetHeight||96)+'px'); if(st.on) layout(); }); }
+  function toggleBox(){ document.body.classList.toggle('simHide'); if(!document.body.classList.contains('simHide')) st.newQ=0; renderTools(); }
+  addEventListener('keydown',e=>{ if(!st.on||!document.body.classList.contains('simScene')) return; if(e.key==='h'||e.key==='H'){ toggleBox(); } });
+  function markNew(){ if(document.body.classList.contains('simHide')){ st.newQ=1; renderTools(); } }
+  function toolMsg(t){ let m=box.querySelector('.tmsg'); if(!m){ m=document.createElement('p'); m.className='tneed tmsg'; box.append(m); } m.textContent=t; m.scrollIntoView&&m.scrollIntoView({block:'nearest'}); }
+  const tName=id=>SIMTOOLS.T[id][1];
+  function toolStatus(extra){ const el=box.querySelector('.treq'); if(!el) return; const left=st.tneed.length, done=st.tN-left;
+    el.innerHTML='🧰 喺底部工具列揀要用嘅器材／藥物：已用 '+done+'／'+st.tN+(st.terr>=2&&left?'<br>💡 提示：'+st.tneed.map(g=>g.map(tName).join(' 或 ')).map(esc).join('、'):'')+(extra?'<br>'+esc(extra):''); }
+  function toolDone(){ st.state='fb'; const p=Math.max(0,5-st.terr*2); st.score+=p; if(st.terr) st.log.push(CH[cur().k][0]+' 揀錯器材 '+st.terr+' 次'); TB.classList.remove('want');
+    const el=box.querySelector('.treq'); if(el) el.innerHTML='✅ 器材用齊'+(st.terr?'（揀錯 '+st.terr+' 次，扣 '+(5-p)+' 分）':'')+'。'; setTimeout(()=>{ if(st.on) SIMAN.apply(); },1300); showGo('繼續 ▶'); }
+  function useTool(id,btn){ if(!st.on||!document.body.classList.contains('simScene')||st.phase==='trans') return; const t=SIMTOOLS.T[id], kind=t[3], name=t[1];
+    const rd=(kind==='a'||id==='ecg')?SIMTOOLS.reading(id,st.sc,st.v):'';
+    if(rd){ if(id==='spo2') st.known.spo2=1; if(id==='bp'&&st.sc.id!=='lvad') st.known.sbp=1; if(id==='gluco') st.known.rbs=1; if(id==='ecg') st.known.hr=1; }
+    if(st.phase==='scene') SIMAN.useTool(id,rd||name); st.t+=kind==='a'?10:20;
+    const persist=kind==='d', already=persist&&st.used.has(id); if(persist) st.used.add(id);
+    const bad=()=>{ if(btn){ btn.classList.remove('bad'); void btn.offsetWidth; btn.classList.add('bad'); } vib([40,40]); };
+    if(!st.diff){ toolMsg('🧰 '+name+(rd?'：'+rd:'：已使用')); renderTools(); return; }
+    if(st.state==='tool'){ const i=st.tneed.findIndex(g=>g.includes(id));
+      if(i>=0){ st.tneed.splice(i,1); toolStatus(rd?name+'：'+rd:''); if(!st.tneed.length) toolDone(); }
+      else if(kind==='a'||already) toolStatus(rd?name+'：'+rd:'');
+      else { st.terr++; bad(); toolStatus('❌「'+name+'」而家唔啱用。'); } }
+    else if(kind!=='a'&&!already){ st.score-=2; st.log.push('喺唔需要嘅時候用咗「'+name+'」'); bad(); toolMsg('⚠️ 而家唔係用「'+name+'」嘅時候（扣 2 分）。先答題，答完先揀器材。'); }
+    else toolMsg('🧰 '+name+(rd?'：'+rd:'')); renderTools(); }
+  function openCard(){ if(!st.on) return; CARD.querySelector('.in').innerHTML='<button class="x">關閉 ✕</button>'+SIMNOTES.card(st.sc); CARD.classList.add('on'); }
+  const shuffle=a=>{ const b=a.slice(); for(let i=b.length-1;i>0;i--){ const j=Math.random()*(i+1)|0; [b[i],b[j]]=[b[j],b[i]]; } return b; };
+  const esc=s=>String(s).replace(/[&<>]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  /* ----- 開始 ----- */
+  function begin(base,diff,drive){ const vv=base.vars[Math.random()*base.vars.length|0], m=base.make(vv), sc=Object.assign({},base,m,{varLabel:vv.label,varK:vv.k,base});
+    Object.assign(st,{used:new Set(),tneed:[],on:true,open:false,locHold:null,locShown:0,state:null,sc,diff,drive,phase:'scene',i:0,steps:sc.steps,v:Object.assign({},sc.v),d:Object.assign({},sc.v),known:{},t:0,score:0,max:0,orderErr:0,ansErr:0,log:[],chips:null,busy:false,jumped:false});
+    S.simOn=true; S.simSceneDone=false; S.simHandDone=false; S.qDone=[true,true,true];
+    SIMAN.setCase(sc);
+    { const tips=[]; [...sc.steps,...(sc.hosp||[])].forEach(x=>{ if(x.k==='TX'&&x.q&&x.q.why&&tips.length<3) tips.push(x.q.why.split('。')[0]+'。'); });
+      S.kase=Object.assign({},S.kase,{title:sc.title,call:sc.call,steps:['救護員完成現場處理，準備搬病人上車床','病人上車床，繼續監察生命表徵','推車床返救護車，準備送院'],tips:tips.length?tips:['跟足 RSE → LOC → D → CAB 龍骨流程。'],equip:null,quiz:[],triage:null}); }
+    $('call').textContent='控制中心：'+S.kase.place+'，'+sc.call; hud('🩺 現場模擬：'+sc.title,(diff?'專業':'入門')+' · '+S.kase.place);
+    if(!drive){ const L=S.kase.loc; const dx=L.stop[0]-L.patient[0], dz=L.stop[1]-L.patient[1]; Object.assign(S.car,{x:L.stop[0],z:L.stop[1],a:Math.atan2(dx,dz),v:0}); S.camYaw=S.car.a; S.leftDepot=true;
+      amb.position.set(S.car.x,0.12,S.car.z); amb.rotation.y=S.car.a; cam.position.set(L.patient[0]+8,6,L.patient[1]+8); camLook.set(L.patient[0],1,L.patient[1]); arriveScene(); } }
+  function end(){ hideGo(); document.body.classList.remove('simHide'); CARD.classList.remove('on'); TB.classList.remove('want'); SIMAN.clear(); st.on=false; st.open=false; st.locHold=null; S.simOn=false; document.body.classList.remove('simScene'); box.innerHTML=''; bar.innerHTML=''; }
+  /* ----- 現場／醫院：由 sequence 叫 ----- */
+  function atScene(){ if(st.phase!=='scene'||st.open) return; st.open=true; document.body.classList.add('simScene'); tCat='assess'; renderTools(); SIMAN.enter(); caption(null); renderBar(); pickPrompt(); }
+  function atHosp(){ if(st.phase!=='trans'||st.open) return; st.phase='hosp'; st.steps=st.sc.hosp; st.i=0; st.chips=null; st.open=true; st.t0h=st.t; document.body.classList.add('simScene'); caption(null); renderTools(); renderBar(); pickPrompt(); }
+  const cur=()=>st.steps[st.i];
+  function chipKeys(){ const ks=[]; st.steps.forEach(s=>{ if(!ks.includes(s.k)) ks.push(s.k); }); return ks; }
+  function layout(){ const m=$s('simMon').getBoundingClientRect(), b=box.getBoundingClientRect(), desk=innerWidth>=900; const top=m.bottom+8, tb=TB.offsetHeight||0, lim=desk||!b.height||b.left>bar.getBoundingClientRect().right+4?innerHeight-tb-12:b.top-8; bar.style.top=top+'px'; bar.style.maxHeight=Math.max(60,lim-top)+'px'; }
+  addEventListener('resize',()=>{ if(st.on) layout(); });
+  try{ const ro=new ResizeObserver(()=>{ if(st.on&&document.body.classList.contains('simScene')) layout(); }); ro.observe(box); ro.observe(mon); }catch(e){}
+  function renderBar(){ const ks=chipKeys(); if(!st.chips) st.chips=store.get('simShuffle',false)&&st.phase==='scene'?shuffle(ks):ks; const c=cur(), doneK=new Set(st.steps.slice(0,st.i).map(s=>s.k));
+    bar.innerHTML=''; st.chips.forEach(k=>{ const b=document.createElement('button'); b.innerHTML=CH[k][0]+'<small>'+CH[k][1]+'</small>'; const isDone=doneK.has(k)&&(!c||c.k!==k);
+      if(isDone) b.className='done'; else if(!st.diff&&c&&c.k===k&&st.state==='pick') b.className='next'; b.onclick=()=>choose(k,b); bar.append(b); }); requestAnimationFrame(layout); }
+  // 揀下一步（專業：要自己記流程；入門：有提示）
+  function pickPrompt(){ st.state='pick'; const c=cur(); renderBar(); markNew(); if(!c){ return; }
+    const ezH=!st.diff?'<p class="hint">提示：按流程，下一步係「'+CH[c.k][0]+' '+CH[c.k][1]+'」（左邊發光嗰粒）。</p>':'<p class="hint">按流程揀下一步（左邊嘅步驟）。</p>';
+    box.innerHTML='<h3>'+(st.phase==='scene'?'🩺 現場處理':'🏥 送院途中／到院')+'</h3><p class="act">'+st.sc.who+' · '+st.sc.title+'</p>'+ezH; }
+  function choose(k,btn){ if(st.state!=='pick') return; const c=cur(); if(!c) return;
+    if(k!==c.k){ const done=st.steps.slice(0,st.i).some(s=>s.k===k); st.max+=0; if(!done){ st.orderErr++; st.score-=3; st.t+=20; } btn.classList.remove('bad'); void btn.offsetWidth; btn.classList.add('bad');
+      box.querySelector('.hint')&&(box.querySelector('.hint').innerHTML='✖ 未到呢一步。'+(st.diff?'諗吓流程：RSE → LOC → D → CAB → O₂ → RBS → SKIN → DECISION……':'下一步係「'+CH[c.k][0]+'」。')); return; }
+    st.score+=3; st.max+=3; showStep(); }
+  // 文字講到嘅讀數（量度結果）即刻同步去監測器，避免文字同儀器唔夾
+  function textVitals(f){ const r={}; let m; f=String(f||'').split('→')[0];
+    if(m=f.match(/(?:橈動脈|頸動脈|股動脈|HR|脈搏)\s*(\d{2,3})/)) r.hr=+m[1];
+    if(m=f.match(/(?:RR|呼吸)\s*(\d{1,2})\s*次?/)) r.rr=+m[1];
+    if(m=f.match(/SpO₂\s*(?:顯示\s*)?(\d{2,3})\s*%/)) r.spo2=+m[1];
+    if(m=f.match(/(?:BP|SBP)\s*(\d{2,3})(?:／(\d{2,3}))?/)){ r.sbp=+m[1]; if(m[2]) r.dbp=+m[2]; }
+    if(m=f.match(/H'stix[：:\s]*([\d.]+)/)) r.rbs=+m[1];
+    return r; }
+  function showStep(){ const c=cur(); if(c&&c.k!=='MIST'){ const tv=textVitals(c.find); Object.assign(st.v,tv); Object.keys(tv).forEach(k=>{ if(k!=='dbp') st.known[k]=1; }); }
+    st.state='q'; markNew(); st.t+=({RSE:20,LOC:10,D:15,CAB:30,O2:30,RBS:30,SKIN:10,DEC:5,HX:60,VS:60,HS:30,TX:45,LG:20,RE:60,MIST:60})[c.k]||20;
+    if(!(c.k==='LOC'&&st.diff&&st.phase==='scene')) (c.reveal||[]).forEach(r=>st.known[r]=1); renderBar(); kneelAnim();
+    if(c.k==='MIST'){ SIMAN.play(c,null,st.phase==='hosp'); return mistStep(c); }
+    if(c.k==='LOC'&&st.diff&&st.phase==='scene') return locStep(c);
+    const Q=(!st.diff&&(c.e||(c.k==='SKIN'?skinEZ(c.find):EZ[c.k])))||c.q; SIMAN.play(c,c.q,st.phase==='hosp'); let ord=shuffle(Q.o.map((x,i)=>i)); if(!st.diff&&ord.length>3) ord=shuffle([Q.a,...ord.filter(i=>i!==Q.a).slice(0,2)]);
+    box.innerHTML='<h3>'+CH[c.k][0]+' · '+CH[c.k][1]+'</h3><p class="act">🧑‍⚕️ '+esc(c.act)+'</p><p class="find">'+esc(c.find)+'</p><p class="q">'+esc(Q.q)+'</p><div class="opts"></div>';
+    const O=box.querySelector('.opts'); ord.forEach((oi,n)=>{ const b=document.createElement('button'); b.innerHTML='<i>'+(n+1)+'</i>'+esc(Q.o[oi]); b.dataset.i=oi; b.onclick=()=>answer(Q,oi,b); O.append(b); }); st.max+=10; }
+  function answer(Q,oi,b){ if(st.state!=='q') return; st.state='fb'; const ok=oi===Q.a; const c=cur();
+    box.querySelectorAll('.opts button').forEach(x=>{ x.disabled=true; if(+x.dataset.i===Q.a) x.classList.add('ok'); else if(x===b) x.classList.add('no'); });
+    if(ok) st.score+=10; else { st.ansErr++; st.t+=30; st.log.push(CH[c.k][0]+'：'+Q.o[Q.a]); }
+    if(c.set) Object.assign(st.v,c.set); if(c.set) Object.keys(c.set).forEach(k=>{ if(k in st.known||['spo2','pain','rbs','sbp','hr','avpu','gcs','rr'].includes(k)) {} });
+    vib(ok?20:[40,40,40]); const w=document.createElement('div'); w.className='why'; w.innerHTML=(ok?'✅ 正確。':'❌ 正確答案：'+esc(Q.o[Q.a])+'。')+'<br>'+esc(Q.why); box.append(w);
+    addTip(c);
+    const need=st.diff?SIMTOOLS.need(c,st.sc.id).filter(g=>!g.some(id=>SIMTOOLS.T[id][3]==='d'&&st.used.has(id))):[];
+    if(need.length){ st.state='tool'; st.tneed=need.map(g=>g.slice()); st.tN=need.length; st.terr=0; st.max+=5; const r=document.createElement('p'); r.className='tneed treq'; box.append(r); toolStatus(); TB.classList.add('want'); r.scrollIntoView&&r.scrollIntoView({block:'nearest'}); return; }
+    SIMAN.apply(); showGo('繼續 ▶'); }
+  function addTip(c){ const tp=SIMNOTES.tip(c,st.sc); if(!tp) return; const d=document.createElement('div'); d.className='tip'; d.innerHTML='⚠️ <b>注意事項</b>：'+esc(tp); box.append(d); }
+  /* ----- 專業：LOC 互動（觀察 → 叫佢 → 擠壓斜方肌 → 判斷 AVPU） ----- */
+  function locStep(c){ st.state='loc'; const a=['A','V','P','U'].indexOf(c.q.o[0][0]); const L={obs:0,voice:0,pain:0,order:[],log:[]}; st.locHold=a; SIMAN.play(c,c.q,false); SIMAN.focusOn('head');
+    box.innerHTML='<h3>LOC · 清醒程度</h3><p class="act">🧑‍⚕️ 自己測試病人反應，再判斷 AVPU</p><div class="opts lact"></div><div class="lres"></div><p class="q" style="display:none">AVPU 評級係？</p><div class="opts lans" style="display:none"></div>';
+    const O=box.querySelector('.lact'), R=box.querySelector('.lres'), Qp=box.querySelector('.q'), AN=box.querySelector('.lans');
+    const log=t=>{ const p=document.createElement('p'); p.className='find'; p.textContent=t; R.append(p); };
+    const acts=[['obs','👀 觀察','觀察病人'],['voice','🗣️ 叫佢','大聲叫病人'],['pain','✊ 擠壓斜方肌','痛楚刺激']];
+    acts.forEach(([k,lab],n)=>{ const b=document.createElement('button'); b.innerHTML='<i>'+(n+1)+'</i>'+lab; b.onclick=()=>{ if(st.state!=='loc') return; L.order.push(k); L[k]++; st.t+=k==='obs'?5:k==='voice'?5:8;
+      const r=SIMAN.react(k==='obs'?'observe':k==='voice'?'voice':'pain',a);
+      if(k==='obs') log(r==='open'?'👀 病人眼係打開嘅，望住你。':'👀 病人合埋眼，冇自己郁。'+(st.v.rhythm==='noise'?'（全身抽搐中）':''));
+      if(k==='voice') setTimeout(()=>log(r==='A'?'🗣️ 病人清醒對答。':r==='V'?'🗣️ 叫佢之後，病人打開眼、應咗一聲。':'🗣️ 大聲叫佢：冇反應。'),900);
+      if(k==='pain'){ if(!L.voice) L.log.push('未叫就擠壓斜方肌'); else if(a<=1) L.log.push('病人已經對叫聲有反應，唔使再做痛楚刺激');
+        setTimeout(()=>log(r==='over'?'✊ 病人即刻縮開、喊痛。':r==='P'?'✊ 擠壓斜方肌後，病人皺眉、呻吟、縮手。':'✊ 擠壓斜方肌：都係冇反應。'),1000); }
+      if(!st.locShown){ st.locShown=1; Qp.style.display=''; AN.style.display=''; } }; O.append(b); });
+    ['A 清醒','V 對說話有反應','P 對痛楚有反應','U 冇反應'].forEach((t,i)=>{ const b=document.createElement('button'); b.innerHTML='<i>'+'AVPU'[i]+'</i>'+t; b.dataset.i=i; b.onclick=()=>locAnswer(c,a,i,b,L); AN.append(b); });
+    st.locShown=0; st.max+=15; }
+  function locAnswer(c,a,i,b,L){ if(st.state!=='loc') return; st.state='fb';
+    const need=i===0?['obs']:i===1?['voice']:['voice','pain']; need.forEach(k=>{ if(!L[k]) L.log.push('未做「'+(k==='obs'?'觀察':k==='voice'?'叫佢':'擠壓斜方肌')+'」就判斷'); });
+    const ok=i===a; box.querySelectorAll('.lans button').forEach(x=>{ x.disabled=true; if(+x.dataset.i===a) x.classList.add('ok'); else if(x===b) x.classList.add('no'); }); box.querySelectorAll('.lact button').forEach(x=>x.disabled=true);
+    const proc=Math.max(0,5-L.log.length*3); st.score+=(ok?10:0)+proc; if(!ok){ st.ansErr++; st.t+=30; st.log.push('LOC：'+['A','V','P','U'][a]); } if(L.log.length) st.log.push('LOC 測試次序：'+L.log.join('、'));
+    (c.reveal||[]).forEach(r=>st.known[r]=1); st.locHold=null; SIMAN.apply();
+    const w=document.createElement('div'); w.className='why'; w.innerHTML=(ok?'✅ 正確：':'❌ 正確答案：')+esc(['A 清醒','V 對說話有反應','P 對痛楚有反應','U 冇反應'][a])+'。<br>'+(L.log.length?'⚠️ '+esc(L.log.join('；'))+'。<br>':'✅ 測試次序正確。<br>')+'正確次序：先觀察 → 冇自己開眼就大聲叫 → 叫都冇反應先擠壓斜方肌。A 清醒、V 對說話有反應、P 對痛楚有反應、U 完全冇反應。';
+    box.append(w); addTip(c); vib(ok?20:[40,40,40]); showGo('繼續 ▶'); }
+  function mistStep(c){ st.state='mist'; const L=['M','I','S','T'], N=['Mechanism／主訴','Injuries／檢查所見','Signs／維生指數','Treatment／處理']; const ord=shuffle([0,1,2,3]); let n=0, err=0;
+    box.innerHTML='<h3>MIST · 交接</h3><p class="act">🧑‍⚕️ '+esc(c.act)+'</p><p class="q">按 MIST 次序撳：'+(st.diff?'M → I → S → T':L.map((l,i)=>l+' '+N[i]).join(' → '))+'</p><div class="opts mist"></div>';
+    const O=box.querySelector('.mist'); ord.forEach(i=>{ const b=document.createElement('button'); b.innerHTML=esc(c.mist[i]); b.onclick=()=>{ if(b.disabled) return; if(i===n){ b.disabled=true; b.classList.add('ok'); b.innerHTML='<b>'+L[i]+'</b>'+esc(c.mist[i]); n++; if(n===4){ st.score+=Math.max(0,10-err*3); st.max+=10; if(err) st.log.push('MIST 次序（錯 '+err+' 次）'); showGo('完成交接 ▶'); } }
+        else { err++; b.classList.add('no'); setTimeout(()=>b.classList.remove('no'),400); } }; O.append(b); }); }
+  function next(){ hideGo(); st.i++; if(st.i<st.steps.length){ pickPrompt(); return; }
+    if(st.phase==='scene'){ SIMAN.leaveScene(); st.phase='trans'; st.open=false; st.tScene=st.t; document.body.classList.remove('simScene'); box.innerHTML=''; S.simSceneDone=true; PLAY.radio('A188 '+st.sc.title+'，LOAD & GO，送院途中。','A188'); }
+    else { st.open=false; document.body.classList.remove('simScene'); S.simHandDone=true; SIMAN.leaveScene(); result(); } }
+  function grade(){ const p=st.max?st.score/st.max:0; return p>=0.9?['金','#d4a017']:p>=0.75?['銀','#9aa5b1']:p>=0.55?['銅','#b87333']:['再練習','#e05252']; }
+  function result(){ const g=grade(), key=st.sc.id+(st.diff?'p':'e'), B=store.get('simBest',{}), rank={'金':3,'銀':2,'銅':1,'再練習':0}; if(!B[key]||rank[g[0]]>rank[B[key]]){ B[key]=g[0]; store.set('simBest',B); }
+    st.summary='🩺 現場模擬：'+st.sc.title+'（'+(st.diff?'專業':'入門')+'）· 分支：'+st.sc.varLabel+' · 評級 '+g[0]+' · 得分 '+Math.max(0,st.score)+'／'+st.max+' · 現場時間 '+fmtT(st.tScene)+' · 次序出錯 '+st.orderErr+' · 答錯 '+st.ansErr+(st.log.length?'<br>要溫習：'+st.log.map(esc).join('；'):''); }
+  const fmtT=s=>Math.floor(s/60)+':'+String(Math.floor(s%60)).padStart(2,'0');
+  function kneelAnim(){ st.anim=1.6; }
+  /* ----- 監測器 ----- */
+  let ph=0; const ecg=[]; for(let i=0;i<300;i++) ecg.push(23);
+  function wave(p,r){ if(r==='noise') return (Math.random()-0.5)*16+Math.sin(p*40)*6; if(r==='vf') return Math.sin(p*31)*7+Math.sin(p*17+1)*5+(Math.random()-0.5)*3; if(r==='asys') return (Math.random()-0.5)*1.2; const x=p%1; if(x<0.08) return -Math.sin(x/0.08*Math.PI)*3; if(x>0.12&&x<0.14) return 4; if(x>=0.14&&x<0.17) return -22*(1-Math.abs(x-0.155)/0.015); if(x>=0.17&&x<0.19) return 6; if(x>0.32&&x<0.45) return -Math.sin((x-0.32)/0.13*Math.PI)*5; return 0; }
+  function tick(dt){ if(!st.on) return;
+    if(st.phase==='trans'&&!st.drive&&S.step===4&&S.mode==='drive'&&!st.jumped&&S.target){ st.jumped=true; S.car.x=S.target[0]; S.car.z=S.target[1]; }
+    if(!document.body.classList.contains('simScene')) return;
+    if((st.lt=(st.lt||0)-dt)<0){ st.lt=0.4; layout(); }
+    Object.keys(st.d).forEach(k=>{ if(typeof st.v[k]==='number') st.d[k]+=(st.v[k]-st.d[k])*Math.min(1,dt*0.8); else st.d[k]=st.v[k]; });
+    const K=st.known, d=st.d; const set=(id,t)=>{ const e=$s(id); if(e.textContent!==t) e.textContent=t; };
+    set('smHr',K.hr?String(Math.round(d.hr+(Math.random()<0.1?(Math.random()-0.5)*2:0))):'--'); set('smBp',K.sbp?Math.round(d.sbp)+'/'+Math.round(d.dbp):'--'); set('smSp',K.spo2?Math.round(d.spo2)+'%':'--'); set('smRr',K.rr?String(Math.round(d.rr)):'--');
+    set('smLc',K.avpu?AVPU[Math.round(d.avpu)]+(d.gcs<15?'·'+Math.round(d.gcs):''):'--'); set('smBs',K.rbs?d.rbs.toFixed(1):'--'); set('smPn',K.pain?Math.round(d.pain)+'/10':'--'); set('smTm',fmtT(st.t));
+    const cv=$s('simEcg'), g=cv.getContext('2d'); const rh=st.v.rhythm||'sinus', hr=K.hr?(rh==='vf'||rh==='asys'?60:Math.max(d.hr,30)):0; ph+=dt*(hr/60); const spd=120*dt; for(let n=0;n<Math.max(1,Math.round(spd));n++){ ecg.shift(); ecg.push(23+(K.hr?wave(ph-n*0.002,rh):0)); }
+    g.fillStyle='#020403'; g.fillRect(0,0,300,46); g.strokeStyle='#0f2a18'; g.lineWidth=1; for(let x=0;x<300;x+=15){ g.beginPath(); g.moveTo(x,0); g.lineTo(x,46); g.stroke(); }
+    g.strokeStyle=K.hr?'#3ddc6a':'#1d4d2c'; g.lineWidth=2; g.beginPath(); ecg.forEach((y,x)=>x?g.lineTo(x,y):g.moveTo(x,y)); g.stroke(); }
+  // 鍵盤：1–4 答題、Enter 繼續
+  addEventListener('keydown',e=>{ if(!st.on||!document.body.classList.contains('simScene')||typing(e)) return;
+    if(/^Digit[1-6]$/.test(e.code)){ const b=box.querySelectorAll('.opts button')[+e.code.slice(5)-1]; if(b&&!b.disabled){ b.click(); e.preventDefault(); } }
+    if(e.code==='Enter'&&GO.style.display==='block'){ GO.click(); e.preventDefault(); } });
+  /* ----- 選單 ----- */
+  function menu(B,el){ const diff=store.get('simDiff',0), drive=store.get('simDrive',false), best=store.get('simBest',{});
+    B.append(el('p',null,'跟救護規程（資料來源：ems.homes）一步一步處理現場：RSE → LOC → D → CAB → O₂ → RBS → SKIN → DECISION → 病史 → 維生指數 → 用藥 (5R) → LOAD & GO，送院途中再評估，最後用 MIST 交接。'));
+    const seg=(items,cur,fn)=>{ const s=el('div','simSeg'); items.forEach(([t,d],v)=>{ const b=el('button',+cur===v?'on':null); b.append(el('span',null,t),el('small',null,d)); b.onclick=()=>{ fn(v); renderMenu('levels'); }; s.append(b); }); return s; };
+    B.append(seg([['🙂 入門','市民：有提示、淺白題目'],['🧑‍⚕️ 專業','同事：自己揀下一步、規程劑量']],diff,v=>store.set('simDiff',v)));
+    B.append(seg([['⏩ 直接到場','專心練現場處理'],['🚑 包括揸車','由救護站出車']],drive?1:0,v=>store.set('simDrive',!!v)));
+    const CAT={'藥':'💊 用藥 Protocol','停':'🫀 心臟驟停','傷':'🩹 創傷','準':'📋 準則／器材'};
+    B.append(el('p',null,'共 '+SC.length+' 關，每關一個 Protocol；每次開始會隨機抽一個規程分支（例如有冇禁忌症、唔同年齡體重、唔同讀數），玩多幾次會遇到唔同情況。'));
+    Object.keys(CAT).forEach(ct=>{ B.append(el('h4','simCat',CAT[ct])); SC.filter(sc=>sc.cat===ct).forEach(sc=>{ const b=el('button','simCase'); b.append(el('span','ic',sc.ic),(()=>{ const d=el('div'); d.append(el('b',null,sc.title),el('span',null,sc.en+' · '+sc.vars.length+' 個分支')); return d; })(), el('em',null,best[sc.id+(diff?'p':'e')]||''));
+      b.onclick=()=>{ S.realPick=false; S.pcPick=false; const lv=sc.lv%LEVELS.length; startCase(lv); begin(sc,diff,drive); }; B.append(b); }); });
+    B.append(el('p','rules','⚠️ 呢個係訓練遊戲，個案為模擬；實際處理以消防處最新規程為準。')); }
+  function again(){ SIMAN.clear(); const s=st; const sc=s.sc.base, d=s.diff, dr=s.drive; S.simOn=false; startCase(sc.lv%LEVELS.length); begin(sc,d,dr); }
+  function anim(dt,t){ SIMAN.tick(dt,t,st.d.rr,st.v.rhythm,st.phase==='hosp',st.locHold!=null?st.locHold:st.d.avpu); }
+  return {_use:(id)=>useTool(id,null),SC,anim,cam:t=>SIMAN.cam(t),CH,again,begin,end,atScene,atHosp,tick,menu,get summary(){ return st.summary; },get on(){ return st.on; },SC,_st:st};
+})();
+window.__SIM=SIM;
+
+/* ---------- 🚗 駕駛操控：真實設定（自動波 D／R、油門、煞車、軚盤）＋ 倒車動畫（救護員落車睇後） ---------- */
+const DRV=(()=>{
+  const D={real:!!store.get('realDrive',false), rev:store.get('revAnim',true)!==false, gear:'D', ang:0, drag:null, pad:0, sgn:0};
+  const MAXA=150;                       // 軚盤最多扭 150°
+  const css=document.createElement('style'); css.textContent=`
+  #steerW{display:none;width:150px;height:150px;margin-bottom:14px;touch-action:none;user-select:none;-webkit-user-select:none;cursor:grab;position:relative}
+  body.realDrv #steerW{display:block} body.realDrv .btns .lr{display:none!important}
+  #steerW svg{width:100%;height:100%;filter:drop-shadow(0 4px 10px #0008);transition:none}
+  #steerW .hint{position:absolute;left:0;right:0;bottom:-16px;text-align:center;font-size:11px;font-weight:800;color:#fff;text-shadow:0 1px 3px #000}
+  #bGear{display:none;font-weight:900;font-size:20px;letter-spacing:1px}
+  body.realDrv #bGear{display:block} #bGear.r{background:#d64545;color:#fff} #bGear.d{background:#2b6fd6;color:#fff}
+  #revTip{position:fixed;left:50%;top:calc(110px + env(safe-area-inset-top));transform:translateX(-50%);z-index:30;background:#000b;color:#ffd166;font-weight:800;font-size:14px;padding:6px 12px;border-radius:16px;display:none;pointer-events:none}
+  @media (max-width:520px){ #steerW{width:124px;height:124px} }`;
+  document.head.append(css);
+  // 軚盤 SVG
+  const W=document.createElement('div'); W.id='steerW'; W.setAttribute('aria-label','軚盤：左右滑動轉彎');
+  W.innerHTML='<svg viewBox="0 0 100 100"><g id="swRot"><circle cx="50" cy="50" r="44" fill="none" stroke="#1d2430" stroke-width="10"/><circle cx="50" cy="50" r="44" fill="none" stroke="#3a4558" stroke-width="3"/>'+
+    '<path d="M8 52 Q50 40 92 52" fill="none" stroke="#1d2430" stroke-width="9"/><path d="M50 56 L50 92" stroke="#1d2430" stroke-width="9"/>'+
+    '<circle cx="50" cy="54" r="13" fill="#2a3342" stroke="#11161e" stroke-width="2"/><text x="50" y="58" text-anchor="middle" font-size="9" font-weight="900" fill="#ffd166">A188</text>'+
+    '<rect x="46" y="3" width="8" height="9" rx="2" fill="#ffcf5a"/></g></svg><div class="hint">◀ 滑動軚盤 ▶</div>';
+  const btns=document.querySelector('.btns'); if(btns) btns.insertBefore(W,btns.firstChild);
+  const rot=W.querySelector('#swRot');
+  W.addEventListener('pointerdown',e=>{ e.preventDefault(); W.setPointerCapture&&W.setPointerCapture(e.pointerId); D.drag={x:e.clientX,a:D.ang,id:e.pointerId}; W.style.cursor='grabbing'; });
+  W.addEventListener('pointermove',e=>{ if(!D.drag||e.pointerId!==D.drag.id) return; D.ang=Math.max(-MAXA,Math.min(MAXA,D.drag.a+(e.clientX-D.drag.x)*0.75)); });
+  ['pointerup','pointercancel','lostpointercapture'].forEach(ev=>W.addEventListener(ev,e=>{ if(D.drag&&e.pointerId===D.drag.id){ D.drag=null; W.style.cursor='grab'; } }));
+  // 波棍掣（D／R）
+  const G=document.createElement('button'); G.className='btn small d'; G.id='bGear'; G.textContent='D'; G.setAttribute('aria-label','波棍：前波 D／後波 R');
+  const col=document.querySelector('.btns .col'); if(col) col.insertBefore(G,col.firstChild);
+  G.addEventListener('pointerdown',e=>{ e.preventDefault(); shift(); });
+  const tip=document.createElement('div'); tip.id='revTip'; document.body.append(tip);
+  const bB=$('bB');
+  function applyReal(){ document.body.classList.toggle('realDrv',D.real); if(bB){ bB.textContent=D.real?'煞':'倒'; bB.setAttribute('aria-label',D.real?'煞車':'倒車'); } paintGear(); }
+  function paintGear(){ G.textContent=D.gear; G.className='btn small '+(D.gear==='R'?'r':'d'); }
+  function shift(to){ const c=S.car; if(!D.real||S.mode!=='drive') return; const nx=to||(D.gear==='D'?'R':'D'); if(nx===D.gear) return;
+    if(Math.abs(c.v)>0.6){ toast('停定車先可以轉波'); return; } D.gear=nx; paintGear(); if(navigator.vibrate) try{ navigator.vibrate(15); }catch(e){} }
+  addEventListener('keydown',e=>{ const t=e.target; if(t&&(t.tagName==='INPUT'||t.tagName==='TEXTAREA')) return; if(e.code==='KeyR'&&!e.repeat&&D.real) shift(); });
+  applyReal();
+
+  /* ----- 倒車動畫：救護員由左邊落車 → 行去車尾睇後 → 轉前波時跑返上車頭 ----- */
+  const man=person('crew'); man.visible=false; scene.add(man);
+  const g={st:'in',t:0,from:null,to:null,side:1};
+  const WALK=1.5;
+  const cornerPos=()=>{ const b=basis(), k=g.side*(b.Wd+0.6); return [b.c.x-b.fx*(b.L+1.6)+b.lx*k, b.c.z-b.fz*(b.L+1.6)+b.lz*k]; };
+  const canGuide=()=>D.rev&&S.mode==='drive'&&!(S.gm==='free'&&typeof FRE!=='undefined'&&FRE.onFoot)&&VSPEC.kind!=='moto'&&!(typeof FUN!=='undefined'&&FUN.on);
+  function basis(){ const c=S.car, fx=Math.sin(c.a), fz=Math.cos(c.a), lx=Math.cos(c.a), lz=-Math.sin(c.a); return {c,fx,fz,lx,lz,L:3.2*VSPEC.kl+0.4,Wd:1.25*VSPEC.kw}; }
+  const doorPos=(sd)=>{ const b=basis(), k=(sd||g.side)*(b.Wd+0.7); return [b.c.x+b.fx*1.3+b.lx*k, b.c.z+b.fz*1.3+b.lz*k]; };
+  const rearPos=(sd)=>{ const b=basis(), k=(sd||-1)*(b.Wd+0.5); return [b.c.x-b.fx*(b.L+1.9)+b.lx*k, b.c.z-b.fz*(b.L+1.9)+b.lz*k]; };
+  const freeAt=P=>{ try{ return !blockedAt(P[0],P[1],6); }catch(e){ return true; } };
+  const ARM=()=>{ const a=man.userData.arms; return Array.isArray(a)?a[1]||a[0]:a; };
+  function go(st){ g.st=st; g.t=0; g.leg=0; if(!man.visible){ g.side=freeAt(doorPos(1))?1:freeAt(doorPos(-1))?-1:1; g.leg=0; const d=doorPos(); man.position.set(d[0],0.12,d[1]); man.visible=true; } g.from=[man.position.x,man.position.z]; }
+  function reset(){ g.st='in'; man.visible=false; tip.style.display='none'; const a=ARM(); if(a) a.rotation.x=0; }
+  function showTip(t){ tip.textContent=t; tip.style.display=t?'block':'none'; }
+  function guideTick(dt,t,moving){ if(g.st==='in') return; const b=basis(); g.t+=dt; let P; const a=ARM();
+    if(g.st==='out'||g.st==='back'){ // 經車尾轉角行：左門 → 車尾左角 → 車右後方（返程倒轉）
+      const route=g.st==='out'?[cornerPos(),rearPos()]:(g.side===1?[cornerPos(),doorPos()]:[doorPos()]); const leg=Math.min(g.leg||0,route.length-1);
+      const k=Math.min(1,g.t/(WALK*0.6)), A=g.from, Bq=route[leg]; P=[A[0]+(Bq[0]-A[0])*k, A[1]+(Bq[1]-A[1])*k];
+      if(k>=1&&leg<route.length-1){ g.leg=leg+1; g.t=0; g.from=[P[0],P[1]]; man.position.set(P[0],0.12,P[1]); return; }
+      walk(man,g.st==='back'?t*1.4:t,true); if(Math.hypot(Bq[0]-A[0],Bq[1]-A[1])>0.2) man.rotation.y=Math.atan2(Bq[0]-A[0],Bq[1]-A[1]); if(a) a.rotation.x=0;
+      showTip(g.st==='out'?'🧍 救護員落車去車尾睇後……':'🏃 救護員跑返上車頭……');
+      if(k>=1&&leg>=route.length-1){ if(g.st==='out') g.st='guide'; else { reset(); return; } } }
+    else if(g.st==='guide'){ P=rearPos(); walk(man,t,moving); man.rotation.y=b.c.a; if(a) a.rotation.x=-1.7+Math.sin(t*5)*0.45; showTip(moving?'🧍「後面冇嘢，繼續倒！」':'🧍 救護員喺車尾睇住，可以倒車'); }
+    if(P) man.position.set(P[0],0.12,P[1]); }
+
+  /* ----- 每格：將按掣變成油／煞／軚 ----- */
+  function input(dt,t){ const H=S.hold, c=S.car;
+    // 軚盤（真實設定）或者 ◀ ▶
+    let steer;
+    if(D.real){ const kb=(H.L?1:0)-(H.R?1:0);
+      if(Math.abs(D.pad)>0.12&&!D.drag) D.ang=-D.pad*MAXA;
+      else if(kb&&!D.drag) D.ang=Math.max(-MAXA,Math.min(MAXA,D.ang-kb*150*dt));
+      else if(!D.drag){ const r=(Math.abs(c.v)>3?320:200)*dt; D.ang=Math.abs(D.ang)<=r?0:D.ang-Math.sign(D.ang)*r; }   // 放手自動回正
+      { const n=D.ang/MAXA; steer=-Math.sign(n)*Math.pow(Math.abs(n),1.6); } rot.setAttribute('transform','rotate('+D.ang.toFixed(1)+' 50 50)'); }
+    else steer=Math.abs(D.pad)>0.35?-Math.sign(D.pad):(H.L?1:0)-(H.R?1:0);
+    D.sgn=steer>0.15?1:steer<-0.15?-1:0;
+    // 想向前／向後
+    let gas=!!H.G, brake=!!H.B, G2, B2, wantBack, wantFwd;
+    if(D.real){ if(D.gear==='D'){ G2=gas&&!brake; B2=brake; wantFwd=gas; wantBack=false; } else { G2=brake; B2=gas&&!brake; wantBack=gas; wantFwd=false; } }
+    else { G2=gas; B2=brake; wantBack=brake&&!gas&&c.v<=0.5; wantFwd=gas&&!brake&&c.v>=-0.5; }
+    // 倒車動畫：未有人喺車尾就唔倒；人未上返車就唔向前
+    if(canGuide()){
+      const backReq=D.real?D.gear==='R':wantBack, fwdReq=D.real?D.gear==='D':wantFwd;
+      if(backReq&&(g.st==='in'||g.st==='back')) go('out');
+      else if(fwdReq&&(g.st==='out'||g.st==='guide')) go('back');
+      if(g.st==='out'){ if(D.real) B2=false; else if(wantBack) B2=false; }
+      if(g.st==='back'){ if(D.real) G2=false; else if(wantFwd) G2=false; }
+      guideTick(dt,t,Math.abs(c.v)>0.3);
+    } else if(g.st!=='in') reset();
+    return {G:G2,B:B2,steer,L:D.sgn>0,R:D.sgn<0}; }
+  // 物理之後：真實設定 D 波唔會溜後、R 波唔會向前
+  function post(){ if(!D.real) return; const c=S.car; if(D.gear==='D'&&c.v<0) c.v=0; if(D.gear==='R'&&c.v>0) c.v=0; }
+  function setReal(v){ D.real=!!v; store.set('realDrive',D.real); D.gear='D'; D.ang=0; applyReal(); }
+  function setRev(v){ D.rev=!!v; store.set('revAnim',D.rev); if(!v) reset(); }
+  return {man,input,post,setReal,setRev,shift,reset,get real(){ return D.real; },get rev(){ return D.rev; },get gear(){ return D.gear; },set pad(v){ D.pad=v; },get sgn(){ return D.sgn; },_g:g};
+})();
+window.__DRV=DRV;
 
 /* ---------- 支援人員到場幫手：救護電單車急救員、消防先遣急救員 ----------
    到場後落車行去病人身邊幫手；離場時電單車急救員跟救護車一齊上車（電單車留喺原地），消防員行返上消防車 */
@@ -4846,8 +6658,9 @@ const GP=(()=>{ let prev={}, sel=-1, navT=0, list=[];
     const ax=p.axes[0]||0, ay=p.axes[1]||0;
     const L=layer(); const driving=!L&&S.mode==='drive'&&!S.quizOpen;
     if(driving){ list.forEach(b=>b.classList.remove('gpf')); list=[]; sel=-1;
-      const h={L:ax<-0.35||B(14), R:ax>0.35||B(15), G:B(7)||B(0), B:B(6)||B(1)}; for(const k in h){ if(h[k]!==prev['h'+k]) S.hold[k]=h[k]; prev['h'+k]=h[k]; }
-      if(down(2)) $('bH').click(); if(down(3)&&typeof BIGMAP!=='undefined') BIGMAP.open(); if(down(9)) $('bMenu').click();
+      const real=typeof DRV!=='undefined'&&DRV.real; const h={L:!real&&(ax<-0.35)||B(14), R:!real&&(ax>0.35)||B(15), G:B(7)||B(0), B:B(6)||B(1)}; for(const k in h){ if(h[k]!==prev['h'+k]) S.hold[k]=h[k]; prev['h'+k]=h[k]; }
+      if(typeof DRV!=='undefined') DRV.pad=real?ax:0;
+      if(down(2)) $('bH').click(); if(down(3)){ if(real) DRV.shift(); else if(typeof BIGMAP!=='undefined') BIGMAP.open(); } if(down(8)&&typeof BIGMAP!=='undefined') BIGMAP.open(); if(down(9)) $('bMenu').click();
     } else {
       ['L','R','G','B'].forEach(k=>{ if(prev['h'+k]){ S.hold[k]=false; prev['h'+k]=false; } });
       const cand=!L?[]:[...L.querySelectorAll('button')].filter(b=>visible(b)&&!b.closest('.btns,#footBtns,#bMenu,#bAEB')||b.id==='bMenu'||b.id==='bAEB');
@@ -4864,6 +6677,6 @@ const GP=(()=>{ let prev={}, sel=-1, navT=0, list=[];
 window.__ESC=ESC; window.__PLAY=PLAY;
 
 renderMenu(); show('menu',true); tick();
-window.__S=S; window.__ELEV=ELEV; window.__RM=()=>routeMesh; window.__finish=()=>finish(); window.__REAL=REAL; window.__gate=()=>depotGate(); window.__hit=hitBuilding; window.__cell=cellAt; window.__NEON=NEON; window.__MAP=MAP; window.__NODES=NODES; window.__setTarget=setTarget; window.__refreshRoute=refreshRoute; window.__AE=()=>AE; window.__DEPOT=()=>DEPOT; window.__setTOD=setTOD; window.__cars=cars; window.__sg=()=>gain&&gain.gain.value; window.__oc=openChoice; window.__veh=applyLivery; window.__LMK=LMK; window.__fwTest=fireworks; window.__R=R; window.__person=person; window.__peds=peds; window.__store=store; window.__scene=scene; window.__cam=cam; window.__startCase=startCase; window.__peds=peds;
+window.__S=S; window.__ELEV=ELEV; window.__RM=()=>routeMesh; window.__finish=()=>finish(); window.__REAL=REAL; window.__gate=()=>depotGate(); window.__hit=hitBuilding; window.__blk=blockedAt; window.__cell=cellAt; window.__NEON=NEON; window.__MAP=MAP; window.__NODES=NODES; window.__setTarget=setTarget; window.__refreshRoute=refreshRoute; window.__AE=()=>AE; window.__DEPOT=()=>DEPOT; window.__setTOD=setTOD; window.__cars=cars; window.__sg=()=>gain&&gain.gain.value; window.__oc=openChoice; window.__veh=applyLivery; window.__LMK=LMK; window.__fwTest=fireworks; window.__R=R; window.__person=person; window.__peds=peds; window.__store=store; window.__scene=scene; window.__cam=cam; window.__startCase=startCase; window.__peds=peds;
 
 })();
