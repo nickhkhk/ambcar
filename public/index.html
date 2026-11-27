@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="zh-Hant-HK">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<title>香港生命線</title>
+<style>
+:root{
+  --ink:#1c2733; --paper:#ffffff; --muted:#5f6f80; --red:#e8323c; --go:#21b46b; --orange:#ff7a1a; --yellow:#ffe500; --blue:#1f4fbf;
+  --font:-apple-system,BlinkMacSystemFont,"PingFang HK","Noto Sans TC","Microsoft JhengHei",sans-serif;
+  /* 版面：直向全畫面 3D；頂部任務卡＋小地圖，底部單手操作掣；選單同結算係置中卡片 */
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent;user-select:none;-webkit-user-select:none}
+html,body{height:100%;margin:0;background:#c4e6fb;font-family:var(--font);color:var(--ink);overflow:hidden;touch-action:none;color-scheme:light}
+canvas{display:block}
+#stage{position:fixed;inset:0}
+.show{display:flex!important}
+#hudWrap{display:none}
+.top{position:fixed;left:10px;right:10px;top:calc(10px + env(safe-area-inset-top));display:flex;gap:8px;align-items:flex-start;pointer-events:none}
+.card{background:rgba(255,255,255,.95);border-radius:16px;padding:9px 12px;box-shadow:0 3px 12px rgba(0,0,0,.12);font-size:13px;line-height:1.35}
+.card b{font-size:15px;display:block}
+.num{font-variant-numeric:tabular-nums;font-weight:800}
+.dist{color:var(--red)}
+#mini{width:96px;height:96px;margin-left:auto;flex:none;border-radius:50%;box-shadow:0 3px 12px rgba(0,0,0,.18)}
+#bAEB{pointer-events:auto;position:fixed;top:calc(152px + env(safe-area-inset-top));right:10px;border:0;border-radius:99px;background:rgba(255,255,255,.95);font:inherit;font-size:12px;padding:6px 10px;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+#bAEB[aria-pressed=false]{color:#8a94a0}
+#bMenu{pointer-events:auto;position:fixed;top:calc(118px + env(safe-area-inset-top));right:10px;border:0;border-radius:99px;background:rgba(255,255,255,.95);font:inherit;font-size:12px;padding:6px 10px;box-shadow:0 2px 8px rgba(0,0,0,.12)}
+.btns{position:fixed;left:12px;right:12px;bottom:calc(14px + env(safe-area-inset-bottom));display:flex;justify-content:space-between;align-items:flex-end}
+.btn{width:74px;height:74px;border-radius:50%;border:0;background:rgba(255,255,255,.95);box-shadow:0 4px 14px rgba(0,0,0,.18);font:inherit;font-size:26px;font-weight:800;color:var(--ink);display:grid;place-items:center;touch-action:none}
+.btn.on{transform:scale(.93);background:#e9eef3}
+.btn.go{background:var(--go);color:#fff;width:90px;height:90px;font-size:22px}
+.btn.go.on{background:#1a9659}
+.btn.small{width:58px;height:58px;font-size:20px}
+.btn.horn{font-size:14px;color:var(--orange);border:3px solid var(--orange)}
+.btn.horn.siren{background:var(--orange);color:#fff;animation:pulse .5s infinite alternate}
+@keyframes pulse{to{transform:scale(1.08)}}
+@media (prefers-reduced-motion:reduce){.btn.horn.siren{animation:none}}
+.lr,.right{display:flex;gap:10px;align-items:flex-end}
+.col{display:flex;flex-direction:column;gap:10px}
+#cap{position:fixed;left:50%;bottom:calc(122px + env(safe-area-inset-bottom));transform:translateX(-50%);display:none;max-width:min(92vw,420px);background:rgba(28,39,51,.88);color:#fff;font-size:16px;font-weight:700;padding:10px 16px;border-radius:14px;text-align:center;line-height:1.4}
+
+.lives{font-size:20px;letter-spacing:1px;line-height:1;margin-bottom:4px}
+.lives span{display:inline-block}.lives span{line-height:0;margin-right:1px}.lives .on{color:#1f63e0;filter:drop-shadow(0 1px 0 #0b2f7a);animation:beat 1.6s ease-in-out infinite}.lives .off{color:#c9d0da}#rStars span{display:inline-block;line-height:0;margin:0 2px}#rStars .on{color:#1f63e0}#rStars .off{color:#c9d0da}
+.lives .lost{animation:lostHeart .9s ease-out}
+@keyframes beat{0%,100%{transform:scale(1)}15%{transform:scale(1.18)}30%{transform:scale(1)}45%{transform:scale(1.1)}}
+@keyframes lostHeart{0%{transform:scale(1.9);color:#ff3b5c;text-shadow:0 0 10px #ff3b5c}40%{transform:scale(1.4) rotate(-14deg);color:#ff3b5c}70%{transform:scale(.8) rotate(10deg) translateY(4px)}100%{transform:scale(1);color:#d5dbe2}}
+.lives.hit{animation:shake .5s}
+@keyframes shake{20%{transform:translateX(-5px)}40%{transform:translateX(5px)}60%{transform:translateX(-3px)}80%{transform:translateX(3px)}}
+@media (prefers-reduced-motion:reduce){.lives.hit,.lives .on,.lives .lost{animation:none}}
+#toast{position:fixed;left:50%;top:calc(160px + env(safe-area-inset-top));transform:translateX(-50%);display:none;background:var(--red);color:#fff;font-weight:700;font-size:14px;padding:8px 14px;border-radius:99px;box-shadow:0 4px 14px rgba(0,0,0,.2);white-space:nowrap}
+#callBox{position:fixed;left:12px;right:12px;top:calc(122px + env(safe-area-inset-top));display:none;justify-content:center;pointer-events:none}
+#callBox .card{border-left:6px solid var(--red);max-width:420px;font-size:14px}
+.layer{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:20px;background:rgba(28,39,51,.35)}
+.panel{background:var(--paper);border-radius:22px;padding:18px;width:min(92vw,420px);box-shadow:0 10px 40px rgba(0,0,0,.25);max-height:88vh;overflow:auto}
+.brand{display:flex;align-items:center;gap:10px;margin-bottom:4px}
+.badge{background:var(--yellow);border:3px solid var(--blue);color:var(--blue);font-weight:900;border-radius:10px;padding:2px 8px;font-size:15px}
+.panel h1{margin:0;font-size:22px;text-wrap:balance}
+.panel p{margin:6px 0 12px;color:var(--muted);font-size:14px;line-height:1.5}
+#cases{display:grid;gap:10px}
+.case{display:grid;grid-template-columns:1fr auto;grid-template-rows:auto auto;text-align:left;border:2px solid #e3e8ee;background:#fafbfc;border-radius:16px;padding:12px 14px;font:inherit;color:var(--ink);cursor:pointer}
+.case .pl{font-size:12px;color:var(--muted);grid-column:1}
+.case b{font-size:17px;grid-column:1}
+.case .st{grid-column:2;grid-row:1/3;align-self:center;color:#ff3b5c;font-size:18px;letter-spacing:1px}
+.case:active{border-color:var(--orange)}
+.rules{font-size:12.5px;color:var(--muted);margin-top:12px;line-height:1.6}
+.rules b{color:var(--ink)}
+.st i,td i{font-style:normal;display:inline-block;line-height:0;margin-right:1px}.st .on,td .on{color:#1f63e0}.st .off{color:#c9d0da}.stars{font-size:44px;color:#1f63e0;text-align:center;letter-spacing:4px;margin:6px 0}
+.row{display:flex;gap:10px;margin-top:14px}
+.row button{flex:1;border:0;border-radius:14px;padding:12px;font:inherit;font-weight:800;font-size:15px}
+.pri{background:var(--red);color:#fff}.sec{background:#eef1f5;color:var(--ink)}
+.tips{background:#fff7e0;border-radius:14px;padding:10px 14px;font-size:14px;margin-top:10px}
+.tips ul{margin:6px 0 0;padding-left:20px}.tips li{margin:3px 0}
+.over h1{color:var(--red);text-align:center}
+.credit{position:fixed;left:8px;bottom:calc(4px + env(safe-area-inset-bottom));font-size:9.5px;color:rgba(28,39,51,.55);pointer-events:none}
+.sheet{position:fixed;left:0;right:0;bottom:0;display:none;justify-content:center;padding:0 10px calc(12px + env(safe-area-inset-bottom))}
+.sheet .panel{border-radius:22px;max-height:70vh}
+.qnum{font-size:12px;font-weight:800;color:var(--orange);letter-spacing:.5px}
+#qText{font-size:18px;margin:4px 0 12px;line-height:1.4;text-wrap:balance}
+#qOpts{display:grid;gap:8px}
+.qo{border:2px solid #e3e8ee;background:#fafbfc;border-radius:14px;padding:12px 14px;font:inherit;font-size:15px;text-align:left;color:var(--ink);cursor:pointer;line-height:1.35}
+.qo.ok{border-color:var(--go);background:#e6f8ee}.qo.bad{border-color:var(--red);background:#fde9ea}
+.qo:disabled{cursor:default;color:var(--ink)}
+#qWhy{font-size:14px;line-height:1.5;margin:10px 0 0;color:var(--ink)}
+#qNext{display:none;width:100%;margin-top:12px;border:0;border-radius:14px;padding:12px;font:inherit;font-weight:800;font-size:15px;background:var(--red);color:#fff}
+/* 選單分頁 */
+.tabs{display:flex;gap:4px;margin:8px 0 10px;overflow-x:auto}
+.tabs button{flex:1 0 auto;border:0;border-radius:99px;padding:7px 10px;font:inherit;font-size:13px;font-weight:700;background:#eef1f5;color:var(--ink)}
+.tabs button[aria-selected=true]{background:var(--ink);color:#fff}
+.case.locked{opacity:.55}
+.case .meta{font-size:12px;color:var(--muted);grid-column:1}
+.kcard{border:2px solid #e3e8ee;border-radius:14px;padding:10px 12px;margin-bottom:8px;font-size:14px}
+.kcard b{display:block;margin-bottom:4px}.kcard ul{margin:4px 0 0;padding-left:18px}.kcard.lock{color:var(--muted);background:#f6f7f9}
+.achl{display:grid;gap:8px}.achi{display:flex;gap:10px;align-items:center;border:2px solid #e3e8ee;border-radius:14px;padding:8px 12px;font-size:14px}
+.achi .ic{font-size:22px}.achi.lock{opacity:.5}.achi small{display:block;color:var(--muted)}
+.lvsel{display:flex;gap:4px;margin-bottom:8px}.lvsel button{flex:1;border:0;border-radius:10px;padding:6px 0;font:inherit;font-size:13px;background:#eef1f5}.lvsel button.on{background:var(--orange);color:#fff}
+.board{width:100%;border-collapse:collapse;font-size:14px;margin-bottom:10px}.board td{padding:5px 4px;border-bottom:1px solid #eef1f5}.board td.n{font-weight:700}.board td.r{text-align:right;font-variant-numeric:tabular-nums}
+.bhead{font-weight:800;font-size:13px;margin:8px 0 4px;color:var(--muted)}
+.liv{display:flex;align-items:center;gap:10px;border:2px solid #e3e8ee;border-radius:14px;padding:8px 12px;margin-bottom:8px;width:100%;font:inherit;text-align:left;background:#fff}
+.liv .sw{width:34px;height:22px;border-radius:6px;border:2px solid #1c2733}.liv.on{border-color:var(--orange)}.liv:disabled{opacity:.5}
+.set-h{font-size:15px;margin:12px 2px 6px}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:10px;padding:9px 10px;margin:6px 0;background:#f7f9fb;border:2px solid #e3e8ee;border-radius:14px}
+.set-row.dim{opacity:.45}.set-l{display:flex;flex-direction:column;min-width:0}.set-l b{font-size:14px}.set-l small{font-size:11px;color:#8a94a3}
+.set-row:has(.set-chips){flex-direction:column;align-items:stretch}
+.set-sw{min-width:58px;padding:7px 0;border:0;border-radius:99px;font:inherit;font-weight:700;background:#d5dbe3;color:#55606e}.set-sw.on{background:#2e9d5b;color:#fff}
+.set-step{display:flex;align-items:center;gap:6px}.set-step button{width:36px;height:36px;border:0;border-radius:10px;font:inherit;font-size:18px;font-weight:700;background:#e3e8ee}.set-step button:disabled{opacity:.35}.set-step span{min-width:24px;text-align:center;font-weight:800;font-size:16px}
+.set-chips{display:flex;flex-wrap:wrap;gap:6px}.set-chip{border:2px solid #e3e8ee;border-radius:99px;padding:6px 10px;font:inherit;font-size:13px;background:#fff}.set-chip.on{border-color:#2e9d5b;background:#e6f6ec;font-weight:700}.set-chip:disabled{opacity:.45}
+.set-col{flex-direction:column;align-items:stretch}.set-seg{display:flex;gap:6px}.set-segb{flex:1;display:flex;flex-direction:column;align-items:center;gap:2px;padding:8px 4px;border:2px solid #e3e8ee;border-radius:12px;background:#fff;font:inherit;cursor:pointer}
+.set-segb b{font-size:14px}.set-segb small{font-size:10px;color:#8a94a3;text-align:center}.set-segb.on{border-color:#e23b3b;background:#fff1f1}
+.gfxAsk{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.35);z-index:60}.gfxAsk .card{max-width:300px;margin:16px}.gfxAsk p{font-size:13px;margin:8px 0 12px}.gfxBtns{display:flex;gap:8px}.gfxBtns button{flex:1}
+.case .sup{display:block;margin-top:4px;font-size:11px;font-weight:700;color:#1d4ed8;background:#eef4ff;border-radius:8px;padding:3px 7px;width:fit-content}
+.brand h1 .sub{display:block;font-size:10px;letter-spacing:2px;color:#e23b3b;font-weight:800;margin-top:1px}
+.set-warn{color:#b26b00;font-size:12px;margin:4px 2px}
+.ach-new{text-align:center;color:#b26b00;font-size:14px;margin:4px 0}
+.namerow{display:flex;gap:8px;margin:6px 0}.namerow input{flex:1;min-width:0;border:2px solid #e3e8ee;border-radius:12px;padding:9px 10px;font:inherit;font-size:15px}
+.namerow button{border:0;border-radius:12px;padding:0 12px;font:inherit;font-weight:800;font-size:14px}
+.wide{width:100%;margin-top:10px;border:0;border-radius:14px;padding:12px;font:inherit;font-weight:800;font-size:15px}
+.stab{position:fixed;left:10px;top:calc(124px + env(safe-area-inset-top));display:none;align-items:center;gap:8px;background:rgba(255,255,255,.95);border-radius:99px;padding:5px 12px;font-size:12px;font-weight:700;box-shadow:0 3px 12px rgba(0,0,0,.12)}
+.stab .bar{width:110px;height:9px;border-radius:99px;background:#e6eaef;overflow:hidden}.stab .bar i{display:block;height:100%;width:100%;background:var(--go);transition:width .2s}
+.num.warn{color:var(--red)}
+button:focus-visible{outline:3px solid #1d7bd8;outline-offset:2px}
+.modes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:4px 0 12px}
+.modes .mode{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;border-radius:14px;border:2px solid #e3e8ee;background:#f7f9fb;font:inherit;cursor:pointer}
+.modes .mode.pro{position:relative}.modes .mode.pro::after{content:'🔒 專業';position:absolute;top:4px;right:5px;font-size:9.5px;font-weight:700;color:#b3261e;background:#fde8e6;border-radius:6px;padding:1px 4px}.modes .mode .mi{font-size:26px}.modes .mode b{font-size:14px}.modes .mode small{font-size:11px;color:#8a94a3}
+.modes .mode.on{border-color:#e8323c;background:#fff1f1}.modes .mode:disabled{opacity:.5;cursor:default}
+.txleg{display:grid;gap:6px;margin:8px 0}.txleg div{display:flex;align-items:center;gap:8px}.txleg .dot{width:16px;height:16px;border-radius:50%}.txleg b{min-width:80px}
+.txbest{font-weight:700;color:#1f8f3a}
+#tabBody .go{width:100%;padding:14px;font:inherit;font-size:18px;font-weight:800;border:0;border-radius:14px;background:#22a83a;color:#fff;margin-top:6px;cursor:pointer}
+.txpop{position:fixed;left:50%;top:34%;transform:translateX(-50%);font-size:26px;font-weight:900;text-shadow:0 2px 0 #fff,0 0 8px #fff;pointer-events:none;z-index:30;animation:txpop 1.6s ease-out forwards;white-space:nowrap}
+@keyframes txpop{0%{opacity:0;transform:translate(-50%,10px) scale(.8)}15%{opacity:1;transform:translate(-50%,0) scale(1.1)}80%{opacity:1}100%{opacity:0;transform:translate(-50%,-40px) scale(1)}}
+#hTime.warn{color:#e8323c}
+#joy,#footBtns{display:none}
+
+/* 人事不省（CPR+AED） */
+body.cpr .top,body.cpr .btns,body.cpr #stabBox,body.cpr #bAEB,body.cpr #mini{display:none!important}
+#cp{display:none;position:fixed;left:10px;right:10px;bottom:calc(12px + env(safe-area-inset-bottom));z-index:25;background:rgba(255,255,255,.96);border-radius:20px;padding:12px 14px 14px;box-shadow:0 6px 24px rgba(0,0,0,.22);max-width:560px;margin:0 auto;font-size:15px;line-height:1.45}
+.cpnote{display:block;color:#1a7f45;margin-bottom:2px}
+.cpchip{display:inline-block;background:#e0465e;color:#fff;font-weight:700;border-radius:999px;padding:3px 12px;font-size:13px;margin-bottom:6px}
+.cptxt{color:#223;margin-bottom:8px}
+.cpact{display:flex;flex-wrap:wrap;gap:8px}
+.cpb{flex:1 1 100%;border:0;border-radius:14px;background:#eef2f7;color:#123;font-size:15px;font-weight:600;padding:12px 10px;text-align:left;cursor:pointer}
+.cpb:disabled{opacity:.45}
+.cpb.hint{background:#fff3c4;box-shadow:0 0 0 3px #ffb300 inset;animation:cpPulse 1.1s infinite}
+.cpb.big{text-align:center;font-size:22px;padding:22px 10px;background:#e0465e;color:#fff;user-select:none;-webkit-user-select:none;touch-action:manipulation}
+.cpb.big.hint{background:#e0465e;color:#fff;box-shadow:0 0 0 3px #ffb300 inset}
+.cpb.big:active{transform:scale(.97)}
+.cpb.aedon{flex:1 1 40%;text-align:center;background:#1f9e5a;color:#fff}
+.cpb.aedsh{flex:1 1 40%;text-align:center;background:#ff7a00;color:#fff}
+.cpb.aedsh.flash{animation:cpFlash .5s infinite}
+@keyframes cpPulse{50%{box-shadow:0 0 0 6px #ffb300 inset}}
+@keyframes cpFlash{50%{background:#ffd23f;color:#5a2b00}}
+.cpgauge{display:none;align-items:center;gap:8px;margin-bottom:8px;font-size:13px;color:#556}
+.cpgauge b{font-size:24px;color:#123;min-width:44px;text-align:right}
+.cpgauge i{flex:1;height:10px;border-radius:6px;background:linear-gradient(90deg,#eee 0 40%,#d8f5e4 40% 60%,#eee 60%);position:relative;overflow:hidden}
+.cpgauge em{position:absolute;left:0;top:0;bottom:0;width:0;border-radius:6px}
+#cpHot button{position:fixed;z-index:24;transform:translate(-50%,-50%);width:38px;height:38px;border-radius:50%;border:3px solid #fff;background:rgba(224,70,94,.55);color:#fff;font-weight:700;font-size:13px;box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;padding:0}
+#cpHot button.hint{background:rgba(255,179,0,.85);animation:cpPulse 1.1s infinite}
+#cpHot button.done{background:rgba(47,179,109,.9)}
+.cpphone{flex:1 1 100%;display:flex;gap:10px;align-items:center}
+.cpscr{min-width:96px;font-size:20px;font-weight:700;text-align:center;background:#123;color:#7dffb0;border-radius:10px;padding:10px 6px}
+.cppad{flex:1;display:grid;grid-template-columns:repeat(3,1fr);gap:5px}
+.cpk{border:0;border-radius:10px;background:#eef2f7;font-size:18px;font-weight:700;padding:7px 0}
+.cpk.call{background:#2fb36d;color:#fff}.cpk.hint{box-shadow:0 0 0 3px #ffb300 inset}
+#cpBub{display:none;position:fixed;z-index:26;transform:translate(-50%,-100%);background:#fff;color:#123;font-weight:800;font-size:18px;padding:8px 14px;border-radius:16px;box-shadow:0 4px 14px rgba(0,0,0,.25);pointer-events:none}
+#cpBub:after{content:"";position:absolute;left:50%;bottom:-9px;margin-left:-8px;border:8px solid transparent;border-top-color:#fff;border-bottom:0}
+#cpWarn{position:fixed;left:12px;right:12px;top:calc(70px + env(safe-area-inset-top));z-index:30;max-width:540px;margin:0 auto;background:#fff1f0;color:#a8071a;border:2px solid #ff7875;border-radius:14px;padding:10px 12px;font-size:15px;font-weight:600;box-shadow:0 6px 18px rgba(0,0,0,.18);opacity:0;transform:translateY(-12px);transition:.25s;pointer-events:none}
+#cpWarn.show{opacity:1;transform:none}
+body.cpflash #stage{filter:brightness(2.2)}
+.cpsel{display:flex;gap:8px;margin:4px 0 10px}.cpsel button{flex:1;border:0;border-radius:12px;padding:9px;background:#eef2f7;font-weight:600}.cpsel button.on{background:#c2185b;color:#fff}
+
+.aedui{flex:1 1 100%;background:#f39a1e;border-radius:20px;padding:7px;box-shadow:inset 0 -6px 0 #c9790e}
+.aedlid{position:relative;text-align:center;color:#fff;padding:6px 0 4px}.aedlid .h{width:46%;height:16px;margin:0 auto 6px;border-radius:10px;background:#3a3a3a;box-shadow:0 0 0 8px #e48a10}
+.aedlid .lg{font-size:40px;line-height:1.1}.aedlid b{display:block;font-size:30px;letter-spacing:2px;margin-bottom:8px}
+.aedopen{border:0;border-radius:14px;background:#fff;color:#c2650a;font-weight:800;font-size:16px;padding:12px 16px;cursor:pointer}.aedopen.hint{box-shadow:0 0 0 4px #ffb300;animation:cpPulse 1.1s infinite}
+.aedface{display:grid;grid-template-columns:34px auto 1fr 64px;grid-template-areas:"vo vo vo vo" "spk scr side sh";gap:6px 8px;align-items:center;background:#6b7079;border-radius:18px;padding:10px}
+.aedvo{grid-area:vo;color:#fff;font:600 12px/1.2 sans-serif;text-align:center;background:rgba(0,0,0,.18);border-radius:8px;padding:5px}
+.aedspk{grid-area:spk;width:34px;height:34px;border-radius:50%;background:radial-gradient(circle,#3d4148 2px,transparent 2.5px) 0 0/8px 8px,#5d626b}
+.aedscr{grid-area:scr;width:118px;border-radius:6px;border:3px solid #4a4f57}
+.aedi{grid-area:side;align-self:start;justify-self:start;width:38px;height:28px;border:0;border-radius:6px;background:#4a4f57;color:#fff;font:italic 800 16px serif;cursor:pointer}
+.aedrdy{grid-area:side;align-self:end;justify-self:start;margin:0 0 4px 12px;width:12px;height:12px;border-radius:50%;background:#1d3a24}.aedrdy.on{background:#33ff66;box-shadow:0 0 8px #33ff66}
+.aedshk{grid-area:sh;justify-self:end;width:64px;height:54px;border:0;clip-path:polygon(50% 0,100% 100%,0 100%);background:#b4560a;color:#fff;display:flex;align-items:flex-end;justify-content:center;padding-bottom:8px;cursor:pointer}
+.aedshk b{font-size:24px}.aedshk.flash{animation:aedFl .45s infinite}.aedshk.hint{filter:drop-shadow(0 0 6px #ffb300)}
+@keyframes aedFl{50%{background:#ffb347}}
+.aedpads{display:flex;gap:8px;justify-content:center;margin-top:6px}
+.aedpad{width:52px;border-radius:12px;opacity:.45;background:#fff}.aedpad.on{opacity:1;box-shadow:0 0 0 4px #ff7a00}.aedpad.used{opacity:.25}
+
+/* 霓虹提示：下一步要撳嘅位 */
+.cpb.hint,.aedopen.hint{background:#fff;box-shadow:0 0 0 2px #00e5ff inset,0 0 8px #00e5ff,0 0 18px #00e5ff,0 0 30px #ff2bd6;animation:neon 1s ease-in-out infinite}
+.cpb.big.hint{background:#e0465e;color:#fff}
+#cpHot button.hint{background:rgba(0,229,255,.35);border-color:#fff;box-shadow:0 0 8px #00e5ff,0 0 18px #00e5ff,0 0 30px #ff2bd6;animation:neonDot 1s ease-in-out infinite}
+.aedshk.hint{filter:drop-shadow(0 0 6px #00e5ff) drop-shadow(0 0 14px #ff2bd6)}
+@keyframes neon{0%,100%{box-shadow:0 0 0 2px #00e5ff inset,0 0 6px #00e5ff,0 0 14px #00e5ff,0 0 22px #ff2bd6}50%{box-shadow:0 0 0 2px #ff2bd6 inset,0 0 12px #00e5ff,0 0 26px #00e5ff,0 0 40px #ff2bd6}}
+@keyframes neonDot{0%,100%{transform:translate(-50%,-50%) scale(1)}50%{transform:translate(-50%,-50%) scale(1.18)}}
+body.free-foot .btns{display:none!important}
+body.free-foot #joy{display:block;position:fixed;left:22px;bottom:calc(28px + env(safe-area-inset-bottom));width:132px;height:132px;border-radius:50%;background:rgba(255,255,255,.55);box-shadow:0 3px 12px rgba(0,0,0,.18);touch-action:none;z-index:20}
+#joyK{position:absolute;left:50%;top:50%;width:58px;height:58px;margin:-29px 0 0 -29px;border-radius:50%;background:#fff;box-shadow:0 2px 8px rgba(0,0,0,.25)}
+body.free-foot #footBtns{display:flex;position:fixed;right:18px;bottom:calc(28px + env(safe-area-inset-bottom));gap:12px;align-items:flex-end;z-index:20}
+#bEnter{background:#7b4fd6}#bEnter:disabled{opacity:.45}#bEnter.ready{animation:beat 1.2s ease-in-out infinite}
+#bExit{display:none;position:fixed;right:18px;bottom:calc(196px + env(safe-area-inset-bottom));z-index:20;background:#7b4fd6;color:#fff}
+.chlist{margin:6px 0 8px;padding-left:20px;font-size:13px;line-height:1.6}
+#speedfx{position:fixed;inset:-15%;pointer-events:none;z-index:5;opacity:0;
+  background:repeating-conic-gradient(from 0deg at 50% 55%,rgba(255,255,255,0) 0deg 4deg,rgba(255,255,255,.75) 4deg 4.6deg);
+  -webkit-mask:radial-gradient(ellipse at 50% 55%,transparent 38%,#000 72%);mask:radial-gradient(ellipse at 50% 55%,transparent 38%,#000 72%)}
+#txCombo{display:none;position:fixed;left:50%;top:calc(70px + env(safe-area-inset-top));transform:translateX(-50%);background:#ff8c1a;color:#fff;font-weight:900;font-size:15px;padding:3px 12px;border-radius:99px;z-index:26;pointer-events:none;box-shadow:0 2px 8px rgba(0,0,0,.2)}
+body.taxi .top{top:calc(100px + env(safe-area-inset-top))!important}
+#txPat{height:6px;border-radius:3px;background:#e3e8ee;margin-top:4px;overflow:hidden;display:none}#txPat i{display:block;height:100%;background:#2ecc40;transition:width .2s}
+.txsay{position:fixed;left:50%;top:58%;transform:translateX(-50%);background:#fff;border-radius:16px;padding:7px 14px;font-weight:800;font-size:16px;box-shadow:0 3px 12px rgba(0,0,0,.18);pointer-events:none;z-index:27;animation:txsay 2.2s ease-out forwards;white-space:nowrap}
+.txsay:after{content:'';position:absolute;left:50%;bottom:-8px;margin-left:-8px;border:8px solid transparent;border-top-color:#fff;border-bottom:0}
+@keyframes txsay{0%{opacity:0;transform:translate(-50%,8px)}10%{opacity:1;transform:translate(-50%,0)}85%{opacity:1}100%{opacity:0}}
+@media (prefers-reduced-motion:reduce){.txsay{animation:none}}
+body.taxi #bMenu{top:calc(208px + env(safe-area-inset-top))}body.taxi #bAEB{top:calc(242px + env(safe-area-inset-top))}
+#txBig{display:none;position:fixed;left:50%;top:calc(4px + env(safe-area-inset-top));transform:translate(-50%,0);font-size:68px;font-weight:900;line-height:1;color:#fff;opacity:.88;pointer-events:none;z-index:25;transform-origin:50% 0;
+  text-shadow:0 0 3px #1c2733,0 3px 0 #1c2733,0 0 18px rgba(0,0,0,.35);font-variant-numeric:tabular-nums}
+#txBig.warn{color:#ff3b4f}
+#txBig.tick{animation:txtick .5s ease-out}#txBig.plus{animation:txplus .7s ease-out}
+@keyframes txtick{0%{transform:translate(-50%,0) scale(1.35)}100%{transform:translate(-50%,0) scale(1)}}
+@keyframes txplus{0%{transform:translate(-50%,0) scale(1.5);color:#3ddc6a}100%{transform:translate(-50%,0) scale(1)}}
+@media (prefers-reduced-motion:reduce){#txBig.tick,#txBig.plus{animation:none}}
+</style>
+</head>
+<body>
+<div id="pinGate" style="position:fixed;inset:0;z-index:2147483647;background:#0f1720;color:#fff;display:flex;align-items:center;justify-content:center;font-family:-apple-system,'PingFang HK','Noto Sans TC',sans-serif">
+<div style="width:min(380px,90vw);max-height:100vh;overflow:auto;box-sizing:border-box;padding:16px 0;text-align:center">
+<div style="font-size:22px;font-weight:700;margin-bottom:6px">🚑 香港生命線</div>
+<div style="font-size:13px;opacity:.75;margin-bottom:14px">開始之前，請先細閱下面嘅免責聲明</div>
+<input id="pinIn" type="hidden" value="ok">
+<button id="pinBtn" style="width:100%;margin-top:12px;padding:12px;font-size:17px;font-weight:600;border:0;border-radius:12px;background:#e23b3b;color:#fff">同意並開始</button>
+<div id="pinMsg" style="height:18px;margin-top:8px;font-size:14px;color:#ff8a8a"></div>
+<div id="pinLegal" style="margin-top:6px;text-align:left;background:#16212c;border:1px solid #2c3a49;border-radius:12px;padding:10px 12px 4px">
+<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:14px">免責聲明 Disclaimer</b>
+<span style="margin-left:auto;display:flex;gap:4px"><button type="button" data-l="zh" class="plt" style="font:inherit;font-size:12px;padding:3px 9px;border-radius:8px;border:1px solid #3a4756;background:#e23b3b;color:#fff">中文</button><button type="button" data-l="en" class="plt" style="font:inherit;font-size:12px;padding:3px 9px;border-radius:8px;border:1px solid #3a4756;background:transparent;color:#fff">English</button></span></div>
+<div id="pinLegalZh" class="plx" style="max-height:30vh;overflow:auto;font-size:12px;line-height:1.55;color:#c9d3de"><p><b>1. 非官方作品</b><br>本遊戲為個人私人開發的非商業作品，與香港特別行政區政府、消防處、醫院管理局、香港警務處、港鐵公司、各巴士公司，以及遊戲內提及的任何機構或商戶均無任何關係，亦未獲其授權、贊助或認可。</p>
+<p><b>2. 名稱及商標</b><br>遊戲內出現的地點、街道、建築物、景點、商場、醫院、機構及車輛的名稱、標誌、塗裝及商標，均屬其各自擁有人所有，只用作識別及模擬場景，並不表示擁有人與本遊戲有任何關係或認可本遊戲。</p>
+<p><b>3. 急救資料只供參考</b><br>遊戲內的急救知識、處理程序、藥物劑量及分流準則已經簡化，只供娛樂及一般參考，不能取代正式急救訓練、專業醫療意見或現行官方指引。開發者已致力保持內容準確，但不保證其完整、準確或最新。如遇緊急情況，請立即致電 999。</p>
+<p><b>4. 責任限制</b><br>在法律容許的最大範圍內，開發者不會就任何人因使用或依賴本遊戲或其內容而引致的任何直接或間接損失、損害、傷亡或法律責任承擔任何責任。本遊戲按「現狀」提供，不附帶任何明示或默示保證。</p>
+<p><b>5. 虛構內容</b><br>遊戲內的個案、人物、事件及對白均屬虛構，如有雷同，純屬巧合。</p>
+<p><b>6. 權利人通知</b><br>如任何權利人認為本遊戲內容侵犯其權益，請透過本遊戲的 <a href="https://github.com/nickhkhk/ambcar/issues" target="_blank" rel="noopener">GitHub 專頁</a>聯絡開發者，開發者會盡快修改或移除有關內容。</p>
+<p>撳「同意並開始」並繼續使用本遊戲，即表示你已閱讀、明白並同意本聲明。</p></div>
+<div id="pinLegalEn" class="plx" style="display:none;max-height:30vh;overflow:auto;font-size:12px;line-height:1.5;color:#c9d3de"><p><b>1. Unofficial work</b><br>This game is a private, non-commercial project developed by an individual. It is not affiliated with, authorised, sponsored or endorsed by the Government of the Hong Kong SAR, the Fire Services Department, the Hospital Authority, the Hong Kong Police Force, MTR Corporation, any bus operator, or any organisation or business shown in the game.</p>
+<p><b>2. Names and trademarks</b><br>All names, logos, liveries and trademarks of places, streets, buildings, attractions, shopping centres, hospitals, organisations and vehicles appearing in the game belong to their respective owners. They are used only for identification and scene simulation and do not imply any connection with, or endorsement by, their owners.</p>
+<p><b>3. First-aid information is for reference only</b><br>First-aid knowledge, procedures, drug doses and triage rules in the game are simplified and provided for entertainment and general reference only. They are not a substitute for formal first-aid training, professional medical advice or current official guidelines. The developer has made every effort to keep the content accurate but gives no guarantee that it is complete, accurate or up to date. In an emergency, call 999 immediately.</p>
+<p><b>4. Limitation of liability</b><br>To the fullest extent permitted by law, the developer accepts no liability for any direct or indirect loss, damage, injury or legal liability arising from the use of, or reliance on, this game or its content. The game is provided "as is" without any warranty, express or implied.</p>
+<p><b>5. Fictional content</b><br>All cases, characters, events and dialogue in the game are fictional. Any resemblance to real persons or events is purely coincidental.</p>
+<p><b>6. Notice to rights holders</b><br>If you are a rights holder and believe any content infringes your rights, please contact the developer via the game's <a href="https://github.com/nickhkhk/ambcar/issues" target="_blank" rel="noopener">GitHub page</a>. The content will be amended or removed as soon as possible.</p>
+<p>By tapping 「同意並開始」 and continuing to use this game, you confirm that you have read, understood and agreed to this notice.</p></div>
+</div>
+<style>#pinLegal p{margin:0 0 8px}#pinLegal a{color:#8fc3ff}</style>
+<script>document.querySelectorAll('#pinLegal .plt').forEach(function(b){b.onclick=function(){var l=b.getAttribute('data-l');document.getElementById('pinLegalZh').style.display=l==='zh'?'':'none';document.getElementById('pinLegalEn').style.display=l==='en'?'':'none';document.querySelectorAll('#pinLegal .plt').forEach(function(x){x.style.background=x===b?'#e23b3b':'transparent'});};});</script>
+</div></div>
+<script>
+(function(){
+  var H='agree-v1',K='pinGate.ok';
+  var g=document.getElementById('pinGate'),i=document.getElementById('pinIn'),b=document.getElementById('pinBtn'),m=document.getElementById('pinMsg');
+  try{ window.LEGAL_ZH=document.getElementById('pinLegalZh').innerHTML; window.LEGAL_EN=document.getElementById('pinLegalEn').innerHTML; }catch(e){}
+  function open(){g.remove();}
+  try{ if(localStorage.getItem(K)===H){open();return;} }catch(e){}
+  function hex(buf){return Array.prototype.map.call(new Uint8Array(buf),function(x){return('0'+x.toString(16)).slice(-2)}).join('');}
+  function check(){
+    var v=(i.value||'').trim(); if(!v) return;
+    
+    Promise.resolve().then(function(){
+      if(true){ try{localStorage.setItem(K,H);}catch(e){} open(); }
+      else { m.textContent='PIN 錯誤，請再試'; i.value=''; i.focus(); }
+    });
+  }
+  b.onclick=check; i.onkeydown=function(e){if(e.key==='Enter')check();};
+  setTimeout(function(){try{i.focus();}catch(e){}},100);
+})();
+</script>
+
+<div id="stage"></div>
+
+<div id="hudWrap">
+  <div class="top">
+    <div class="card"><div id="lives" class="lives" role="img" aria-label="生命之星"></div><b id="hTitle">任務</b><span id="hSub"></span><br>距離 <span class="num dist" id="hDist">--</span> · 限時 <span class="num" id="hTime">0:00</span><div id="txPat"><i></i></div></div>
+    <canvas id="mini" width="192" height="192" aria-label="小地圖"></canvas>
+  </div>
+  <div id="stabBox" class="stab" role="img" aria-label="病人穩定度"><span>🛏️ 病人穩定度</span><div class="bar"><i id="stabBar"></i></div></div>
+  <button id="bMenu" aria-label="返回選單">選單</button>
+  <button id="bAEB" aria-label="自動防撞探測開關" aria-pressed="true">防撞 開</button>
+  <div class="btns">
+    <div class="lr"><button class="btn" id="bL" aria-label="左轉">◀</button><button class="btn" id="bR" aria-label="右轉">▶</button></div>
+    <div class="right"><div class="col"><button class="btn small horn" id="bH" aria-label="警號開關" aria-pressed="false">警號</button><button class="btn small" id="bB" aria-label="倒車">倒</button></div><button class="btn go" id="bG" aria-label="油門">油</button></div>
+  </div>
+</div>
+<div id="callBox"><div class="card" id="call"></div></div>
+<div id="speedfx" aria-hidden="true"></div>
+<div id="cap"></div>
+<div id="joy" aria-label="行路搖桿"><div id="joyK"></div></div>
+<div id="footBtns"><button class="btn small" id="bJump" aria-label="跳">跳</button><button class="btn go" id="bEnter" aria-label="上車" disabled>上車</button></div>
+<button class="btn small" id="bExit" aria-label="落車">落車</button>
+<div id="txBig" aria-live="off"></div><div id="txCombo"></div>
+<div id="toast"></div>
+
+<div class="layer" id="menu">
+  <div class="panel">
+    <div class="brand"><span class="badge">A188</span><h1>香港生命線<small class="sub">HONG KONG LIFELINE</small></h1></div>
+    <div class="tabs" role="tablist" id="tabs">
+      <button role="tab" data-t="levels">關卡</button><button role="tab" data-t="cards">知識卡</button><button role="tab" data-t="ach">成就</button><button role="tab" data-t="board">排行榜</button><button role="tab" data-t="livery">車款</button><button role="tab" data-t="set">設定</button>
+    </div>
+    <div id="tabBody"></div>
+  </div>
+</div>
+
+<canvas id="fw" style="position:fixed;inset:0;width:100%;height:100%;pointer-events:none;z-index:40"></canvas>
+<div class="layer" id="result" style="z-index:41">
+  <div class="panel">
+    <h1 style="text-align:center" id="rTitle">任務完成</h1>
+    <div class="stars" id="rStars"></div>
+    <p id="rTime" style="text-align:center;margin:0"></p>
+    <p id="rNote" style="text-align:center"></p>
+    <p id="rAch" class="ach-new"></p>
+    <div class="namerow"><input id="rName" maxlength="12" placeholder="你嘅名" aria-label="排行榜名稱"><button id="rSave" class="pri">儲存到排行榜</button></div>
+    <div class="tips" id="rTips"></div>
+    <button class="pri wide" id="rNext">下一關</button>
+    <div class="row"><button class="sec" id="rMenu">返回選單</button><button class="sec" id="rAgain">再玩一次</button></div>
+  </div>
+</div>
+
+<div class="sheet" id="quiz" role="dialog" aria-labelledby="qText">
+  <div class="panel">
+    <div class="qnum" id="qNum">急救小測</div>
+    <h2 id="qText"></h2>
+    <div id="qOpts"></div>
+    <p id="qWhy" aria-live="polite"></p>
+    <button id="qNext">繼續</button>
+  </div>
+</div>
+
+<div class="layer over" id="over">
+  <div class="panel">
+    <h1>遊戲結束</h1>
+    <div class="stars" id="oStars"></div>
+    <p style="text-align:center">5 粒生命之星已經扣晒。<br><span id="oWhy"></span><br>記住：唔好撞人撞車、衝紅燈要開警號。</p>
+    <div class="row"><button class="sec" id="oMenu">返回選單</button><button class="pri" id="oAgain">再玩一次</button></div>
+  </div>
+</div>
+
+<script src="three.min.js"></script>
+
+<script src="game.js"></script>
+</body>
+</html>

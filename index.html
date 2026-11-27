@@ -120,7 +120,7 @@ canvas{display:block}
 button:focus-visible{outline:3px solid #1d7bd8;outline-offset:2px}
 .modes{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin:4px 0 12px}
 .modes .mode{display:flex;flex-direction:column;align-items:center;gap:2px;padding:10px 4px;border-radius:14px;border:2px solid #e3e8ee;background:#f7f9fb;font:inherit;cursor:pointer}
-.modes .mode .mi{font-size:26px}.modes .mode b{font-size:14px}.modes .mode small{font-size:11px;color:#8a94a3}
+.modes .mode.pro{position:relative}.modes .mode.pro::after{content:'🔒 專業';position:absolute;top:4px;right:5px;font-size:9.5px;font-weight:700;color:#b3261e;background:#fde8e6;border-radius:6px;padding:1px 4px}.modes .mode .mi{font-size:26px}.modes .mode b{font-size:14px}.modes .mode small{font-size:11px;color:#8a94a3}
 .modes .mode.on{border-color:#e8323c;background:#fff1f1}.modes .mode:disabled{opacity:.5;cursor:default}
 .txleg{display:grid;gap:6px;margin:8px 0}.txleg div{display:flex;align-items:center;gap:8px}.txleg .dot{width:16px;height:16px;border-radius:50%}.txleg b{min-width:80px}
 .txbest{font-weight:700;color:#1f8f3a}
@@ -336,6 +336,7 @@ body.taxi #bMenu{top:calc(208px + env(safe-area-inset-top))}body.taxi #bAEB{top:
 </div>
 
 <script src="three.min.js"></script>
-<script>window.SR_OK=1;try{if(JSON.parse(localStorage.getItem('a188.region')||'"tm"')==='sr')document.write('<script src="sr.js"><\/script>')}catch(e){}</script><script src="game.js"></script>
+<script>window.SR_OK=1;try{if(JSON.parse(localStorage.getItem('a188.region')||'"tm"')==='sr')document.write('<script src="sr.js"><\/script>')}catch(e){}</script>
+<script src="game.js"></script>
 </body>
 </html>
